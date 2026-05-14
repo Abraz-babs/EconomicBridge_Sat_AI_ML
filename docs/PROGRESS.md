@@ -315,11 +315,61 @@ Then the frontend `FarmlandPanel` will switch from its "no alerts seeded" empty-
 - Seed mock alerts in the dev DB
 - Replace hardcoded data in [FarmlandPanel.tsx](../apps/frontend/src/components/farmland/FarmlandPanel.tsx) with a TanStack Query call
 
-### Step 8 — Satellite ingestion microservice (Q1)
+### Step 8 — Satellite ingestion microservice (Q1) ✅ **DONE 2026-05-14**
 
-- Build [apps/ingestion/](../apps/ingestion/) skeleton with Celery + Redis
-- One working task: NASA FIRMS daily heat polling for Kebbi ROI
-- Write detection results into `tenant_kebbi.heat_signatures`
+Second microservice landed: a separate FastAPI app at port 8001 that pulls
+satellite data from external sources and writes it to the tenant schemas.
+
+**Queue deferred:** Celery + Redis would be the standard backbone here, but no
+Docker / Redis on this machine. The tasks are written as queue-agnostic async
+functions, with a manual trigger router for now. When Redis lands the function
+body in `tasks/firms_ingest.py` does not change — only the caller does.
+
+Delivered:
+- [migrations/versions/0004_create_heat_signatures.py](../apps/api/migrations/versions/0004_create_heat_signatures.py) — `public.ingestion_runs` (audit of every ingestion job) + `tenant_<id>.heat_signatures` across all 9 pilot schemas with GIST + time-range indexes
+- [apps/ingestion/](../apps/ingestion/) — separate FastAPI service:
+  - [config.py](../apps/ingestion/config.py) — pydantic-settings with optional `NASA_FIRMS_MAP_KEY`
+  - [db.py](../apps/ingestion/db.py) — its own async engine + `set_tenant_schema()` helper (the ingestion service writes across multiple tenants in one run, so `search_path` is set per-tenant per-task, not per-request)
+  - [sources/nasa_firms.py](../apps/ingestion/sources/nasa_firms.py) — typed FIRMS REST client with CSV parser. **Mock fallback** when no MAP_KEY is configured: returns 3 deterministic detections anchored to the bbox centre so the rest of the pipeline (parser → schema → DB writer → audit log) is exercisable in dev without registering for an API key. Bounding boxes mirror tenants.yaml for the 9 pilot tenants
+  - [tasks/firms_ingest.py](../apps/ingestion/tasks/firms_ingest.py) — `ingest_firms_for_tenant()`. Lifecycle: INSERT `ingestion_runs` row (status=running) → fetch detections → INSERT into `tenant_<id>.heat_signatures` → UPDATE run row (succeeded / failed + duration_ms + records_ingested). Supports `dry_run=True` (no detection writes; counts what would be inserted). Identifier-safe `SET search_path` via the allowlist
+  - [routers/health.py](../apps/ingestion/routers/health.py) — `GET /api/v1/health` reports `nasa_firms_configured` so operators can see when the real API is wired
+  - [routers/triggers.py](../apps/ingestion/routers/triggers.py) — `POST /api/v1/ingest/firms` with Pydantic body validation (`tenant_id`, optional `source`, `day_range` 1..10, `dry_run`). Returns the full IngestResult: run_id, status, records_ingested, duration_ms
+  - [main.py](../apps/ingestion/main.py) — FastAPI app with `TraceIdMiddleware` (X-Trace-Id header) + CORS; docs at `/api/docs`
+  - [tests/](../apps/ingestion/tests/) — 12 tests total. 8 unit (CSV parser corner cases, mock client, /health) + 4 integration (full DB round-trip including a dry-run check and an unknown-tenant 404)
+- [.env.example](../apps/ingestion/.env.example) + [requirements.txt](../apps/ingestion/requirements.txt) + [pytest.ini](../apps/ingestion/pytest.ini)
+
+Verified without DB:
+```
+pytest -v                                            8 passed, 4 deselected (@integration)
+GET  /api/v1/health                                  200 {nasa_firms_configured: false}
+GET  /api/openapi.json paths                         /health, /ingest/firms
+POST /api/v1/ingest/firms {tenant_id:"atlantis"}     404 Unknown tenant
+```
+
+**Pending DB integration verification** (needs `alembic upgrade head` + Postgres password reset):
+```powershell
+cd apps/api
+.\.venv\Scripts\python.exe -m alembic upgrade head
+cd ../ingestion
+& ..\api\.venv\Scripts\python.exe -m pytest -m integration
+# → 4 ingest tests + the 21 from api side = 25 integration tests covering
+#   tenant context, alerts, and now FIRMS ingestion end-to-end
+```
+
+**To run the service:**
+```powershell
+cd apps/ingestion
+& ..\api\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8001
+# Swagger: http://localhost:8001/api/docs
+```
+
+**Pivot to Celery (the "Step 8.1" follow-up when Redis is available):**
+1. `pip install celery[redis]` (already commented into requirements.txt)
+2. Wrap `ingest_firms_for_tenant` in `@celery_app.task` — the body is unchanged
+3. Add `celery beat` schedule: daily 06:00 UTC for every active tenant
+4. Make `POST /ingest/firms` call `.delay()` and return 202 with the AsyncResult id
+
+
 
 ### Step 9 — Conflict predictor (Q1, port from Citadel)
 
