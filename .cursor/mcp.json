@@ -1,0 +1,39 @@
+{
+  "mcpServers": {
+
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/your/economicbridge"],
+      "description": "Gives Claude Opus read/write access to the full project. Replace /path/to/your/economicbridge with your actual project root path before using.",
+      "env": {}
+    },
+
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://economicbridge:devpassword@localhost:5432/economicbridge"],
+      "description": "Gives Claude Opus live access to your local database. Claude can inspect tenant schemas, verify isolation, check table structures, and run test queries. Uses local dev credentials only — never point at production.",
+      "env": {}
+    },
+
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "description": "Gives Claude Opus access to your GitHub repo — read issues, PRs, commit history, and file contents. Required for context when fixing bugs or reviewing PRs.",
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "YOUR_GITHUB_PAT_HERE"
+      }
+    },
+
+    "aws-kb-retrieval": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-aws-kb-retrieval"],
+      "description": "Optional: AWS Knowledge Base retrieval. Useful for querying your AWS infrastructure state during development.",
+      "env": {
+        "AWS_ACCESS_KEY_ID": "YOUR_DEV_ACCESS_KEY",
+        "AWS_SECRET_ACCESS_KEY": "YOUR_DEV_SECRET_KEY",
+        "AWS_REGION": "af-south-1"
+      }
+    }
+
+  }
+}

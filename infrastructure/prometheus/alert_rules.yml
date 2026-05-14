@@ -1,0 +1,77 @@
+# =============================================================================
+# EconomicBridge — Prometheus Alert Rules
+# =============================================================================
+
+groups:
+
+  - name: api_health
+    rules:
+
+      - alert: APIDown
+        expr: up{job="economicbridge-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "EconomicBridge API is down"
+          description: "The main API has been unreachable for 1 minute. Tenants cannot access the platform."
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{job="economicbridge-api", status=~"5.."}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API error rate"
+          description: "More than 5% of API requests are returning 5xx errors."
+
+      - alert: SlowAPIResponse
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="economicbridge-api"}[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p95 response time above 2 seconds"
+          description: "95th percentile response time has exceeded 2 seconds for 5 minutes."
+
+  - name: satellite_ingestion
+    rules:
+
+      - alert: IngestionServiceDown
+        expr: up{job="economicbridge-ingestion"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Satellite ingestion service is down"
+          description: "No satellite data is being ingested. Conflict predictions will become stale."
+
+      - alert: CeleryQueueBacklog
+        expr: flower_events_total{type="task-received"} - flower_events_total{type="task-succeeded"} > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Celery task queue backlog > 100 tasks"
+          description: "Satellite ingestion tasks are backing up. Check worker capacity."
+
+  - name: ml_service
+    rules:
+
+      - alert: MLServiceDown
+        expr: up{job="economicbridge-ml"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ML inference service is down"
+          description: "No conflict predictions can be generated. Farmland Protection module is blind."
+
+      - alert: LowModelConfidence
+        expr: avg(ml_prediction_confidence{model="conflict_predictor"}) < 0.70
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Conflict prediction model average confidence below 70%"
+          description: "Model may need retraining for new geographic areas."

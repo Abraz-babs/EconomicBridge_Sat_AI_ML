@@ -1,0 +1,81 @@
+# =============================================================================
+# EconomicBridge — Prometheus Configuration
+# Bizra Farms Integrated Nigeria Limited
+#
+# Scrapes metrics from all application services every 15 seconds.
+# Alerting rules defined inline — fires to Grafana and SNS (production).
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    platform: "economicbridge"
+    operator: "bizra_farms"
+
+# =============================================================================
+# ALERTING
+# In production: replace localhost:9093 with your Alertmanager endpoint
+# =============================================================================
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# =============================================================================
+# SCRAPE TARGETS
+# =============================================================================
+scrape_configs:
+
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # FastAPI — main API service
+  # FastAPI exposes /metrics via prometheus-fastapi-instrumentator
+  - job_name: "economicbridge-api"
+    static_configs:
+      - targets: ["api:8000"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+
+  # Ingestion microservice
+  - job_name: "economicbridge-ingestion"
+    static_configs:
+      - targets: ["ingestion:8001"]
+    metrics_path: /metrics
+    scrape_interval: 30s    # Ingestion is slower-changing
+
+  # ML inference service
+  - job_name: "economicbridge-ml"
+    static_configs:
+      - targets: ["ml:8002"]
+    metrics_path: /metrics
+    scrape_interval: 15s
+
+  # Celery worker metrics (via Flower)
+  - job_name: "celery"
+    static_configs:
+      - targets: ["flower:5555"]
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  # PostgreSQL — via postgres_exporter (add to docker-compose if needed)
+  # - job_name: "postgres"
+  #   static_configs:
+  #     - targets: ["postgres-exporter:9187"]
+
+  # Redis — via redis_exporter (add to docker-compose if needed)
+  # - job_name: "redis"
+  #   static_configs:
+  #     - targets: ["redis-exporter:9121"]
+
+# =============================================================================
+# ALERTING RULES
+# These fire when thresholds are breached — critical for satellite platform
+# =============================================================================
+rule_files:
+  - "alert_rules.yml"

@@ -1,0 +1,99 @@
+# .pre-commit-config.yaml
+# Runs automatically before every git commit.
+# Install with: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+
+  # ─────────────────────────────────────────
+  # GENERAL HYGIENE
+  # ─────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1000]  # Block files over 1MB (satellite data goes to S3)
+      - id: no-commit-to-branch
+        args: [--branch, main]  # Never commit directly to main
+      - id: detect-private-key  # Block accidental private key commits
+      - id: check-ast  # Verify Python files parse correctly
+      - id: debug-statements  # Block accidental pdb/print debugger commits
+
+  # ─────────────────────────────────────────
+  # SECRETS DETECTION
+  # ─────────────────────────────────────────
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: [--baseline, .secrets.baseline]
+        exclude: .env.example  # .env.example has placeholder values only
+
+  # ─────────────────────────────────────────
+  # PYTHON — FORMATTING & LINTING
+  # ─────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff          # Linter
+        args: [--fix]
+      - id: ruff-format   # Formatter
+
+  # ─────────────────────────────────────────
+  # PYTHON — TYPE CHECKING
+  # ─────────────────────────────────────────
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        args: [--strict, --ignore-missing-imports]
+        additional_dependencies:
+          - pydantic>=2.0
+          - sqlalchemy>=2.0
+          - fastapi
+
+  # ─────────────────────────────────────────
+  # PYTHON — SECURITY
+  # ─────────────────────────────────────────
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.8
+    hooks:
+      - id: bandit
+        args: [-ll, --severity-level, medium]
+        exclude: tests/  # Test files can use test fixtures
+
+  # ─────────────────────────────────────────
+  # COMMIT MESSAGE CONVENTION
+  # ─────────────────────────────────────────
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v3.27.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+  # ─────────────────────────────────────────
+  # YAML VALIDATION
+  # ─────────────────────────────────────────
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [-d, relaxed]
+        files: \.(yaml|yml)$
+        exclude: .github/
+
+  # ─────────────────────────────────────────
+  # TERRAFORM
+  # ─────────────────────────────────────────
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.92.0
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate

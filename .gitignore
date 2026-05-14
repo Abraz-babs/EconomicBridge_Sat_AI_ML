@@ -1,0 +1,150 @@
+# EconomicBridge .gitignore
+# ==========================
+
+# ─────────────────────────────────────────
+# SECRETS — NEVER COMMIT THESE
+# ─────────────────────────────────────────
+.env
+.env.local
+.env.staging
+.env.production
+*.pem
+*.key
+*.p12
+secrets/
+**/gee-service-account.json
+**/*-credentials.json
+**/*-service-account.json
+
+# ─────────────────────────────────────────
+# PYTHON
+# ─────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.venv/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ─────────────────────────────────────────
+# NODE / FRONTEND
+# ─────────────────────────────────────────
+node_modules/
+.next/
+out/
+build/
+dist/
+.npm
+.eslintcache
+*.tsbuildinfo
+.vercel
+
+# ─────────────────────────────────────────
+# DOCKER
+# ─────────────────────────────────────────
+.docker/
+
+# ─────────────────────────────────────────
+# TERRAFORM
+# ─────────────────────────────────────────
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# ─────────────────────────────────────────
+# ML MODEL ARTIFACTS
+# ─────────────────────────────────────────
+# Model files are large — store in S3, not git
+models/artifacts/*.joblib
+models/artifacts/*.pkl
+models/artifacts/*.pt
+models/artifacts/*.h5
+# Keep directory structure and README
+!models/artifacts/.gitkeep
+!models/artifacts/README.md
+
+# ─────────────────────────────────────────
+# SATELLITE DATA
+# ─────────────────────────────────────────
+# Satellite data stored in S3 — never in git
+data/raw/
+data/processed/
+*.tif
+*.tiff
+*.geotiff
+*.nc
+
+# ─────────────────────────────────────────
+# AUDIT PACKAGES
+# ─────────────────────────────────────────
+audit-package/*.zip
+audit-package/*/
+
+# ─────────────────────────────────────────
+# IDE
+# ─────────────────────────────────────────
+.idea/
+.vscode/settings.json
+.vscode/launch.json
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─────────────────────────────────────────
+# LOGS
+# ─────────────────────────────────────────
+*.log
+logs/
+
+# ─────────────────────────────────────────
+# TEMP FILES
+# ─────────────────────────────────────────
+tmp/
+temp/
+.tmp/
