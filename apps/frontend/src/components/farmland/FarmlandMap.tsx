@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-export type AlertSeverity = 'critical' | 'high' | 'medium' | 'resolved';
+export type AlertSeverity = 'critical' | 'high' | 'medium' | 'low' | 'resolved';
 
 export interface FarmlandAlertPoint {
   id: string;
@@ -23,7 +23,8 @@ const NW_NIGERIA_ZOOM = 5.7;
 const SEVERITY_RGB: Record<AlertSeverity, [number, number, number]> = {
   critical: [255, 69, 0],
   high:     [255, 140, 0],
-  medium:   [82, 183, 136],
+  medium:   [240, 175, 60],
+  low:      [82, 183, 136],
   resolved: [82, 183, 136],
 };
 

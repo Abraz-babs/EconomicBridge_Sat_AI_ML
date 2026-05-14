@@ -263,7 +263,53 @@ GET /api/v1/tenant-info  Header X-Tenant-Id: atlantis  →  404
 
 **Pending integration verification:** the 5 DB-dependent tests in [test_tenant_context.py](../apps/api/tests/test_tenant_context.py) need migration `0002` applied and the Postgres `postgres` user password set to `devpassword`. Run with `pytest -m integration` once the DB is reachable.
 
-### Step 7 — First real module endpoint: Farmland alerts
+### Step 7 — First real module endpoint: Farmland alerts ✅ **DONE 2026-05-14**
+
+First end-to-end vertical slice: tenant-scoped DB → API → live frontend.
+
+**Backend** ([apps/api/](../apps/api/))
+- [`models/alert_event.py`](../apps/api/models/alert_event.py) — 28-column SQLAlchemy mapping. `__table_args__ = {"info": {"is_tenant_scoped": True}}` flags it for Alembic autogenerate to skip (the table lives in per-tenant schemas, not `public`).
+- [`migrations/env.py`](../apps/api/migrations/env.py) — added `include_object` filter that excludes tenant-scoped tables from autogenerate.
+- [`migrations/versions/0003_create_alert_events.py`](../apps/api/migrations/versions/0003_create_alert_events.py) — drops the placeholder `widgets` and creates `alert_events` in **all 9 pilot schemas**, with:
+  - severity/status/alert_type CHECK constraints + confidence_score range check
+  - 5 indexes: `(status, created_at DESC)`, `severity`, `alert_type`, `lga`, GIST(`location`)
+  - 1 partial index `(created_at DESC) WHERE is_deleted = FALSE` (covers the API's hot path)
+  - `updated_at` trigger reusing the function from migration 0001
+- [`schemas/farmland.py`](../apps/api/schemas/farmland.py) — `AlertSeverity` / `AlertStatus` / `AlertType` enums, `AlertResponse`, `AlertListData`, `AlertListQuery` (Pydantic-validated query params with `extra="forbid"`).
+- [`repositories/alerts.py`](../apps/api/repositories/alerts.py) — composable WHERE-clause builder + 2-query pattern (page + total count, same filters).
+- [`services/farmland.py`](../apps/api/services/farmland.py) — business rules (soft-delete filter, default sort) + ORM → Pydantic mapping including PostGIS `POINT` → `{lon, lat}` unwrap via Shapely.
+- [`routers/farmland.py`](../apps/api/routers/farmland.py) — `GET /api/v1/farmland/alerts` with full OpenAPI docs, `X-Tenant-Id` requirement (400 if missing), `since` ≤ `until` validation, paginated `SuccessResponse[AlertListData]`.
+- [`scripts/seed_farmland_alerts.py`](../apps/api/scripts/seed_farmland_alerts.py) — 9 realistic alerts across Kebbi / Zamfara / Plateau / Kaduna / Benue / Niger with real LGA coordinates, marked `model_name='seed'` for idempotent re-runs.
+- [`tests/test_farmland_alerts.py`](../apps/api/tests/test_farmland_alerts.py) — 9 integration tests covering: 400 on missing tenant, 404 on unknown tenant, envelope shape, every required field, pagination, severity filter, status filter, `since>until` validation, and **cross-tenant isolation** (Kebbi alerts never visible to Zamfara queries and vice versa).
+
+**Frontend** ([apps/frontend/](../apps/frontend/))
+- Installed `@tanstack/react-query@^5` + devtools.
+- [`app/providers.tsx`](../apps/frontend/src/app/providers.tsx) + [`app/layout.tsx`](../apps/frontend/src/app/layout.tsx) — wraps the app in `QueryClientProvider` + `TenantProvider`. QueryClient defaults: 30s `staleTime`, retry once, no refetch-on-window-focus.
+- [`lib/api.ts`](../apps/frontend/src/lib/api.ts) — fetch wrapper with `X-Tenant-Id` support, envelope unwrap, `ApiException` class carrying the `error.code` (so React can branch on `TENANT_NOT_FOUND`).
+- [`context/TenantContext.tsx`](../apps/frontend/src/context/TenantContext.tsx) — `useTenant()` hook, persists active tenant in `localStorage`, defaults to `kebbi`.
+- [`hooks/useFarmlandAlerts.ts`](../apps/frontend/src/hooks/useFarmlandAlerts.ts) — typed TanStack Query hook, multi-value filter support, cancellable via AbortSignal.
+- [`components/farmland/FarmlandPanel.tsx`](../apps/frontend/src/components/farmland/FarmlandPanel.tsx) — **rewritten**. Live data drives: the live badge ("LIVE — Kebbi State · N alerts"), the 4 stat tiles (computed from the data), the map pins (filtered to alerts with a location), the alert feed (with loading / error / empty states), the Economic Impact summary. Added a tenant selector + Refresh button.
+- [`next.config.ts`](../apps/frontend/next.config.ts) — `connect-src` extended with `http://localhost:8000` so the browser can call the API.
+
+**Verified without DB** (the 400 + 404 paths don't query the DB):
+```
+GET /api/v1/farmland/alerts                                    → 400 (X-Tenant-Id required)
+GET /api/v1/farmland/alerts  X-Tenant-Id: atlantis             → 404 TENANT_NOT_FOUND
+GET /api/openapi.json paths                                    → /health, /health/db, /tenant-info, /farmland/alerts
+GET http://localhost:3000                                      → 200, dashboard renders
+pytest -v                                                       → 6 passed, 16 deselected (@integration)
+alembic heads                                                   → 0003 (head)
+```
+
+**Pending integration verification** (needs DB password reset + migration):
+```
+alembic upgrade head                          # applies 0003
+python -m scripts.seed_farmland_alerts        # seeds 9 alerts across pilot tenants
+pytest -m integration                          # 16 tests (5 tenant_context + 9 farmland_alerts + 2 health_db)
+```
+
+Then the frontend `FarmlandPanel` will switch from its "no alerts seeded" empty-state to live data automatically (TanStack Query refetches on tenant change).
+
 
 - `GET /api/v1/farmland/alerts` returning paginated alerts from `tenant_<id>.farmland_alerts`
 - Seed mock alerts in the dev DB

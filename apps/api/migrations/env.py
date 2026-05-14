@@ -36,6 +36,21 @@ config.set_main_option("sqlalchemy.url", get_settings().database_url_sync)
 target_metadata = Base.metadata
 
 
+def _include_object(obj, name, type_, reflected, compare_to):  # noqa: ANN001 — alembic signature
+    """Exclude tenant-scoped tables from autogenerate.
+
+    Per-tenant tables (alert_events, satellite_observations, etc.) live in
+    tenant_<id> schemas and their DDL is hand-applied across every pilot schema
+    inside migration files. Autogenerate would incorrectly suggest creating
+    them in public — filter them out here.
+    """
+    if type_ == "table":
+        info = getattr(obj, "info", {}) or {}
+        if info.get("is_tenant_scoped"):
+            return False
+    return True
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode (no DB connection — emits SQL to stdout)."""
 
@@ -47,6 +62,7 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
         compare_server_default=True,
+        include_object=_include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -67,6 +83,7 @@ def run_migrations_online() -> None:
             target_metadata=target_metadata,
             compare_type=True,
             compare_server_default=True,
+            include_object=_include_object,
         )
         with context.begin_transaction():
             context.run_migrations()

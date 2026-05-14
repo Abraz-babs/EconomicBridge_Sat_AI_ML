@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "mapbox-gl/dist/mapbox-gl.css";
 import "./globals.css";
+import { AppProviders } from "./providers";
 
 export const metadata: Metadata = {
   title: "EconomicBridge — AI & Satellite Mapping for Aid Delivery Optimization",
@@ -23,7 +24,9 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <AppProviders>{children}</AppProviders>
+      </body>
     </html>
   );
 }

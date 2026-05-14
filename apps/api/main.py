@@ -23,7 +23,7 @@ from middleware.audit import AuditLogMiddleware
 from middleware.security import SecurityHeadersMiddleware
 from middleware.tenant import TenantContextMiddleware
 from middleware.trace import TraceIdMiddleware
-from routers import health, health_db, tenants
+from routers import farmland, health, health_db, tenants
 
 settings = get_settings()
 
@@ -57,3 +57,4 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(health_db.router, prefix="/api/v1")
 app.include_router(tenants.router, prefix="/api/v1")
+app.include_router(farmland.router, prefix="/api/v1")

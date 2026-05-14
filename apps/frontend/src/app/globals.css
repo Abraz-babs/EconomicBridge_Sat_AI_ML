@@ -557,6 +557,101 @@ footer.app-footer {
 
 .role-btn--pin-right { margin-left: auto; }
 
+/* ─── FARMLAND TENANT BAR & DATA STATES ─── */
+.fp-tenant-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: -6px 0 18px;
+  padding: 8px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.fp-tenant-label {
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.fp-tenant-select {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  padding: 5px 10px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.fp-tenant-select:focus {
+  outline: none;
+  border-color: var(--ngo-accent);
+  box-shadow: 0 0 0 3px rgba(82,183,136,0.15);
+}
+
+.fp-refresh-btn {
+  margin-left: auto;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 5px 12px;
+  background: var(--ink);
+  color: #fff;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.fp-refresh-btn:hover:not(:disabled) { background: var(--ink2); }
+.fp-refresh-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.fp-alert-empty,
+.fp-alert-error {
+  padding: 18px 16px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.fp-alert-error {
+  background: #fde8e1;
+  color: var(--alert);
+  border-left: 3px solid var(--alert);
+}
+
+.fp-alert-empty code,
+.fp-alert-error code {
+  background: rgba(0,0,0,0.06);
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 10px;
+}
+
+.fp-main-row--equal { grid-template-columns: 1fr 1fr; }
+.fp-impact-body { padding: 0; }
+.fp-impact-row--bordered {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.fp-impact-val--small { font-size: 18px; }
+.fp-impact-footnote {
+  padding: 12px 16px;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.fp-impact-footnote code {
+  background: var(--surface2);
+  padding: 1px 5px;
+  border-radius: 2px;
+}
+
 /* ─── ANIMATIONS ─── */
 @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
 .anim { animation: fadeUp 0.4s ease both; }
