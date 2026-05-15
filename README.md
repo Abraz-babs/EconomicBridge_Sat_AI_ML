@@ -20,81 +20,144 @@ Operated by **Bizra Farms Integrated Nigeria Limited** — *"Using AI to Expand 
 | 06 | Economic Mobility Compass | Economic opportunity & mobility insights |
 | 07 | SkillsBridge | Skills-to-opportunity matching |
 
+---
+
+## Where to look for what
+
+Everything is split cleanly by service. Frontend code lives in `apps/frontend/`,
+backend code lives in `apps/api/` or `apps/ingestion/`. Each service owns its
+own configuration, dependencies, virtualenv, and `.env` files.
+
+```
+economic-bridge-project/
+│
+├── apps/
+│   ├── frontend/              FRONTEND — Next.js dashboard (port 3000)
+│   │   ├── src/                       React/TypeScript components
+│   │   ├── package.json               npm dependencies
+│   │   ├── next.config.ts             Next.js + CSP headers
+│   │   ├── .env.local                 Mapbox token  (gitignored)
+│   │   └── .env.local.example         template
+│   │
+│   ├── api/                   BACKEND API — FastAPI (port 8000)
+│   │   ├── main.py                    FastAPI app entrypoint
+│   │   ├── config.py                  pydantic-settings
+│   │   ├── routers/                   HTTP layer
+│   │   ├── services/                  business logic
+│   │   ├── repositories/              DB access (no business rules)
+│   │   ├── models/                    SQLAlchemy ORM
+│   │   ├── schemas/                   Pydantic request/response
+│   │   ├── middleware/                Trace, Security, Tenant, Audit
+│   │   ├── migrations/                THE active Alembic migrations
+│   │   ├── alembic.ini                THE active Alembic config
+│   │   ├── tests/
+│   │   ├── requirements.txt
+│   │   ├── .env                       backend env  (gitignored — create from .env.example)
+│   │   └── .env.example               template
+│   │
+│   └── ingestion/             BACKEND INGESTION — FastAPI (port 8001)
+│       ├── main.py                    FastAPI app entrypoint
+│       ├── sources/                   external API clients (NASA FIRMS, ...)
+│       ├── tasks/                     queue-agnostic ingest tasks
+│       ├── routers/                   HTTP layer (health, manual triggers)
+│       ├── tests/
+│       ├── requirements.txt
+│       ├── .env                       NASA FIRMS MAP_KEY etc.  (gitignored)
+│       └── .env.example               template
+│
+├── docs/                      Documentation
+│   ├── ARCHITECTURE.md                system shape, data flow, conventions
+│   ├── PROGRESS.md                    step-by-step build log
+│   ├── ROADMAP.md                     quarterly delivery plan
+│   ├── decisions/                     ADRs (ADR-001 schema-per-tenant, ...)
+│   └── runbooks/                      operational guides
+│
+├── infrastructure/            Shared observability
+│   ├── prometheus/                    Prometheus config + alert rules
+│   └── grafana/                       dashboards + datasource
+│
+├── scripts/                   Cross-service deployment / tooling
+│   ├── deploy.sh                      multi-service deploy
+│   ├── generate_tenant.py             tenant provisioning
+│   └── validate_tenant.py             tenants.yaml validator
+│
+├── tenants.yaml               52 tenant configurations (shared by all services)
+├── CLAUDE.md                  AI session contract (read before any work)
+├── docker-compose.yml         orchestrates all services together
+├── Makefile                   high-level make targets
+└── README.md                  this file
+```
+
+### Config & secrets — at a glance
+
+| File | Who reads it | What's in it |
+|------|--------------|--------------|
+| `apps/frontend/.env.local`        | Frontend (Next.js)   | `NEXT_PUBLIC_MAPBOX_TOKEN` |
+| `apps/api/.env` (create yourself) | Backend API          | `DATABASE_URL`, DB pool tuning |
+| `apps/ingestion/.env`             | Backend Ingestion    | `DATABASE_URL`, `NASA_FIRMS_MAP_KEY` |
+
+Every `.env` is **gitignored** by the `.env` rule in `.gitignore`. Templates
+live next to them as `.env.example` / `.env.local.example`. **Real secrets
+must never leave the gitignored files.** In production, secrets come from
+AWS Secrets Manager (see [CLAUDE.md §4.1](CLAUDE.md)).
+
+---
+
 ## Quick Start
 
-```bash
-# 1. Clone the repository
-git clone https://github.com/<your-username>/economicbridge.git
-cd economicbridge
+```powershell
+# Frontend (Next.js)
+cd apps/frontend
+npm install
+cp .env.local.example .env.local       # add your Mapbox token
+npm run dev                              # http://localhost:3000
 
-# 2. Install dependencies and hooks
-make install
+# Backend API (FastAPI)
+cd apps/api
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
 
-# 3. Copy and edit environment variables
-cp .env.example .env
-# Edit .env with your credentials
-
-# 4. Start development database
-make dev-db
-
-# 5. Run migrations
-make migrate
-
-# 6. Start all services
-make dev
+# Backend Ingestion (FastAPI)
+cd apps/ingestion
+cp .env.example .env                    # add your NASA FIRMS MAP_KEY
+& ..\api\.venv\Scripts\python.exe -m uvicorn main:app --port 8001
 ```
 
-## Architecture
+See [docs/PROGRESS.md](docs/PROGRESS.md) for the full step-by-step build log and continuation playbook.
 
-```
-apps/api/         → FastAPI backend (port 8000)
-apps/ingestion/   → Satellite data ingestion microservice (port 8001)
-apps/ml/          → ML model serving (port 8002)
-apps/frontend/    → Next.js dashboard (port 3000)
-infrastructure/   → Terraform (AWS af-south-1) + Kubernetes
-migrations/       → Alembic database migrations
-scripts/          → Developer & operational tooling
-```
+---
 
 ## Tech Stack
 
-- **Backend:** Python 3.11 · FastAPI · SQLAlchemy 2.0 (async) · Pydantic v2
-- **Frontend:** React 18 · TypeScript · Next.js 14 · Mapbox GL · Deck.gl
-- **Database:** PostgreSQL 15 + PostGIS + TimescaleDB · Redis 7
-- **Satellite:** Copernicus Sentinel Hub · NASA FIRMS · N2YO · Google Earth Engine
-- **ML:** PyTorch 2.0 · Scikit-learn · SHAP · Hugging Face
-- **Infra:** AWS ECS Fargate · RDS · S3 · Terraform · GitHub Actions
+- **Frontend**: Next.js 16 · React 19 · TypeScript · Mapbox GL · Deck.gl · TanStack Query
+- **Backend**: Python 3.12 · FastAPI · SQLAlchemy 2.0 async · Pydantic v2 · Alembic
+- **Database**: PostgreSQL 16 · PostGIS · TimescaleDB (optional)
+- **Satellite**: Copernicus Sentinel Hub · NASA FIRMS · N2YO · Google Earth Engine
+- **ML** (planned): scikit-learn (Random Forest conflict predictor) · PyTorch · SHAP
+- **Infra** (planned): AWS ECS Fargate · RDS · S3 · Terraform · GitHub Actions
+
+---
 
 ## Multi-Tenancy
 
-Schema-per-tenant PostgreSQL isolation. 52 tenants configured in `tenants.yaml`. See [ADR-001](docs/decisions/ADR-001-tenant-isolation.md) and [ADR-005](docs/decisions/ADR-005-schema-per-tenant.md).
+Schema-per-tenant PostgreSQL isolation. 52 tenants in `tenants.yaml`. The
+active tenant is selected via `X-Tenant-Id` HTTP header; the API's
+`TenantContextMiddleware` validates against an allowlist and pins
+`SET search_path TO tenant_<id>, public` on the per-request DB session.
 
-## Development Commands
+See [ADR-001](docs/decisions/ADR-001-tenant-isolation.md) for the design.
 
-Run `make help` to see all available commands. Key targets:
-
-| Command | Description |
-|---------|-------------|
-| `make dev` | Start full local environment |
-| `make test` | Run all tests with coverage |
-| `make lint` | Run all linters (ruff, mypy, ESLint) |
-| `make security` | Run Bandit, Semgrep, detect-secrets, pip-audit |
-| `make migrate` | Run DB migrations for all active tenants |
-| `make tenant-provision TENANT=kebbi` | Provision a new tenant |
-| `make audit` | Generate government audit package |
-| `make deploy-staging` | Deploy to staging (runs all checks first) |
+---
 
 ## Compliance
 
-- **NDPA 2023** (Nigeria Data Protection Act) — full compliance mapping
-- **Government IT audit** — automated audit package generation
-- **Data sovereignty** — AWS af-south-1 (Cape Town) primary region
+- **NDPA 2023** (Nigeria Data Protection Act) — full compliance mapping planned
+- **Government IT audit** — automated audit package generation (planned)
+- **Data sovereignty** — AWS af-south-1 (Cape Town) primary region (planned)
 
-## Documentation
-
-- `CLAUDE.md` — AI assistant context (read before every session)
-- `docs/decisions/` — Architecture Decision Records
-- `docs/runbooks/` — Operational runbooks
+---
 
 ## License
 
