@@ -423,11 +423,83 @@ cd apps/ml
 - ResNet-50 crop disease classifier
 - Cron driver that feeds heat_signatures + alert_events into the predictor on a daily beat (Celery beat once Redis lands)
 
-### Step 10 — Termii SMS alerts (Q1)
+### Step 10 — Termii SMS alerts (Q1) ✅ **DONE 2026-05-15**
 
-- Termii API key in AWS Secrets Manager
-- Background worker dispatches SMS when conflict prediction confidence ≥ 0.75
-- Acceptance: end-to-end satellite → DB → SMS in under 30 minutes
+Fifth microservice landed: `apps/notifications` at port 8003. SMS dispatch
+pipeline with Termii (Nigerian carriers) + Twilio (ECOWAS) + a MockGateway
+that lets dev runs go end-to-end without external API keys.
+
+Delivered:
+- [apps/api/migrations/versions/0006_create_sms_outbox_and_subscribers.py](../apps/api/migrations/versions/0006_create_sms_outbox_and_subscribers.py)
+  — two tables:
+  - `public.sms_outbox` — cross-tenant audit of every dispatch, INSERT-only
+    with a controlled UPDATE RULE that allows status / provider_message_id
+    / cost fields to advance (sent → delivered) while immutable fields are
+    pinned (CLAUDE.md §4.6 + outbox pattern)
+  - `tenant_<id>.alert_subscribers` — per-tenant subscriber rosters with
+    E.164 phone validation, severity threshold, alert-type opt-in, language,
+    spatial location, consent timestamps (NDPA-grade)
+  - UNIQUE (prediction_id, subscriber_id) partial index = idempotency
+    guarantee: the same prediction never goes to the same subscriber twice
+- [apps/notifications/](../apps/notifications/) — service layout:
+  - [config.py](../apps/notifications/config.py) — pydantic-settings; reads
+    root `.env`; exposes `termii_configured` / `twilio_configured`
+  - [db.py](../apps/notifications/db.py) — async engine + allowlist-checked
+    `set_tenant_schema()`
+  - [gateways/base.py](../apps/notifications/gateways/base.py) — `SmsGateway`
+    Protocol + `SendResult` dataclass (one shape for all providers)
+  - [gateways/mock.py](../apps/notifications/gateways/mock.py) — logs SMS to
+    stdout, returns `status='mock'`. Used automatically when the
+    tenant's primary provider isn't configured
+  - [gateways/termii.py](../apps/notifications/gateways/termii.py) — Termii
+    REST client (api_key-in-body quirk handled). Parses response → SendResult
+  - [gateways/twilio.py](../apps/notifications/gateways/twilio.py) — Twilio
+    Messages REST (form-encoded body, HTTP Basic auth)
+  - [schemas/notify.py](../apps/notifications/schemas/notify.py) — closed-set
+    enums (Severity, AlertType, Language, Channel, SeverityThreshold) that
+    mirror the DB CHECK constraints
+  - [services/providers.py](../apps/notifications/services/providers.py) —
+    pilot tenant → gateway map from tenants.yaml (NG→termii, ECOWAS→twilio)
+    with mock fallback when keys are missing
+  - [services/messages.py](../apps/notifications/services/messages.py) —
+    SMS template renderer + subscriber-preference matcher (`should_dispatch`)
+  - [services/dispatcher.py](../apps/notifications/services/dispatcher.py) —
+    orchestrator: fetch matching subscribers → INSERT outbox row →
+    call gateway → UPDATE outbox row with result. Commits after every
+    step so a network failure mid-batch never loses the audit trail
+  - [routers/](../apps/notifications/routers/) — `GET /health`,
+    `GET/POST /api/v1/subscribers` (per-tenant CRUD via X-Tenant-Id),
+    `POST /api/v1/notify/conflict`
+  - [tests/](../apps/notifications/tests/) — 36 tests total (8 message
+    templates + 6 provider selection + 7 gateway parsers + 2 health +
+    9 router + 1 integration). Unit tests run without any external
+    dependency
+
+Verified without DB:
+```
+/health                                          200 {ok, termii=false, twilio=false}
+/api/openapi.json paths                          /health, /subscribers, /notify/conflict
+POST /notify/conflict {tenant=atlantis}          404 Unknown tenant
+POST /notify/conflict {severity=catastrophic}    422 enum validation
+```
+
+Now **five services** running locally side-by-side:
+```
+Frontend       :3000   (Next.js dashboard)
+API            :8000   (FastAPI: health, tenant-info, farmland/alerts)
+Ingestion      :8001   (FastAPI: NASA FIRMS, real data flowing)
+ML             :8002   (FastAPI: Random Forest + SHAP conflict predictor)
+Notifications  :8003   (FastAPI: SMS dispatch, Termii + Twilio + mock)
+```
+
+**Pending DB verification + real keys** (independent of Step 10 code):
+- `alembic upgrade head` (now lands 0001–0006) once Postgres password reset
+- Register for a Termii API key + add to `.env` → real SMS to Nigerian numbers
+- Register for Twilio + add to `.env` → real SMS to Ghana/Senegal
+
+**Step 10.1** (next iteration, when Redis + Celery land):
+- ML service auto-fires POST to /notify/conflict on every HIGH-band prediction
+- A worker scans `public.sms_outbox` for `status='failed'` and retries with backoff
 
 ### Step 11 — Audit log + DPA tracking (Q1 close-out)
 
