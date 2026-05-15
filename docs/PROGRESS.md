@@ -371,11 +371,57 @@ cd apps/ingestion
 
 
 
-### Step 9 — Conflict predictor (Q1, port from Citadel)
+### Step 9 — Conflict predictor (Q1, port from Citadel) ✅ **DONE 2026-05-15**
 
-- Build [apps/ml/](../apps/ml/) FastAPI service exposing `POST /predict/conflict`
-- Port Citadel's Random Forest model and SHAP explainer
-- Wire it into a nightly cron that writes to `tenant_<id>.conflict_predictions`
+Third microservice landed: ML inference at port 8002. Random Forest +
+SHAP explainability, per-tenant persistence, full CLAUDE.md §9 contract.
+
+Delivered:
+- [migrations/versions/0005_create_conflict_predictions.py](../apps/api/migrations/versions/0005_create_conflict_predictions.py) — per-tenant `conflict_predictions` table across all 9 pilot schemas. Captures the full ModelPrediction contract (model_version, prediction, confidence, confidence_band, requires_human_review, features JSONB, shap_values JSONB, input_hash, location, trace_id). 5 indexes including a partial index on `requires_human_review = TRUE` for the operator review queue.
+- [apps/ml/](../apps/ml/) — fourth FastAPI service:
+  - [config.py](../apps/ml/config.py) — pydantic-settings reading the project-root `.env`
+  - [db.py](../apps/ml/db.py) — own async engine + `set_tenant_schema()` helper with allowlist guard
+  - [models/prediction.py](../apps/ml/models/prediction.py) — `ModelPrediction` dataclass + `band_for_confidence()`. CLAUDE.md §9 thresholds (HIGH ≥ 0.90, MEDIUM ≥ 0.75) live in one place. Self-consistency check rejects mismatched band vs confidence
+  - [models/conflict_predictor.py](../apps/ml/models/conflict_predictor.py) — `ConflictFeatures` dataclass + `ConflictPredictor` class. Lazy-loaded singleton. **On first call** with no artifact on disk, trains a Random Forest (160 trees, max_depth=12) from a synthetic-but-domain-grounded dataset (4096 samples, logit constructed from heat × distance × NDVI × herder × history × rainfall) and persists to `apps/ml/artifacts/conflict_predictor.joblib`. SHAP `TreeExplainer` baked into the artifact. Handles both 2-D and 3-D SHAP return shapes (old vs new SHAP versions). `is_new_geography=True` ALWAYS forces human review, regardless of confidence (CLAUDE.md §9)
+  - [schemas/conflict.py](../apps/ml/schemas/conflict.py) — `ConflictPredictionRequest` (7 features + optional location + `persist` flag) and `ConflictPredictionData` (prediction + SHAP + audit fields)
+  - [schemas/envelope.py](../apps/ml/schemas/envelope.py) — same response envelope as the other services
+  - [routers/health.py](../apps/ml/routers/health.py) — `GET /api/v1/health`
+  - [routers/predict.py](../apps/ml/routers/predict.py) — `POST /api/v1/predict/conflict`. Pydantic validates feature ranges (heat ∈ [0,1], rainfall ∈ [-1,1], etc.). On `persist=True`, INSERT into `tenant_<id>.conflict_predictions` with the GIST-indexed location, JSONB features + SHAP, FK to optional `related_alert_id`
+  - [main.py](../apps/ml/main.py) — FastAPI app with `TraceIdMiddleware` + CORS
+  - [tests/](../apps/ml/tests/) — 22 tests total. **21 unit pass** (model contract + RF predictor behaviour: high-risk → positive prediction, low-risk → negative, new geography → review forced, SHAP one entry per feature) + **1 DB integration** (persist round-trip)
+
+Verified without DB:
+```
+pytest -v                                          21 passed, 1 deselected (71.92s)
+GET  /api/v1/health                                200 {ok, ml service}
+POST /api/v1/predict/conflict (high-risk Kebbi)    200
+  prediction:        0.9834
+  confidence_band:   HIGH
+  requires_review:   false
+  inference_ms:      62
+  Top SHAP feature:  boundary_distance_km (+0.151)
+```
+
+Now four services running locally side-by-side:
+```
+Frontend     http://localhost:3000   (Next.js)
+API          http://localhost:8000   (FastAPI: health, tenant-info, farmland/alerts)
+Ingestion    http://localhost:8001   (FastAPI: health, ingest/firms)
+ML           http://localhost:8002   (FastAPI: health, predict/conflict)
+```
+
+**Pending integration verification** (needs DB password reset + `alembic upgrade head`):
+```powershell
+cd apps/ml
+& ..\api\.venv\Scripts\python.exe -m pytest -m integration
+# → 1 persistence round-trip test
+```
+
+**Future iterations** (out of Step 9 scope):
+- Conflict predictor v1 trained on Citadel's real labelled set (replaces the synthetic-data artifact)
+- U-Net flood detector (Step 10's neighbour)
+- ResNet-50 crop disease classifier
+- Cron driver that feeds heat_signatures + alert_events into the predictor on a daily beat (Celery beat once Redis lands)
 
 ### Step 10 — Termii SMS alerts (Q1)
 

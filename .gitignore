@@ -99,14 +99,20 @@ terraform.rc
 # ─────────────────────────────────────────
 # ML MODEL ARTIFACTS
 # ─────────────────────────────────────────
-# Model files are large — store in S3, not git
+# Model files are large — store in S3, not git. Auto-regenerated on first
+# inference call from synthetic data in dev (see apps/ml/models/conflict_predictor.py).
 models/artifacts/*.joblib
 models/artifacts/*.pkl
 models/artifacts/*.pt
 models/artifacts/*.h5
+apps/ml/artifacts/*.joblib
+apps/ml/artifacts/*.pkl
+apps/ml/artifacts/*.pt
+apps/ml/artifacts/*.h5
 # Keep directory structure and README
 !models/artifacts/.gitkeep
 !models/artifacts/README.md
+!apps/ml/artifacts/.gitkeep
 
 # ─────────────────────────────────────────
 # SATELLITE DATA
