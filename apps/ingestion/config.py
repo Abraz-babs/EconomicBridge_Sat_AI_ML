@@ -1,16 +1,22 @@
 """Settings for the satellite ingestion microservice.
 
-Sourced from env + `.env`. Production secrets (NASA_FIRMS_MAP_KEY etc.) come
-from AWS Secrets Manager per CLAUDE.md §4.1 — env vars are dev-only.
+Sourced from env + the **project-root** `.env`. Path is computed from `__file__`
+so it works regardless of cwd. Production secrets come from AWS Secrets
+Manager per CLAUDE.md §4.1 — env vars are dev-only.
 """
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# apps/ingestion/config.py → apps/ingestion/ → apps/ → project root
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT_ENV = PROJECT_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ROOT_ENV),
         env_file_encoding="utf-8",
         extra="ignore",
     )

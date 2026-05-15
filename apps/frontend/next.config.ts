@@ -1,4 +1,11 @@
 import type { NextConfig } from "next";
+import path from "path";
+import dotenv from "dotenv";
+
+// Load the project-root .env (single source of truth across all services).
+// This runs BEFORE Next.js reads `process.env.NEXT_PUBLIC_*`, so the vars
+// are available to both the build and the dev server.
+dotenv.config({ path: path.resolve(__dirname, "../../.env"), quiet: true });
 
 const nextConfig: NextConfig = {
   // ─── SECURITY HEADERS ───

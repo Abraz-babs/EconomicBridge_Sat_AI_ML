@@ -1,20 +1,25 @@
 """Application settings.
 
-Sources values from environment variables and an optional `.env` file. In production
-secrets (DB password, JWT key, third-party API keys) must come from AWS Secrets
-Manager, not env vars — see CLAUDE.md §4.1. This module only handles non-secret
-configuration that's safe to live in env vars.
+Sources values from environment variables and the **project-root** `.env` file.
+Path is computed from `__file__` so it works regardless of where uvicorn is
+started. In production, secrets come from AWS Secrets Manager — see CLAUDE.md
+§4.1.
 """
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# apps/api/config.py → apps/api/ → apps/ → project root
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+ROOT_ENV = PROJECT_ROOT / ".env"
+
 
 class Settings(BaseSettings):
-    """Runtime settings, populated from env and `.env`."""
+    """Runtime settings, populated from env and the root `.env`."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(ROOT_ENV),
         env_file_encoding="utf-8",
         extra="ignore",
     )
