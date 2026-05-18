@@ -34,7 +34,7 @@ export const TENANTS: Tenant[] = [
   { id: 'kano',      name: 'Kano State',      type: 'ng_state', country: 'nigeria', capital: 'Kano',     conflict_risk: 'high',   active: false, priority: 7,  deployment_phase: 2, centroid: centroid([8.10, 11.20, 9.80, 12.80]) },
   { id: 'katsina',   name: 'Katsina State',   type: 'ng_state', country: 'nigeria', capital: 'Katsina',  conflict_risk: 'high',   active: false, priority: 8,  deployment_phase: 2, centroid: centroid([6.50, 11.40, 9.10, 13.80]) },
   { id: 'sokoto',    name: 'Sokoto State',    type: 'ng_state', country: 'nigeria', capital: 'Sokoto',   conflict_risk: 'high',   active: false, priority: 9,  deployment_phase: 2, centroid: centroid([4.10, 12.20, 6.50, 13.90]) },
-  { id: 'nasarawa',  name: 'Nasarawa State',  type: 'ng_state', country: 'nigeria', capital: 'Lafia',    conflict_risk: 'high',   active: false, priority: 10, deployment_phase: 2, centroid: centroid([7.70, 7.70, 9.60, 9.30]) },
+  { id: 'nasarawa',  name: 'Nasarawa State',  type: 'ng_state', country: 'nigeria', capital: 'Lafia',    conflict_risk: 'critical', active: true,  priority: 7,  deployment_phase: 1, centroid: centroid([7.70, 7.70, 9.60, 9.30]) },
   { id: 'kogi',      name: 'Kogi State',      type: 'ng_state', country: 'nigeria', capital: 'Lokoja',   conflict_risk: 'medium', active: false, priority: 11, deployment_phase: 2, centroid: centroid([5.70, 6.40, 8.00, 8.70]) },
   { id: 'kwara',     name: 'Kwara State',     type: 'ng_state', country: 'nigeria', capital: 'Ilorin',   conflict_risk: 'medium', active: false, priority: 12, deployment_phase: 2, centroid: centroid([3.60, 7.70, 6.70, 10.00]) },
 

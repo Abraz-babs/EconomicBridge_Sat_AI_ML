@@ -31,6 +31,7 @@ export const PILOT_TENANT_IDS: readonly string[] = [
   'kaduna',
   'niger',
   'zamfara',
+  'nasarawa',
   'fct',
   'ghana',
   'senegal',

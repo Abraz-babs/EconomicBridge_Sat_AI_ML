@@ -19,8 +19,10 @@ from schemas.envelope import Pagination, ResponseMeta, SuccessResponse
 from schemas.farmland import (
     AlertListData,
     AlertListQuery,
+    AlertResponse,
     AlertSeverity,
     AlertStatus,
+    AlertStatusPatch,
     AlertType,
 )
 from services import farmland as farmland_service
@@ -112,5 +114,40 @@ async def list_alerts(
             trace_id=_trace_id(request),
             timestamp=datetime.now(timezone.utc),
             pagination=Pagination(page=page, per_page=per_page, total=total),
+        ),
+    )
+
+
+@router.patch(
+    "/alerts/{alert_id}",
+    response_model=SuccessResponse[AlertResponse],
+    summary="Update an alert's lifecycle status",
+    description=(
+        "Transition an existing alert (e.g. mark `resolved` after mediation). "
+        "Only the `status` field is mutable through this endpoint. "
+        "The `X-Tenant-Id` header is required."
+    ),
+)
+async def patch_alert(
+    request: Request,
+    alert_id: UUID,
+    body: AlertStatusPatch,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[AlertResponse]:
+    """Update one alert's status field."""
+    _require_tenant(request)
+    updated = await farmland_service.update_alert_status(session, alert_id, body.status)
+    if updated is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Alert {alert_id} not found in active tenant",
+        )
+    return SuccessResponse(
+        data=updated,
+        meta=ResponseMeta(
+            tenant_id=None,
+            trace_id=_trace_id(request),
+            timestamp=datetime.now(timezone.utc),
+            pagination=None,
         ),
     )

@@ -19,15 +19,16 @@ log = logging.getLogger(__name__)
 
 # Pulled from tenants.yaml (sms_gateway field per tenant). The 9 pilots:
 PILOT_GATEWAY: dict[str, GatewayName] = {
-    "kebbi":   "termii",
-    "benue":   "termii",
-    "plateau": "termii",
-    "kaduna":  "termii",
-    "niger":   "termii",
-    "zamfara": "termii",
-    "fct":     "termii",
-    "ghana":   "twilio",
-    "senegal": "twilio",
+    "kebbi":    "termii",
+    "benue":    "termii",
+    "plateau":  "termii",
+    "kaduna":   "termii",
+    "niger":    "termii",
+    "zamfara":  "termii",
+    "nasarawa": "termii",
+    "fct":      "termii",
+    "ghana":    "twilio",
+    "senegal":  "twilio",
 }
 
 

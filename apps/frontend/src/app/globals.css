@@ -756,6 +756,61 @@ footer.app-footer {
   font-size: 9px; color: #aaa; letter-spacing: 1px; text-align: right; line-height: 1.8;
 }
 
+.fp-map-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(20, 22, 26, 0.94);
+  color: #f5f5f7;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 12px;
+  line-height: 1.45;
+  max-width: 260px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  z-index: 30;
+}
+.fp-tt-title    { font-weight: 600; margin-bottom: 4px; }
+.fp-tt-sub      { color: #e5e7eb; margin-bottom: 6px; text-transform: capitalize; }
+.fp-tt-zone     { color: #cbd5e1; margin-bottom: 4px; }
+.fp-tt-coord    { color: #9ca3af; font-size: 11px; }
+.fp-tt-metrics  { color: #d1d5db; font-size: 11px; margin-top: 4px; }
+.fp-tt-eta      { color: #fbbf24; font-size: 11px; margin-top: 4px; }
+.fp-tt-conf     { color: #94a3b8; font-size: 11px; margin-top: 4px; }
+
+/* Alert-item resolve button + coordinate line. */
+.fp-alert-coords {
+  font-family: 'DM Mono', ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+.fp-alert-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+.fp-resolve-btn {
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border: 1px solid var(--border2);
+  background: var(--surface);
+  color: var(--ink2);
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.fp-resolve-btn:hover:not(:disabled) {
+  background: var(--ngo-light);
+  border-color: var(--ngo-accent);
+  color: var(--ngo);
+}
+.fp-resolve-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.fp-resolve-btn.is-pending { opacity: 0.7; }
+
 .fp-alerts {
   background: var(--surface); border: 1px solid var(--border); border-radius: 3px; overflow: hidden;
 }

@@ -501,16 +501,161 @@ Notifications  :8003   (FastAPI: SMS dispatch, Termii + Twilio + mock)
 - ML service auto-fires POST to /notify/conflict on every HIGH-band prediction
 - A worker scans `public.sms_outbox` for `status='failed'` and retries with backoff
 
-### Step 11 — Audit log + DPA tracking (Q1 close-out)
+### Step 10.5 — Live SMS dispatch verified end-to-end ✅ **DONE 2026-05-18**
 
-- `AuditLog` middleware writes every mutation
-- DPA consent table + UI flow for data subject rights
+Mid-step session that proved the full SMS chain works against a live Postgres
++ live Termii account. Found and fixed two bugs that blocked dispatch:
+
+- **Migration 0007** ([apps/api/migrations/versions/0007_fix_sms_outbox_immutability.py](../apps/api/migrations/versions/0007_fix_sms_outbox_immutability.py))
+  — replaced the recursive `ON UPDATE DO INSTEAD UPDATE` rule on `sms_outbox`
+  (which 500'd with `infinite recursion detected in rules`) with a BEFORE
+  UPDATE trigger that raises if any identity/content column changed. The
+  lifecycle columns (status, provider_message_id, dispatched_at, cost) now
+  advance cleanly.
+- **Termii sender ID quirk** — `EconoBridge` and the assumed-reserved
+  `N-Alert` both 404'd as `ApplicationSenderId not found`. Termii accounts
+  start with **zero registered senders**; one must be requested via the
+  portal (24-72hr approval). Submitted `Ecobridge` for transactional/alert
+  use-case; awaiting approval. Pipeline otherwise reaches Termii's API,
+  captures the failure into `public.sms_outbox`, completes audit cycle.
+
+The 10th pilot tenant — **Nasarawa State** — also landed in this same
+session per field-team feedback (Tiv-Fulani herder-farmer flashpoint):
+
+- [Migration 0008](../apps/api/migrations/versions/0008_add_nasarawa_tenant.py)
+  creates `tenant_nasarawa` schema + 4 per-tenant tables
+- [Migration 0009](../apps/api/migrations/versions/0009_align_nasarawa_alert_events.py)
+  adds 7 columns the original 0008 omitted (`boundary`, `model_input_hash`,
+  `shap_values`, `reviewed_by`, `reviewed_at`, `reviewer_notes`, `created_by`)
+  so the schema matches what 0003 ships for the original 9 pilots
+- Tenant added to allowlists in 4 places: `apps/api/services/tenants.py`,
+  `apps/notifications/db.py`, `apps/notifications/services/providers.py`,
+  `apps/frontend/src/context/TenantContext.tsx`
+- Seed extended with 3 Nasarawa alerts (Awe critical / Doma high acknowledged
+  / Lafia medium resolved) plus 2 each for FCT, Ghana, Senegal — total
+  18 alerts across 10 tenants
+
+Farmland Protection dashboard also reached production-grade interactivity
+in this session:
+- `PATCH /api/v1/farmland/alerts/{id}` endpoint — lifecycle transitions
+  (resolved / acknowledged / dismissed / pending_review)
+- Frontend resolve flow: "Mark resolved" + "Acknowledge" buttons on every
+  alert card, optimistic mutation via TanStack Query
+- Tenant-aware satellite metadata overlay (no more frozen "Coverage: NW Nigeria")
+- Hover tooltips on map pins with lat/lon to 4 decimal places + full alert detail
+- Pulsing critical/high pins (sine-wave radius modulation via Deck.gl)
+- HEAT / NDVI / SAR / BOUNDARIES layer toggles now visually distinct
+  (orange heatmap / green vegetation grid / blue radar / ROI polygon)
+- Map auto-flies to active tenant centroid on switch
+- Lat/lon displayed on every alert item
+- Timeline + economic impact panels now derived from live alerts
+  (4 priority groups, dynamic footnote listing real satellite_source strings,
+  mean confidence, agencies engaged)
+
+Frontend dependency fix: API venv was missing `shapely` — GeoAlchemy2 needs
+it to convert PostGIS POINT → lon/lat. Added to `apps/api/requirements.txt`
+so Docker images install it correctly.
+
+### Step 11 — Audit log + DPA tracking (Q1 close-out) ✅ **DONE 2026-05-18**
+
+The audit middleware stub was replaced with a real `INSERT` into
+`public.audit_log` for every POST / PUT / PATCH / DELETE. CLAUDE.md §4.6
+is now actually enforced rather than aspirational.
+
+Delivered:
+- [middleware/audit.py](../apps/api/middleware/audit.py) — real INSERT
+  middleware. Captures `trace_id`, `tenant_schema`, `action_type`,
+  `http_method`, `path`, `status_code`, `ip_address`, `data_type`, severity.
+  Wraps `call_next` in `try/except` so unhandled-5xx exceptions also write
+  a synthetic-500 audit row before re-raising. Fail-soft: an audit-insert
+  error logs to stderr but never breaks the customer response.
+- [Migration 0010](../apps/api/migrations/versions/0010_create_dpa_and_dsr.py)
+  creates two new `public` tables:
+  - `data_processing_agreements` — one row per Organisation × Tenant scope
+    with `status ∈ {pending, signed, expired, revoked}`, `signed_at`,
+    `expires_at`, `scope` (JSONB list), `document_url`. Partial index on
+    `(organisation_id, tenant_id) WHERE status='signed'` for the hot-path
+    "is this org allowed in this tenant?" lookup.
+  - `data_subject_requests` — NDPA-2023 / GDPR right-of-subject tracker
+    with `request_type ∈ {access, rectification, erasure, portability,
+    objection}`. CHECK constraint requires either `subject_phone_e164` or
+    `subject_email` so we can't track an anonymous request.
+- ORM + Pydantic + 7 endpoints in [routers/dpa.py](../apps/api/routers/dpa.py):
+  POST/GET/PATCH for DPAs, POST/GET/PATCH for DSRs
+- Two bugs found and fixed during smoke test:
+  1. DPA model omitted `DateTime(timezone=True)` → asyncpg refused to encode
+     tz-aware `datetime.now(timezone.utc)`. Explicit `DateTime(timezone=True)`
+     added to all 6 datetime columns.
+  2. Audit middleware initially missed exception-derived 500s because
+     Starlette re-raises through middleware in debug mode. Wrapped `call_next`
+     in `try/except` that writes a synthetic-500 row and re-raises.
+
+Smoke test trail in `public.audit_log`:
+```
+POST   /api/v1/dpa/agreements              → 201  CREATE_DPA_AGREEMENT
+PATCH  /api/v1/dpa/agreements/{id}         → 200  UPDATE_DPA_AGREEMENT
+POST   /api/v1/dpa/data-subject-requests   → 201  CREATE_DSR (erasure)
+PATCH  /api/v1/dpa/data-subject-requests/{id} → 200  UPDATE_DSR
+PATCH  /api/v1/farmland/alerts/{id}        → 200  UPDATE_ALERT (×2)
+```
+
+**Open from Step 11:** the actual DPA *enforcement* layer (block PII access
+without a signed DPA) is not yet wired into the request path. Tables exist,
+endpoints work, partial index ready — the gate dependency lands in Step 13.
 
 ### Step 12 — Deploy to AWS staging (Q1 finale)
 
-- Terraform: VPC, RDS Multi-AZ, ElastiCache, ECS Fargate, S3, IAM
-- GitHub Actions: lint → test → security scan → build → deploy
-- Smoke test the Kebbi pilot end-to-end on staging
+#### Step 12a — Containerization ✅ **DONE 2026-05-18**
+
+Every service is now Dockerized with a 2-stage (3 for frontend) production
+build, and a single `docker compose up --build` brings up the whole stack.
+
+Delivered:
+- [apps/api/Dockerfile](../apps/api/Dockerfile) — multi-stage with libgeos +
+  libpq, non-root user, /health curl healthcheck
+- [apps/ingestion/Dockerfile](../apps/ingestion/Dockerfile) — same pattern,
+  port 8001
+- [apps/ml/Dockerfile](../apps/ml/Dockerfile) — adds OpenBLAS / LAPACK
+  runtime libs for sklearn; mounts the `eb-ml-artifacts` named volume so
+  the Random Forest model persists across restarts
+- [apps/notifications/Dockerfile](../apps/notifications/Dockerfile) — same
+  pattern, port 8003
+- [apps/frontend/Dockerfile](../apps/frontend/Dockerfile) — 3-stage Next.js
+  (deps → builder → runner using `output: 'standalone'`); `NEXT_PUBLIC_*`
+  baked at build time via `--build-arg`
+- [.dockerignore](../.dockerignore) — excludes secrets, venvs, node_modules,
+  `.next`, tests, model artifacts, the 99MB PostGIS installer
+- [docker-compose.yml](../docker-compose.yml) — postgres+postgis 16, redis 7,
+  one-shot `migrate` service running `alembic upgrade head`, and the 5
+  application services with healthchecks + dependency conditions. Future
+  scaffolding (Celery, Flower, Prometheus, Grafana) preserved as commented
+  blocks for Step 10.1 and observability rollout.
+- [.env.docker.example](../.env.docker.example) — the 2 compose-only vars
+  (DB_PASSWORD override, NEXT_PUBLIC_* for the frontend build) + pointer
+  to the existing root `.env` for everything else
+
+Two source files edited to support the build:
+- [next.config.ts](../apps/frontend/next.config.ts) — added `output: "standalone"`
+- [requirements.txt](../apps/api/requirements.txt) — added `shapely>=2.0,<3.0`
+
+#### Step 12b — Terraform IaC (queued)
+
+Full production layout per CLAUDE.md §3 — not a lean MVP:
+- Region `af-south-1` (Cape Town) for data sovereignty
+- VPC across 2 AZs, public + private subnets, NAT gateway
+- RDS PostgreSQL 16 Multi-AZ with PostGIS, ElastiCache Redis, S3 (tenant-prefix)
+- ECS Fargate per microservice, ALB in front, autoscaling
+- Secrets Manager at the paths in CLAUDE.md §8 — NEVER env files in production
+- IAM least-privilege task roles per service
+
+Estimated scope: ~15 files, ~1200 lines. Code-only — `terraform apply` is
+the user's call once AWS credentials + state bucket exist.
+
+#### Step 12c — GitHub Actions (queued)
+
+- CI workflow: lint + ruff + mypy + pytest + bandit + semgrep on every PR
+- CD workflow: manual-trigger build → push to ECR → update ECS services
+- No GitHub-hosted runners needed beyond ubuntu-latest
 
 Anything beyond Step 12 belongs to Q2 and onwards — see [ROADMAP.md](ROADMAP.md).
 

@@ -1,255 +1,244 @@
-version: "3.9"
-
-# EconomicBridge — Local Development Environment
-# ================================================
-# Starts all services needed for full local development.
-# Usage: make dev (or: docker-compose up --build)
+# EconomicBridge — full-stack local development via Docker Compose.
 #
-# Services:
-#   api          → http://localhost:8000 (FastAPI + Swagger UI)
-#   ingestion    → http://localhost:8001 (Ingestion microservice)
-#   ml           → http://localhost:8002 (ML inference service)
-#   frontend     → http://localhost:3000 (Next.js dashboard)
-#   postgres     → localhost:5432
-#   redis        → localhost:6379
-#   celery       → Background workers (no HTTP port)
-#   flower       → http://localhost:5555 (Celery task monitor)
-#   prometheus   → http://localhost:9090
-#   grafana      → http://localhost:3001 (admin/admin)
+# Usage:
+#   1. Copy `.env.docker.example` to `.env.docker` and fill in real values,
+#      or rely on the existing `.env` at the repo root.
+#   2. docker compose up --build
+#      (first run takes 8–12 min for image builds; subsequent ~30s warm.)
+#   3. Open http://localhost:3000 — the dashboard auto-fetches from API:8000.
+#
+# Services & ports:
+#   db             postgis/postgis:16-3.5    5435->5432  (host 5435 avoids native PG clash)
+#   redis          redis:7-alpine                  6379
+#   migrate        alembic upgrade head            —     (one-shot; depends on db)
+#   api            FastAPI                         8000
+#   ingestion      FastAPI                         8001
+#   ml             FastAPI + Random Forest         8002
+#   notifications  FastAPI + Termii/Twilio         8003
+#   frontend       Next.js standalone              3000
+#
+# Future scaffolding (Celery, Flower, Prometheus, Grafana) is left commented
+# at the bottom — bring it up once Step 10.1 (Redis + Celery task queue) lands.
+
+name: economicbridge
+
+services:
+  # ─── Postgres 16 + PostGIS 3.5 ───────────────────────────────────────
+  db:
+    image: postgis/postgis:16-3.5-alpine
+    container_name: eb-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-devpassword}
+      POSTGRES_DB: economicbridge
+    ports:
+      - "5435:5432"
+    volumes:
+      - eb-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d economicbridge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [economicbridge]
+
+  # ─── Redis 7 (caching + future Celery broker) ────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: eb-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - eb-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks: [economicbridge]
+
+  # ─── Alembic migrations (one-shot) ──────────────────────────────────
+  # Runs `alembic upgrade head` then exits. Dependent services wait via
+  # `service_completed_successfully` so they only start once schema is current.
+  migrate:
+    build:
+      context: ./apps/api
+      target: runtime
+    container_name: eb-migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD:-devpassword}@db:5432/economicbridge
+      DATABASE_URL_SYNC: postgresql+psycopg2://postgres:${DB_PASSWORD:-devpassword}@db:5432/economicbridge
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    networks: [economicbridge]
+
+  # ─── FastAPI backend (port 8000) ────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+    container_name: eb-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD:-devpassword}@db:5432/economicbridge
+      DATABASE_URL_SYNC: postgresql+psycopg2://postgres:${DB_PASSWORD:-devpassword}@db:5432/economicbridge
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    ports:
+      - "8000:8000"
+    networks: [economicbridge]
+
+  # ─── Satellite ingestion (port 8001) ────────────────────────────────
+  ingestion:
+    build:
+      context: ./apps/ingestion
+    container_name: eb-ingestion
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD:-devpassword}@db:5432/economicbridge
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8001:8001"
+    networks: [economicbridge]
+
+  # ─── ML conflict predictor (port 8002) ──────────────────────────────
+  ml:
+    build:
+      context: ./apps/ml
+    container_name: eb-ml
+    restart: unless-stopped
+    env_file: [.env]
+    volumes:
+      - eb-ml-artifacts:/app/models/artifacts
+    ports:
+      - "8002:8002"
+    networks: [economicbridge]
+
+  # ─── SMS notifications (port 8003) ──────────────────────────────────
+  notifications:
+    build:
+      context: ./apps/notifications
+    container_name: eb-notifications
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD:-devpassword}@db:5432/economicbridge
+    ports:
+      - "8003:8003"
+    networks: [economicbridge]
+
+  # ─── Next.js dashboard (port 3000) ──────────────────────────────────
+  # NEXT_PUBLIC_* are *build-time* args because Next inlines them into the
+  # client bundle. The browser (not the container) reaches localhost:8000
+  # so NEXT_PUBLIC_API_BASE_URL stays on localhost even inside compose.
+  frontend:
+    build:
+      context: ./apps/frontend
+      args:
+        NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+    container_name: eb-frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+    networks: [economicbridge]
+
+  # ────────────────────────────────────────────────────────────────────
+  # FUTURE SCAFFOLDING — uncomment when Step 10.1 (Celery + scheduled
+  # tasks) and Step 12.x (monitoring) land. Kept here so the original
+  # docker-compose.yml intent is preserved.
+  # ────────────────────────────────────────────────────────────────────
+  # celery-worker:
+  #   build:
+  #     context: ./apps/ingestion
+  #   container_name: eb-celery
+  #   command: ["celery", "-A", "tasks", "worker", "--loglevel=info", "--concurrency=2"]
+  #   env_file: [.env]
+  #   environment:
+  #     DATABASE_URL: postgresql+asyncpg://postgres:${DB_PASSWORD:-devpassword}@db:5432/economicbridge
+  #     CELERY_BROKER_URL: redis://redis:6379/1
+  #     CELERY_RESULT_BACKEND: redis://redis:6379/2
+  #   depends_on: [db, redis]
+  #   networks: [economicbridge]
+  #
+  # celery-beat:
+  #   build:
+  #     context: ./apps/ingestion
+  #   container_name: eb-celery-beat
+  #   command: ["celery", "-A", "tasks", "beat", "--loglevel=info"]
+  #   env_file: [.env]
+  #   environment:
+  #     CELERY_BROKER_URL: redis://redis:6379/1
+  #   depends_on: [redis]
+  #   networks: [economicbridge]
+  #
+  # flower:
+  #   image: mher/flower:2.0
+  #   container_name: eb-flower
+  #   command: ["celery", "flower", "--broker=redis://redis:6379/1"]
+  #   ports: ["5555:5555"]
+  #   depends_on: [redis]
+  #   networks: [economicbridge]
+  #
+  # prometheus:
+  #   image: prom/prometheus:v2.51.0
+  #   container_name: eb-prometheus
+  #   ports: ["9090:9090"]
+  #   volumes:
+  #     - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+  #     - eb-prometheus-data:/prometheus
+  #   command:
+  #     - --config.file=/etc/prometheus/prometheus.yml
+  #     - --storage.tsdb.retention.time=15d
+  #   networks: [economicbridge]
+  #
+  # grafana:
+  #   image: grafana/grafana:10.4.0
+  #   container_name: eb-grafana
+  #   ports: ["3001:3000"]
+  #   volumes:
+  #     - eb-grafana-data:/var/lib/grafana
+  #   environment:
+  #     GF_SECURITY_ADMIN_PASSWORD: admin
+  #     GF_USERS_ALLOW_SIGN_UP: "false"
+  #   depends_on: [prometheus]
+  #   networks: [economicbridge]
 
 networks:
   economicbridge:
     driver: bridge
 
 volumes:
-  postgres_data:
-  redis_data:
-  prometheus_data:
-  grafana_data:
-
-services:
-
-  # ─────────────────────────────────────────
-  # DATABASE
-  # ─────────────────────────────────────────
-  postgres:
-    image: postgis/postgis:15-3.3
-    container_name: eb_postgres
-    environment:
-      POSTGRES_DB: economicbridge
-      POSTGRES_USER: economicbridge
-      POSTGRES_PASSWORD: devpassword
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U economicbridge -d economicbridge"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - economicbridge
-
-  redis:
-    image: redis:7-alpine
-    container_name: eb_redis
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - economicbridge
-
-  # ─────────────────────────────────────────
-  # APPLICATION SERVICES
-  # ─────────────────────────────────────────
-  api:
-    build:
-      context: ./apps/api
-      dockerfile: Dockerfile
-      target: development
-    container_name: eb_api
-    command: uvicorn main:app --reload --host 0.0.0.0 --port 8000
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./apps/api:/app              # Live reload
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://economicbridge:devpassword@postgres:5432/economicbridge
-      REDIS_URL: redis://redis:6379/0
-      INGESTION_SERVICE_URL: http://ingestion:8001
-      ML_SERVICE_URL: http://ml:8002
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - economicbridge
-
-  ingestion:
-    build:
-      context: ./apps/ingestion
-      dockerfile: Dockerfile
-      target: development
-    container_name: eb_ingestion
-    command: uvicorn main:app --reload --host 0.0.0.0 --port 8001
-    ports:
-      - "8001:8001"
-    volumes:
-      - ./apps/ingestion:/app
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://economicbridge:devpassword@postgres:5432/economicbridge
-      REDIS_URL: redis://redis:6379/0
-      CELERY_BROKER_URL: redis://redis:6379/1
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - economicbridge
-
-  ml:
-    build:
-      context: ./apps/ml
-      dockerfile: Dockerfile
-      target: development
-    container_name: eb_ml
-    command: uvicorn main:app --reload --host 0.0.0.0 --port 8002
-    ports:
-      - "8002:8002"
-    volumes:
-      - ./apps/ml:/app
-      - ./models:/models              # ML model artifacts
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://economicbridge:devpassword@postgres:5432/economicbridge
-      REDIS_URL: redis://redis:6379/0
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - economicbridge
-
-  celery-worker:
-    build:
-      context: ./apps/ingestion
-      dockerfile: Dockerfile
-      target: development
-    container_name: eb_celery
-    command: celery -A tasks worker --loglevel=info --concurrency=2
-    volumes:
-      - ./apps/ingestion:/app
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://economicbridge:devpassword@postgres:5432/economicbridge
-      CELERY_BROKER_URL: redis://redis:6379/1
-      CELERY_RESULT_BACKEND: redis://redis:6379/2
-    depends_on:
-      - redis
-      - postgres
-    networks:
-      - economicbridge
-
-  celery-beat:
-    build:
-      context: ./apps/ingestion
-      dockerfile: Dockerfile
-      target: development
-    container_name: eb_celery_beat
-    command: celery -A tasks beat --loglevel=info
-    volumes:
-      - ./apps/ingestion:/app
-    env_file:
-      - .env
-    environment:
-      CELERY_BROKER_URL: redis://redis:6379/1
-    depends_on:
-      - redis
-    networks:
-      - economicbridge
-
-  frontend:
-    build:
-      context: ./apps/frontend
-      dockerfile: Dockerfile
-      target: development
-    container_name: eb_frontend
-    command: npm run dev
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./apps/frontend:/app
-      - /app/node_modules              # Prevent host node_modules override
-      - /app/.next                     # Prevent host .next override
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
-    depends_on:
-      - api
-    networks:
-      - economicbridge
-
-  # ─────────────────────────────────────────
-  # MONITORING & OBSERVABILITY
-  # ─────────────────────────────────────────
-  flower:
-    image: mher/flower:2.0
-    container_name: eb_flower
-    command: celery flower --broker=redis://redis:6379/1
-    ports:
-      - "5555:5555"
-    depends_on:
-      - redis
-    networks:
-      - economicbridge
-
-  prometheus:
-    image: prom/prometheus:v2.51.0
-    container_name: eb_prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.retention.time=15d
-    networks:
-      - economicbridge
-
-  grafana:
-    image: grafana/grafana:10.4.0
-    container_name: eb_grafana
-    ports:
-      - "3001:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./infrastructure/grafana/dashboards:/etc/grafana/provisioning/dashboards
-      - ./infrastructure/grafana/datasources:/etc/grafana/provisioning/datasources
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    depends_on:
-      - prometheus
-    networks:
-      - economicbridge
+  eb-db-data:
+  eb-redis-data:
+  eb-ml-artifacts:
+  # eb-prometheus-data:
+  # eb-grafana-data:

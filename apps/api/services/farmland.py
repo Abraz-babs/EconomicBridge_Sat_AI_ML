@@ -8,11 +8,13 @@ Routers call the functions here; nothing here touches HTTP.
 """
 from __future__ import annotations
 
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.alert_event import AlertEvent
 from repositories import alerts as alerts_repo
-from schemas.farmland import AlertListQuery, AlertResponse, LonLat
+from schemas.farmland import AlertListQuery, AlertResponse, AlertStatus, LonLat
 
 
 def _point_to_lonlat(value: object | None) -> LonLat | None:
@@ -73,3 +75,17 @@ async def list_alerts(
     """Return (responses, total) for the requested filter window."""
     rows, total = await alerts_repo.list_alerts(session, query)
     return [alert_to_response(r) for r in rows], total
+
+
+async def update_alert_status(
+    session: AsyncSession, alert_id: UUID, new_status: AlertStatus
+) -> AlertResponse | None:
+    """Transition an alert's status (e.g. pending_review -> resolved).
+
+    Returns None if no row matches `alert_id` in the active tenant schema.
+    """
+    row = await alerts_repo.get_by_id(session, alert_id)
+    if row is None or row.is_deleted:
+        return None
+    updated = await alerts_repo.update_status(session, row, new_status)
+    return alert_to_response(updated)

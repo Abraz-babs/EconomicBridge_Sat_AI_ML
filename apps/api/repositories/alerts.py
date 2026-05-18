@@ -13,6 +13,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Sequence
 
+from uuid import UUID
+
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -95,3 +97,18 @@ async def list_alerts(
     total = (await session.execute(count_stmt)).scalar_one()
 
     return list(rows), int(total)
+
+
+async def get_by_id(session: AsyncSession, alert_id: UUID) -> AlertEvent | None:
+    """Return one alert row by id (no soft-delete filter — let the caller decide)."""
+    return await session.get(AlertEvent, alert_id)
+
+
+async def update_status(
+    session: AsyncSession, alert: AlertEvent, new_status: AlertStatus
+) -> AlertEvent:
+    """Set status on a managed AlertEvent. Caller commits."""
+    alert.status = new_status.value
+    await session.flush()
+    await session.refresh(alert)
+    return alert

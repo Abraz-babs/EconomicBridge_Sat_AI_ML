@@ -154,3 +154,12 @@ logs/
 tmp/
 temp/
 .tmp/
+
+# ─────────────────────────────────────────
+# THIRD-PARTY INSTALLERS (downloaded to scripts/ during dev-env bootstrap)
+# Never commit — large vendor binaries (PostGIS bundle is ~100MB).
+# ─────────────────────────────────────────
+scripts/*.exe
+scripts/*.msi
+scripts/*.zip
+scripts/*.tar.gz

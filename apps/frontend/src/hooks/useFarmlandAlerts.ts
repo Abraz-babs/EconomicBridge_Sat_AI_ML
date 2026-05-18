@@ -1,6 +1,12 @@
 'use client';
 
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQueryClient,
+  useQuery,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 
 import { ApiException, apiFetch, type SuccessEnvelope } from '@/lib/api';
 
@@ -94,6 +100,32 @@ export function useFarmlandAlerts(
         pagination: envelope.meta.pagination,
         traceId: envelope.meta.trace_id,
       };
+    },
+  });
+}
+
+// ─── Mutation: mark an alert resolved / acknowledged / dismissed ─────────
+
+export interface ResolveAlertInput {
+  alertId: string;
+  status: AlertStatus;
+}
+
+/** Hook for PATCH /api/v1/farmland/alerts/{id}. Invalidates the list on success. */
+export function useResolveAlert(
+  tenantId: string,
+): UseMutationResult<AlertResponse, ApiException, ResolveAlertInput> {
+  const qc = useQueryClient();
+  return useMutation<AlertResponse, ApiException, ResolveAlertInput>({
+    mutationFn: async ({ alertId, status }) => {
+      const envelope: SuccessEnvelope<AlertResponse> = await apiFetch<AlertResponse>(
+        `/farmland/alerts/${alertId}`,
+        { method: 'PATCH', body: { status }, tenantId },
+      );
+      return envelope.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['farmland-alerts', tenantId] });
     },
   });
 }

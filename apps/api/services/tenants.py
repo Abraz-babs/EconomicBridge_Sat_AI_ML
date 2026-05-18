@@ -23,6 +23,7 @@ PILOT_TENANT_IDS: frozenset[str] = frozenset(
         "kaduna",
         "niger",
         "zamfara",
+        "nasarawa",
         "fct",
         "ghana",
         "senegal",

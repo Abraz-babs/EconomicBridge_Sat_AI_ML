@@ -10,5 +10,6 @@ psycopg2-binary>=2.9,<3.0
 alembic>=1.13,<2.0
 greenlet>=3.0,<4.0
 geoalchemy2>=0.15,<1.0
+shapely>=2.0,<3.0  # GeoAlchemy2 -> Shapely conversion for POINT -> lon/lat
 
 # Auth packages will be re-added when authentication is reintroduced for paid tier endpoints.

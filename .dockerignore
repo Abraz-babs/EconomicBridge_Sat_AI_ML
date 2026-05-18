@@ -1,0 +1,61 @@
+# Project-root .dockerignore — keeps build context small and prevents
+# secrets / venvs / build outputs from leaking into images.
+
+# Secrets — NEVER ship .env into an image. Use env_file / runtime injection.
+.env
+.env.*
+!.env.example
+!.env.docker.example
+
+# VCS + IDE
+.git
+.gitignore
+.github
+.vscode
+.idea
+*.iml
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.venv/
+**/venv/
+**/env/
+
+# Node / Next
+**/node_modules/
+**/.next/
+**/.turbo/
+**/.swc/
+**/coverage/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Build artefacts
+**/dist/
+**/build/
+**/*.egg-info/
+
+# Logs + local DB dumps
+*.log
+*.dump
+*.bak
+
+# Large downloads we accidentally checked into scripts/
+scripts/*.exe
+scripts/*.zip
+
+# Tests + dev fixtures (services don't need these in their runtime images)
+**/tests/
+
+# Existing model artefacts (regenerated at first inference)
+apps/ml/models/artifacts/*.joblib

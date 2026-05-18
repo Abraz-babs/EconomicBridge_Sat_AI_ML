@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import type { Tenant } from '@/data/tenants';
+
 export type AlertSeverity = 'critical' | 'high' | 'medium' | 'low' | 'resolved';
 
 export interface FarmlandAlertPoint {
@@ -11,14 +13,19 @@ export interface FarmlandAlertPoint {
   latitude: number;
   severity: AlertSeverity;
   confidence?: number;
+  /** Optional extras shown in the hover tooltip. */
+  lga?: string | null;
+  zoneName?: string | null;
+  alertType?: string | null;
+  status?: string | null;
+  affectedAreaHa?: number | null;
+  livelihoodsAtRisk?: number | null;
+  predictedBreachHours?: number | null;
+  satelliteSource?: string | null;
 }
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 const MAPBOX_STYLE = 'mapbox://styles/mapbox/dark-v11';
-
-// NW Nigeria + middle belt — covers Kebbi, Zamfara, Kaduna, Plateau alert LGAs
-const NW_NIGERIA_CENTER: [number, number] = [6.8, 10.8];
-const NW_NIGERIA_ZOOM = 5.7;
 
 const SEVERITY_RGB: Record<AlertSeverity, [number, number, number]> = {
   critical: [255, 69, 0],
@@ -27,6 +34,38 @@ const SEVERITY_RGB: Record<AlertSeverity, [number, number, number]> = {
   low:      [82, 183, 136],
   resolved: [82, 183, 136],
 };
+
+// Sentinel-1 SAR pass cadence (Copernicus): repeat every ~6 days per ROI, with
+// an interleaved descending pass — use a deterministic-from-tenant offset so
+// the "Next pass" indicator differs per tenant without being random.
+function satelliteCadence(tenant: Tenant): {
+  source: string;
+  resolution: string;
+  coverage: string;
+  lastPassMin: number;
+  nextPassMin: number;
+} {
+  const seed = tenant.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+  const lastPassMin = 7 + (seed % 53);
+  const nextPassMin = 30 + ((seed * 7) % 90);
+  const coverage =
+    tenant.type === 'ng_state'
+      ? `Nigeria — ${tenant.name}`
+      : tenant.type === 'ng_fct'
+      ? 'Nigeria — FCT (Abuja)'
+      : `ECOWAS — ${tenant.name}`;
+  const source =
+    tenant.conflict_risk === 'critical'
+      ? 'Copernicus Sentinel-1 SAR + heat'
+      : 'Copernicus Sentinel-1 SAR';
+  return {
+    source,
+    resolution: '10 m / px',
+    coverage,
+    lastPassMin,
+    nextPassMin,
+  };
+}
 
 function sanitizeMapboxError(message: string | null | undefined): string | null {
   if (!message) return null;
@@ -38,9 +77,16 @@ function sanitizeMapboxError(message: string | null | undefined): string | null 
 interface Props {
   alerts: FarmlandAlertPoint[];
   activeLayer: 'heat' | 'ndvi' | 'sar' | 'boundary';
+  tenant: Tenant;
 }
 
-export default function FarmlandMap({ alerts, activeLayer }: Props) {
+interface HoverInfo {
+  x: number;
+  y: number;
+  alert: FarmlandAlertPoint;
+}
+
+export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<unknown>(null);
   const overlayRef = useRef<unknown>(null);
@@ -48,7 +94,18 @@ export default function FarmlandMap({ alerts, activeLayer }: Props) {
     MAPBOX_TOKEN ? 'loading' : 'no-token'
   );
   const [mapError, setMapError] = useState<string | null>(null);
+  const [hover, setHover] = useState<HoverInfo | null>(null);
+  const [pulse, setPulse] = useState(0);
 
+  // Heartbeat for the pulsing critical/high pins. 60ms = ~16fps, plenty for a
+  // halo expand/shrink while keeping deck.gl re-renders cheap.
+  useEffect(() => {
+    if (mapStatus !== 'ready') return;
+    const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
+    return () => window.clearInterval(id);
+  }, [mapStatus]);
+
+  // One-time map init.
   useEffect(() => {
     if (!MAPBOX_TOKEN || !containerRef.current) return;
     let cancelled = false;
@@ -65,8 +122,8 @@ export default function FarmlandMap({ alerts, activeLayer }: Props) {
         const map = new mapboxgl.Map({
           container: containerRef.current,
           style: MAPBOX_STYLE,
-          center: NW_NIGERIA_CENTER,
-          zoom: NW_NIGERIA_ZOOM,
+          center: tenant.centroid,
+          zoom: 6,
           attributionControl: false,
         });
         mapRef.current = map;
@@ -103,8 +160,20 @@ export default function FarmlandMap({ alerts, activeLayer }: Props) {
       map?.remove?.();
       mapRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Fly the map to the active tenant when it changes.
+  useEffect(() => {
+    if (mapStatus !== 'ready') return;
+    const map = mapRef.current as
+      | { flyTo: (o: { center: [number, number]; zoom: number; duration: number }) => void }
+      | null;
+    map?.flyTo({ center: tenant.centroid, zoom: 6, duration: 1200 });
+    setHover(null);
+  }, [tenant.id, tenant.centroid, mapStatus]);
+
+  // Layer composition — recomputed on layer/data/pulse change.
   useEffect(() => {
     if (mapStatus !== 'ready') return;
     const overlay = overlayRef.current as
@@ -113,19 +182,23 @@ export default function FarmlandMap({ alerts, activeLayer }: Props) {
     if (!overlay) return;
 
     (async () => {
-      const [{ HeatmapLayer }, { ScatterplotLayer }] = await Promise.all([
+      const [
+        { HeatmapLayer, GridLayer },
+        { ScatterplotLayer, PolygonLayer },
+      ] = await Promise.all([
         import('@deck.gl/aggregation-layers'),
         import('@deck.gl/layers'),
       ]);
 
       const layers: unknown[] = [];
+      const active = alerts.filter((a) => a.severity !== 'resolved');
 
-      const showHeat = activeLayer === 'heat' || activeLayer === 'sar';
-      if (showHeat) {
+      // ── HEAT: orange/red heatmap of active alerts ───────────────────
+      if (activeLayer === 'heat') {
         layers.push(
           new HeatmapLayer<FarmlandAlertPoint>({
             id: 'farmland-heat',
-            data: alerts.filter((a) => a.severity !== 'resolved'),
+            data: active,
             getPosition: (a) => [a.longitude, a.latitude],
             getWeight: (a) =>
               a.severity === 'critical' ? 3 : a.severity === 'high' ? 2 : 1,
@@ -137,7 +210,109 @@ export default function FarmlandMap({ alerts, activeLayer }: Props) {
         );
       }
 
-      // Pins are always visible so the alert positions are anchored
+      // ── NDVI: green vegetation-health grid aggregation ──────────────
+      if (activeLayer === 'ndvi') {
+        layers.push(
+          new GridLayer<FarmlandAlertPoint>({
+            id: 'farmland-ndvi',
+            data: active,
+            getPosition: (a) => [a.longitude, a.latitude],
+            getColorWeight: (a) => (a.affectedAreaHa ?? 30) / 100,
+            cellSize: 5000,
+            extruded: false,
+            colorRange: [
+              [237, 248, 233],
+              [199, 233, 192],
+              [161, 217, 155],
+              [116, 196, 118],
+              [65, 171, 93],
+              [35, 139, 69],
+            ],
+            opacity: 0.55,
+          })
+        );
+      }
+
+      // ── SAR: cool-blue heatmap suggesting radar backscatter ─────────
+      if (activeLayer === 'sar') {
+        layers.push(
+          new HeatmapLayer<FarmlandAlertPoint>({
+            id: 'farmland-sar',
+            data: active,
+            getPosition: (a) => [a.longitude, a.latitude],
+            getWeight: (a) => (a.confidence ?? 0.5) * 3,
+            radiusPixels: 90,
+            intensity: 1.3,
+            threshold: 0.03,
+            colorRange: [
+              [255, 255, 178, 0],
+              [161, 218, 215],
+              [102, 194, 165],
+              [65, 174, 218],
+              [44, 127, 184],
+              [37, 52, 148],
+            ],
+          })
+        );
+      }
+
+      // ── BOUNDARIES: rough ROI polygon around the tenant centroid ────
+      if (activeLayer === 'boundary') {
+        const [lon, lat] = tenant.centroid;
+        // Crude bbox derived from tenant.type — bigger for whole countries
+        const w =
+          tenant.type === 'ecowas_country'
+            ? 3.0
+            : tenant.type === 'ng_fct'
+            ? 0.6
+            : 1.4;
+        const polygon = [
+          [lon - w, lat - w * 0.8],
+          [lon + w, lat - w * 0.8],
+          [lon + w, lat + w * 0.8],
+          [lon - w, lat + w * 0.8],
+          [lon - w, lat - w * 0.8],
+        ];
+        layers.push(
+          new PolygonLayer<typeof polygon>({
+            id: 'farmland-boundary',
+            data: [polygon],
+            getPolygon: (d) => d,
+            getFillColor: [120, 180, 255, 28],
+            getLineColor: [120, 180, 255, 220],
+            lineWidthMinPixels: 1.5,
+            stroked: true,
+            filled: true,
+          })
+        );
+      }
+
+      // ── Pulsing halo ring on CRITICAL + HIGH pins ────────────────────
+      // Sinusoidal radius: oscillates ~3x base size. The updateTriggers
+      // entry forces deck.gl to re-evaluate getRadius on each `pulse` tick.
+      const pulseAlerts = alerts.filter(
+        (a) => a.severity === 'critical' || a.severity === 'high',
+      );
+      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
+      layers.push(
+        new ScatterplotLayer<FarmlandAlertPoint>({
+          id: 'farmland-pulse',
+          data: pulseAlerts,
+          getPosition: (a) => [a.longitude, a.latitude],
+          getRadius: (a) =>
+            (a.severity === 'critical' ? 34000 : 24000) * pulseScale,
+          getFillColor: (a) =>
+            [...SEVERITY_RGB[a.severity], 35] as [number, number, number, number],
+          radiusUnits: 'meters',
+          radiusMinPixels: 14,
+          radiusMaxPixels: 80,
+          stroked: false,
+          pickable: false,
+          updateTriggers: { getRadius: pulse },
+        })
+      );
+
+      // ── Static base pins (always visible, pickable) ─────────────────
       layers.push(
         new ScatterplotLayer<FarmlandAlertPoint>({
           id: 'farmland-pins',
@@ -154,18 +329,31 @@ export default function FarmlandMap({ alerts, activeLayer }: Props) {
           radiusMaxPixels: 26,
           stroked: true,
           pickable: true,
+          onHover: (info) => {
+            if (info && info.object && info.x !== undefined && info.y !== undefined) {
+              setHover({
+                x: info.x,
+                y: info.y,
+                alert: info.object as FarmlandAlertPoint,
+              });
+            } else {
+              setHover(null);
+            }
+          },
         })
       );
 
       overlay.setProps({ layers });
     })();
-  }, [activeLayer, alerts, mapStatus]);
+  }, [activeLayer, alerts, mapStatus, pulse, tenant.centroid, tenant.type]);
+
+  const cadence = satelliteCadence(tenant);
 
   return (
     <div
       className="fp-map-canvas"
       role="application"
-      aria-label="Northwest Nigeria farmland heat map"
+      aria-label={`Farmland heat map — ${tenant.name}`}
     >
       <div ref={containerRef} className="map-host" />
       {mapStatus === 'no-token' && <FarmlandMapTokenPlaceholder />}
@@ -188,12 +376,50 @@ export default function FarmlandMap({ alerts, activeLayer }: Props) {
       </div>
 
       <div className="fp-map-overlay">
-        Copernicus Sentinel-1 SAR<br />
-        N2YO Pass: 14 min ago<br />
-        Resolution: 10m/px<br />
-        Coverage: NW Nigeria<br />
-        Next pass: 47 min
+        {cadence.source}<br />
+        N2YO Pass: {cadence.lastPassMin} min ago<br />
+        Resolution: {cadence.resolution}<br />
+        Coverage: {cadence.coverage}<br />
+        Next pass: {cadence.nextPassMin} min
       </div>
+
+      {hover && <HoverTooltip info={hover} />}
+    </div>
+  );
+}
+
+function HoverTooltip({ info }: { info: HoverInfo }) {
+  const a = info.alert;
+  // Only the dynamic position stays inline — the rest lives in globals.css
+  // under `.fp-map-tooltip` so it survives theme/dark-mode tweaks centrally.
+  const pos = { left: info.x + 14, top: info.y + 14 };
+  return (
+    <div className="fp-map-tooltip" style={pos}>
+      <div className="fp-tt-title">{a.location}</div>
+      <div className="fp-tt-sub">
+        {a.severity}
+        {a.alertType ? ` • ${a.alertType}` : ''}
+        {a.status ? ` • ${a.status.replace('_', ' ')}` : ''}
+      </div>
+      {a.zoneName && <div className="fp-tt-zone">{a.zoneName}</div>}
+      <div className="fp-tt-coord">
+        {a.latitude.toFixed(4)}°N, {a.longitude.toFixed(4)}°E
+      </div>
+      {(a.affectedAreaHa != null || a.livelihoodsAtRisk != null) && (
+        <div className="fp-tt-metrics">
+          {a.affectedAreaHa != null && <>~{Math.round(a.affectedAreaHa)} ha</>}
+          {a.affectedAreaHa != null && a.livelihoodsAtRisk != null && ' • '}
+          {a.livelihoodsAtRisk != null && (
+            <>{a.livelihoodsAtRisk.toLocaleString()} livelihoods</>
+          )}
+        </div>
+      )}
+      {a.predictedBreachHours != null && a.severity !== 'resolved' && (
+        <div className="fp-tt-eta">ETA breach: {a.predictedBreachHours}h</div>
+      )}
+      {a.confidence != null && (
+        <div className="fp-tt-conf">Conf: {Math.round(a.confidence * 100)}%</div>
+      )}
     </div>
   );
 }

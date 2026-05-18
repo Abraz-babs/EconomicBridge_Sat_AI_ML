@@ -8,6 +8,11 @@ import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, "../../.env"), quiet: true });
 
 const nextConfig: NextConfig = {
+  // Emit a self-contained `.next/standalone` server bundle. The Dockerfile's
+  // runner stage copies that directory + `.next/static` + `public/` and runs
+  // `node server.js`, so no `node_modules` ship to production.
+  output: "standalone",
+
   // ─── SECURITY HEADERS ───
   // Production-grade headers: CSP, HSTS, frame protection, XSS protection
   async headers() {

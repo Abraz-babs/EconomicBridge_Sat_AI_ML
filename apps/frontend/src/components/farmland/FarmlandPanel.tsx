@@ -5,22 +5,11 @@ import { useMemo, useState } from 'react';
 import { useTenant } from '@/context/TenantContext';
 import {
   useFarmlandAlerts,
+  useResolveAlert,
   type AlertResponse,
   type AlertSeverity,
 } from '@/hooks/useFarmlandAlerts';
 import FarmlandMap, { type FarmlandAlertPoint } from './FarmlandMap';
-
-// ─── Static fixtures retained for the timeline + economic-impact panels ───
-// (These are aggregated narrative views; they'll be replaced by their own
-// endpoints in later steps. The map + alert feed below are now LIVE.)
-
-const timelineEvents = [
-  { dot: 'fp-tl-crit', icon: '!', time: 'Now — T+0h · Kebbi Argungu', event: 'Encroachment confirmed — agency notification sent', detail: 'Copernicus SAR + heat overlay · 94% confidence · NEMA + Min. Agriculture alerted' },
-  { dot: 'fp-tl-warn', icon: '~', time: 'T+6h · Projected', event: 'Herder group reaches active maize field boundary', detail: 'If unresolved — estimated 80+ ha at risk. Mediation window closing.' },
-  { dot: 'fp-tl-warn', icon: '~', time: 'T+24h · Plateau Shendam', event: 'Western boundary breach probability: 71%', detail: 'Pre-emptive alert issued. State mediators en route. Sentinel-2 optical pass scheduled.' },
-  { dot: 'fp-tl-warn', icon: '~', time: 'T+48h · Kaduna Kachia', event: 'Sorghum belt migration overlap — seasonal peak risk', detail: 'Historical conflict zone. Extension officer engaged. Designated grazing corridor opened.' },
-  { dot: 'fp-tl-ok', icon: '✓', time: 'Yesterday — Resolved', event: 'Birnin Kebbi alert resolved via mediation', detail: 'Herders rerouted. No crop damage. $48,000 livelihood protected. Response time: 3.5 hrs.' },
-];
 
 type MapLayerKey = 'heat' | 'ndvi' | 'sar' | 'boundary';
 
@@ -47,12 +36,13 @@ const STATE_NAMES: Record<string, string> = {
   kaduna:   'Kaduna State',
   niger:    'Niger State',
   zamfara:  'Zamfara State',
+  nasarawa: 'Nasarawa State',
   fct:      'Federal Capital Territory',
   ghana:    'Ghana',
   senegal:  'Senegal',
 };
 
-/** API alert → map pin shape. */
+/** API alert → map pin shape (with the extras the hover tooltip reads). */
 function toMapPoint(a: AlertResponse): FarmlandAlertPoint | null {
   if (!a.location) return null;
   return {
@@ -63,6 +53,14 @@ function toMapPoint(a: AlertResponse): FarmlandAlertPoint | null {
     // For map colour: resolved overrides severity (it goes green regardless).
     severity:  a.status === 'resolved' ? 'resolved' : a.severity,
     confidence: a.confidence_score ?? undefined,
+    lga: a.lga,
+    zoneName: a.zone_name,
+    alertType: a.alert_type,
+    status: a.status,
+    affectedAreaHa: a.affected_area_ha,
+    livelihoodsAtRisk: a.livelihoods_at_risk,
+    predictedBreachHours: a.predicted_breach_hours,
+    satelliteSource: a.satellite_source,
   };
 }
 
@@ -107,6 +105,134 @@ function altMetaLine(a: AlertResponse): string[] {
   return parts.length > 0 ? parts : [relativeAge(a.created_at)];
 }
 
+// ─── Live timeline derivation ─────────────────────────────────────────────
+
+interface TimelineEvent {
+  key: string;
+  dot: 'fp-tl-crit' | 'fp-tl-warn' | 'fp-tl-ok';
+  icon: string;
+  time: string;
+  event: string;
+  detail: string;
+  sortGroup: 0 | 1 | 2 | 3;
+  sortKey: number;
+}
+
+function pastLabel(ageHours: number): string {
+  if (ageHours < 1) return `${Math.round(ageHours * 60)}min ago`;
+  if (ageHours < 48) return `${Math.round(ageHours)}h ago`;
+  return `${Math.round(ageHours / 24)}d ago`;
+}
+
+/** Derive up to ~6 timeline rows from the active tenant's alerts. */
+function deriveTimeline(alerts: AlertResponse[], stateLabel: string): TimelineEvent[] {
+  const now = Date.now();
+  const out: TimelineEvent[] = [];
+
+  for (const a of alerts) {
+    const lga = a.lga ?? a.zone_name ?? 'unspecified zone';
+    const ageH = (now - new Date(a.created_at).getTime()) / 3_600_000;
+    const conf = a.confidence_score != null
+      ? `${Math.round(a.confidence_score * 100)}% confidence`
+      : null;
+    const agencies = a.agencies_notified?.length
+      ? a.agencies_notified.join(' + ')
+      : null;
+    const ha = a.affected_area_ha;
+    const liv = a.livelihoods_at_risk;
+
+    // Group 0 — confirmed critical / high right now (top of timeline)
+    if (
+      a.status === 'pending_review' &&
+      (a.severity === 'critical' || a.severity === 'high')
+    ) {
+      out.push({
+        key: `${a.id}-now`,
+        dot: a.severity === 'critical' ? 'fp-tl-crit' : 'fp-tl-warn',
+        icon: '!',
+        time: `Now — T+0h · ${stateLabel} ${lga}`,
+        event:
+          a.severity === 'critical'
+            ? 'Encroachment confirmed — agency notification sent'
+            : 'High-severity boundary alert raised',
+        detail: [
+          a.satellite_source,
+          conf,
+          agencies ? `${agencies} alerted` : null,
+        ].filter(Boolean).join(' · '),
+        sortGroup: 0,
+        sortKey: ageH,  // most recent first
+      });
+    }
+
+    // Group 1 — acknowledged (response in progress)
+    if (a.status === 'acknowledged') {
+      out.push({
+        key: `${a.id}-ack`,
+        dot: a.severity === 'critical' ? 'fp-tl-crit' : 'fp-tl-warn',
+        icon: '~',
+        time: `T+0h · ${lga} — Agency responding`,
+        event: a.zone_name ?? `${lga} active response`,
+        detail: [
+          agencies ? `${agencies} engaged.` : null,
+          ha != null ? `${Math.round(ha)} ha at risk` : null,
+          liv != null ? `${liv.toLocaleString()} livelihoods.` : null,
+        ].filter(Boolean).join(' '),
+        sortGroup: 1,
+        sortKey: ageH,
+      });
+    }
+
+    // Group 2 — projected future breach (predicted by the model)
+    if (a.status !== 'resolved' && a.predicted_breach_hours != null) {
+      out.push({
+        key: `${a.id}-proj`,
+        dot: 'fp-tl-warn',
+        icon: '~',
+        time: `T+${a.predicted_breach_hours}h · Projected — ${lga}`,
+        event: 'Predicted breach window',
+        detail: [
+          ha != null ? `~${Math.round(ha)} ha at risk` : null,
+          liv != null ? `${liv.toLocaleString()} livelihoods` : null,
+          a.satellite_source,
+        ].filter(Boolean).join(' · '),
+        sortGroup: 2,
+        sortKey: a.predicted_breach_hours,  // soonest first
+      });
+    }
+
+    // Group 3 — resolved (victories, bottom of timeline)
+    if (a.status === 'resolved') {
+      out.push({
+        key: `${a.id}-res`,
+        dot: 'fp-tl-ok',
+        icon: '✓',
+        time: `${pastLabel(ageH)} — Resolved · ${lga}`,
+        event: a.zone_name ?? `${lga} alert resolved`,
+        detail: [
+          liv != null ? `~${liv.toLocaleString()} livelihoods protected.` : null,
+          agencies ? `Engaged: ${agencies}.` : null,
+        ].filter(Boolean).join(' ') || 'Resolved via mediation.',
+        sortGroup: 3,
+        sortKey: ageH,  // most recent resolution first
+      });
+    }
+  }
+
+  out.sort((a, b) =>
+    a.sortGroup !== b.sortGroup ? a.sortGroup - b.sortGroup : a.sortKey - b.sortKey,
+  );
+  return out.slice(0, 6);
+}
+
+/** Format an NGN figure ≥ 0 into ₦X.XM / ₦XK / "—". */
+function fmtNgn(value: number, isEcowas: boolean): string {
+  if (isEcowas || value <= 0) return '—';
+  if (value >= 1_000_000) return `₦${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `₦${Math.round(value / 1_000)}K`;
+  return `₦${value.toLocaleString()}`;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────
 
 export default function FarmlandPanel() {
@@ -115,6 +241,7 @@ export default function FarmlandPanel() {
 
   const query = useFarmlandAlerts({ tenantId: activeTenantId, perPage: 50 });
   const alerts = query.data?.alerts ?? [];
+  const resolveMutation = useResolveAlert(activeTenantId);
 
   // Map: only pins that have lat/lon. Map state changes when alerts change.
   const mapPoints = useMemo<FarmlandAlertPoint[]>(
@@ -131,14 +258,36 @@ export default function FarmlandPanel() {
       (sum, a) => sum + (a.livelihoods_at_risk ?? 0),
       0,
     );
+    const livelihoodsAtRisk = active.reduce(
+      (sum, a) => sum + (a.livelihoods_at_risk ?? 0),
+      0,
+    );
+    const economicValueAtRisk = active.reduce(
+      (sum, a) => sum + (a.economic_value_ngn ?? 0),
+      0,
+    );
     const agencies = new Set<string>();
     alerts.forEach((a) => a.agencies_notified?.forEach((ag) => agencies.add(ag)));
+    const satellites = new Set<string>();
+    alerts.forEach((a) => a.satellite_source && satellites.add(a.satellite_source));
+    const confidences = alerts
+      .map((a) => a.confidence_score)
+      .filter((c): c is number => c != null);
+    const avgConfidence =
+      confidences.length > 0
+        ? confidences.reduce((s, c) => s + c, 0) / confidences.length
+        : null;
     return {
       activeCount: active.length,
       farmsAtRiskHa,
       resolvedCount: resolved.length,
+      livelihoodsAtRisk,
       livelihoodsProtected,
+      economicValueAtRisk,
+      avgConfidence,
       agenciesCount: agencies.size,
+      agencies: Array.from(agencies),
+      satellites: Array.from(satellites),
       activeBreakdown: active.reduce<Record<string, number>>(
         (acc, a) => ({ ...acc, [a.severity]: (acc[a.severity] ?? 0) + 1 }),
         {},
@@ -147,6 +296,13 @@ export default function FarmlandPanel() {
   }, [alerts]);
 
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
+  const isEcowas = activeTenant.type === 'ecowas_country';
+
+  // Derive the timeline rows from the live alerts.
+  const timelineEvents = useMemo(
+    () => deriveTimeline(alerts, stateLabel),
+    [alerts, stateLabel],
+  );
 
   return (
     <div>
@@ -244,7 +400,11 @@ export default function FarmlandPanel() {
               ))}
             </div>
           </div>
-          <FarmlandMap alerts={mapPoints} activeLayer={activeMapLayer} />
+          <FarmlandMap
+            alerts={mapPoints}
+            activeLayer={activeMapLayer}
+            tenant={activeTenant}
+          />
         </div>
 
         <div className="fp-alerts">
@@ -273,6 +433,8 @@ export default function FarmlandPanel() {
           {alerts.map((a) => {
             const sev = SEV_DISPLAY[a.severity];
             const showResolved = a.status === 'resolved';
+            const pendingResolve =
+              resolveMutation.isPending && resolveMutation.variables?.alertId === a.id;
             return (
               <div key={a.id} className="fp-alert-item">
                 <div className="fp-alert-top">
@@ -289,55 +451,138 @@ export default function FarmlandPanel() {
                     <span key={i}>{m}</span>
                   ))}
                 </div>
+                {a.location && (
+                  <div className="fp-alert-coords">
+                    📍 {a.location.lat.toFixed(4)}°N, {a.location.lon.toFixed(4)}°E
+                    {a.lga ? ` · ${a.lga} LGA` : ''}
+                  </div>
+                )}
+                {!showResolved && (
+                  <div className="fp-alert-actions">
+                    <button
+                      type="button"
+                      className={`fp-resolve-btn ${pendingResolve ? 'is-pending' : ''}`}
+                      disabled={resolveMutation.isPending}
+                      onClick={() =>
+                        resolveMutation.mutate({ alertId: a.id, status: 'resolved' })
+                      }
+                    >
+                      {pendingResolve ? 'Marking…' : 'Mark resolved'}
+                    </button>
+                    {a.status !== 'acknowledged' && (
+                      <button
+                        type="button"
+                        className="fp-resolve-btn"
+                        disabled={resolveMutation.isPending}
+                        onClick={() =>
+                          resolveMutation.mutate({
+                            alertId: a.id,
+                            status: 'acknowledged',
+                          })
+                        }
+                      >
+                        Acknowledge
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* PREDICTION TIMELINE + ECONOMIC IMPACT — narrative panels, static for now */}
+      {/* PREDICTION TIMELINE + ECONOMIC IMPACT — both panels are LIVE */}
       <div className="fp-main-row fp-main-row--equal">
         <div className="fp-timeline">
-          <div className="fp-timeline-header">48–72 Hour Conflict Prediction Timeline</div>
+          <div className="fp-timeline-header">
+            48–72 Hour Conflict Prediction Timeline — {stateLabel}
+          </div>
           <div className="fp-timeline-body">
-            {timelineEvents.map((e, i) => (
-              <div key={i} className="fp-tl-row">
-                <div className={`fp-tl-dot ${e.dot}`}>{e.icon}</div>
-                <div className="fp-tl-content">
-                  <div className="fp-tl-time">{e.time}</div>
-                  <div className="fp-tl-event">{e.event}</div>
-                  <div className="fp-tl-detail">{e.detail}</div>
-                </div>
+            {timelineEvents.length === 0 ? (
+              <div className="fp-alert-empty">
+                No active or recently-resolved events in {stateLabel}. The
+                timeline populates as alerts arrive from the ingestion pipeline.
               </div>
-            ))}
+            ) : (
+              timelineEvents.map((e) => (
+                <div key={e.key} className="fp-tl-row">
+                  <div className={`fp-tl-dot ${e.dot}`}>{e.icon}</div>
+                  <div className="fp-tl-content">
+                    <div className="fp-tl-time">{e.time}</div>
+                    <div className="fp-tl-event">{e.event}</div>
+                    <div className="fp-tl-detail">{e.detail}</div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
         <div className="fp-timeline">
-          <div className="fp-timeline-header">Economic Livelihood Protection — 30-Day Summary</div>
+          <div className="fp-timeline-header">
+            Economic Livelihood Protection — {stateLabel}
+          </div>
           <div className="fp-timeline-body fp-impact-body">
             <div className="fp-impact-row fp-impact-row--bordered">
               <div>
                 <div className="fp-impact-label">Conflicts Prevented</div>
                 <div className="fp-impact-val">{liveStats.resolvedCount}</div>
-                <div className="fp-impact-desc">Verified resolutions via mediation or rerouting</div>
+                <div className="fp-impact-desc">
+                  Verified resolutions via mediation or rerouting
+                </div>
               </div>
               <div>
                 <div className="fp-impact-label">Livelihoods Protected</div>
                 <div className="fp-impact-val">
                   ~{liveStats.livelihoodsProtected.toLocaleString()}
                 </div>
-                <div className="fp-impact-desc">Sum of livelihoods_at_risk on resolved alerts</div>
+                <div className="fp-impact-desc">
+                  {liveStats.livelihoodsAtRisk > 0
+                    ? `${liveStats.livelihoodsAtRisk.toLocaleString()} still at risk in ${liveStats.activeCount} active alert${liveStats.activeCount === 1 ? '' : 's'}`
+                    : 'Sum of livelihoods on resolved alerts'}
+                </div>
               </div>
               <div>
-                <div className="fp-impact-label">Agencies Engaged</div>
-                <div className="fp-impact-val fp-impact-val--small">{liveStats.agenciesCount}</div>
-                <div className="fp-impact-desc">Distinct agencies across all alerts</div>
+                <div className="fp-impact-label">Economic Value at Risk</div>
+                <div className="fp-impact-val fp-impact-val--small">
+                  {fmtNgn(liveStats.economicValueAtRisk, isEcowas)}
+                </div>
+                <div className="fp-impact-desc">
+                  {isEcowas
+                    ? 'Currency not tracked outside Nigeria yet'
+                    : `Aggregated across ${liveStats.activeCount} active alert${liveStats.activeCount === 1 ? '' : 's'}`}
+                </div>
               </div>
             </div>
 
             <div className="fp-impact-footnote">
-              Data sources: Copernicus Sentinel-1 SAR (all-weather), Sentinel-2 optical, NASA FIRMS heat, N2YO live pass tracking. AI model: Random Forest conflict predictor + DBSCAN spatial clustering. Live data from <code>{activeTenantId}</code>.
+              {liveStats.satellites.length > 0 ? (
+                <>
+                  Data sources for {stateLabel}:{' '}
+                  {liveStats.satellites.map((s, i) => (
+                    <span key={s}>
+                      <code>{s}</code>
+                      {i < liveStats.satellites.length - 1 ? ', ' : ''}
+                    </span>
+                  ))}
+                  . AI model: Random Forest conflict predictor (Citadel-proven)
+                  {liveStats.avgConfidence != null
+                    ? ` · ${Math.round(liveStats.avgConfidence * 100)}% mean confidence`
+                    : ''}
+                  . {alerts.length} alert{alerts.length === 1 ? '' : 's'} in window
+                  {liveStats.agenciesCount > 0
+                    ? `, ${liveStats.agenciesCount} agenc${liveStats.agenciesCount === 1 ? 'y' : 'ies'} engaged`
+                    : ''}
+                  .
+                </>
+              ) : (
+                <>
+                  No active feeds for {stateLabel}. Ingestion will populate this
+                  panel once the satellite pipeline runs for tenant{' '}
+                  <code>{activeTenantId}</code>.
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -58,7 +58,7 @@ def _create_conflict_predictions_for(tenant: str) -> None:
             zone_name               TEXT,
 
             -- Optional linkage to the alert_events row this informed
-            related_alert_id        UUID REFERENCES alert_events(id) ON DELETE SET NULL,
+            related_alert_id        UUID REFERENCES "{schema}".alert_events(id) ON DELETE SET NULL,
 
             -- Audit
             inference_time_ms       INTEGER,

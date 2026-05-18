@@ -82,6 +82,14 @@ class AlertListData(BaseModel):
     alerts: list[AlertResponse]
 
 
+class AlertStatusPatch(BaseModel):
+    """Request body for PATCH /farmland/alerts/{id} — lifecycle transitions only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: AlertStatus
+
+
 # ─── Query parameter validation ────────────────────────────────────────────
 
 

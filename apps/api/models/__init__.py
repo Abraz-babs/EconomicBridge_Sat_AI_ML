@@ -10,8 +10,17 @@ applied to every pilot tenant schema there.
 """
 from models.alert_event import AlertEvent
 from models.audit_log import AuditLog
+from models.dpa import DataProcessingAgreement, DataSubjectRequest
 from models.organisation import Organisation
 from models.refresh_token import RefreshToken
 from models.user import User
 
-__all__ = ["Organisation", "User", "RefreshToken", "AuditLog", "AlertEvent"]
+__all__ = [
+    "Organisation",
+    "User",
+    "RefreshToken",
+    "AuditLog",
+    "AlertEvent",
+    "DataProcessingAgreement",
+    "DataSubjectRequest",
+]
