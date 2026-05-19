@@ -6,7 +6,7 @@ actual ingestion code in `tasks.firms_ingest` does not change.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID, uuid4
 

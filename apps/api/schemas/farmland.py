@@ -8,9 +8,8 @@ migration 0003). Drift between them would be a bug — keep them in sync.
 """
 from __future__ import annotations
 
-from datetime import datetime
 from enum import Enum
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field

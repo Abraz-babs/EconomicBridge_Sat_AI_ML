@@ -85,7 +85,8 @@ async def list_alerts(
     ] = False,
 ) -> SuccessResponse[AlertListData]:
     """List alerts for the active tenant."""
-    tenant_id = _require_tenant(request)
+    # Side-effect: raises HTTPException if X-Tenant-Id is missing.
+    _require_tenant(request)
 
     if since and until and since > until:
         raise HTTPException(

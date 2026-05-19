@@ -12,7 +12,6 @@ the compliance layer, not the individual pilots).
 Trigger `update_updated_at()` from migration 0001 keeps `updated_at` fresh.
 """
 from datetime import datetime
-from typing import Any
 from uuid import UUID
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, func

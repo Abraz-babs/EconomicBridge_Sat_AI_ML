@@ -170,6 +170,10 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
       | { flyTo: (o: { center: [number, number]; zoom: number; duration: number }) => void }
       | null;
     map?.flyTo({ center: tenant.centroid, zoom: 6, duration: 1200 });
+    // Clear stale hover tooltip when the active tenant changes — the alert
+    // it references no longer belongs to the displayed dataset. This is the
+    // canonical "reset local state on a prop change" pattern.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHover(null);
   }, [tenant.id, tenant.centroid, mapStatus]);
 

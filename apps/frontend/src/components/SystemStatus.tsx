@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 
 interface FeedStatus {
   name: string;
@@ -31,26 +31,27 @@ const statusColors = {
   standby: '#8a8278',
 };
 
+function nextTimestamp(): string {
+  const now = new Date();
+  const mins = Math.floor(Math.random() * 3) + 1;
+  const ts = new Date(now.getTime() - mins * 60000);
+  return ts.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+}
+
 export default function SystemStatus() {
   const [feeds, setFeeds] = useState<FeedStatus[]>(INITIAL_FEEDS);
-  const [lastIngestion, setLastIngestion] = useState('');
+  // Initialise lazily so we don't need a setState-in-effect on first render.
+  const [lastIngestion, setLastIngestion] = useState<string>(nextTimestamp);
   const [uptime, setUptime] = useState('99.7%');
   const [expanded, setExpanded] = useState(false);
 
-  const updateTimestamp = useCallback(() => {
-    const now = new Date();
-    const mins = Math.floor(Math.random() * 3) + 1;
-    const ts = new Date(now.getTime() - mins * 60000);
-    setLastIngestion(
-      ts.toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
-    );
-  }, []);
-
   useEffect(() => {
-    updateTimestamp();
-    const interval = setInterval(updateTimestamp, 30000);
+    const interval = setInterval(
+      () => setLastIngestion(nextTimestamp()),
+      30000,
+    );
     return () => clearInterval(interval);
-  }, [updateTimestamp]);
+  }, []);
 
   const onlineCount = feeds.filter((f) => f.status === 'online').length;
   const totalCount = feeds.length;

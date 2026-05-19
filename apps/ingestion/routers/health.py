@@ -1,5 +1,4 @@
 """GET /api/v1/health — ingestion-service liveness probe."""
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel

@@ -6,7 +6,6 @@ keep them synced.
 """
 from __future__ import annotations
 
-from datetime import datetime
 from enum import Enum
 from typing import Annotated
 from uuid import UUID
