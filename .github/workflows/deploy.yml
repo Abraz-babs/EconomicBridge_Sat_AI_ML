@@ -113,8 +113,8 @@ jobs:
           REPO: ${{ env.PROJECT_NAME }}-${{ inputs.environment }}/${{ matrix.service }}
           TAG: ${{ needs.setup.outputs.tag }}
         with:
-          context: economic-bridge-project
-          file: economic-bridge-project/apps/${{ matrix.service }}/Dockerfile
+          context: .
+          file: apps/${{ matrix.service }}/Dockerfile
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.REPO }}:${{ env.TAG }}

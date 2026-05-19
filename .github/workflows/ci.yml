@@ -20,10 +20,6 @@ on:
 permissions:
   contents: read
 
-defaults:
-  run:
-    working-directory: economic-bridge-project
-
 jobs:
   # ───────── Backend services (matrix over the 4 Python apps) ─────────
   backend:
@@ -41,7 +37,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
-          cache-dependency-path: economic-bridge-project/apps/${{ matrix.service }}/requirements*.txt
+          cache-dependency-path: apps/${{ matrix.service }}/requirements*.txt
 
       - name: Install runtime + dev dependencies
         run: |
@@ -81,7 +77,7 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: economic-bridge-project/apps/frontend/package-lock.json
+          cache-dependency-path: apps/frontend/package-lock.json
 
       - name: Install
         run: |

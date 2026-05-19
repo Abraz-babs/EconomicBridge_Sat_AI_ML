@@ -14,12 +14,12 @@ name: Terraform
 on:
   pull_request:
     paths:
-      - "economic-bridge-project/infrastructure/terraform/**"
+      - "infrastructure/terraform/**"
       - ".github/workflows/terraform.yml"
   push:
     branches: [main]
     paths:
-      - "economic-bridge-project/infrastructure/terraform/**"
+      - "infrastructure/terraform/**"
 
 permissions:
   contents: read
@@ -28,7 +28,7 @@ permissions:
 
 defaults:
   run:
-    working-directory: economic-bridge-project/infrastructure/terraform
+    working-directory: infrastructure/terraform
 
 env:
   TF_VERSION: "1.9.8"
@@ -92,7 +92,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const plan = fs.readFileSync('economic-bridge-project/infrastructure/terraform/plan.txt', 'utf8');
+            const plan = fs.readFileSync('infrastructure/terraform/plan.txt', 'utf8');
             const truncated = plan.length > 60000
               ? plan.slice(0, 60000) + '\n...\n[truncated — see action logs for full plan]'
               : plan;
