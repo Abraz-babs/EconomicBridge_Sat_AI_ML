@@ -1,0 +1,109 @@
+# EconomicBridge — Terraform CI.
+#
+# Two jobs:
+#   1. fmt + validate  (every PR + push to main; no AWS credentials)
+#   2. plan            (PRs touching infrastructure/terraform/; needs AWS
+#                       creds via OIDC — read-only role)
+#
+# We deliberately do NOT auto-apply. Apply is the operator's call from a
+# trusted workstation. The plan output is posted as a PR comment so
+# reviewers see the diff before merge.
+
+name: Terraform
+
+on:
+  pull_request:
+    paths:
+      - "economic-bridge-project/infrastructure/terraform/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+    paths:
+      - "economic-bridge-project/infrastructure/terraform/**"
+
+permissions:
+  contents: read
+  id-token: write     # OIDC -> AWS
+  pull-requests: write  # post plan output as comment
+
+defaults:
+  run:
+    working-directory: economic-bridge-project/infrastructure/terraform
+
+env:
+  TF_VERSION: "1.9.8"
+  AWS_REGION: "eu-west-1"
+
+jobs:
+  # ───────── fmt + validate (no AWS creds needed) ─────────────────────
+  validate:
+    name: fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff
+
+      - name: terraform init (backend disabled for validate)
+        run: terraform init -backend=false
+
+      - name: terraform validate
+        run: terraform validate
+
+  # ───────── plan (read-only AWS access via OIDC) ─────────────────────
+  plan:
+    name: plan (staging)
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC, read-only)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::198566079411:role/github-actions-terraform-plan
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: terraform init
+        run: terraform init
+
+      - name: terraform workspace select staging
+        run: terraform workspace select staging || terraform workspace new staging
+
+      - name: terraform plan
+        id: plan
+        run: |
+          terraform plan -no-color -input=false -lock-timeout=5m \
+            -out=tfplan 2>&1 | tee plan.txt
+          echo "exitcode=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+      - name: Post plan to PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('economic-bridge-project/infrastructure/terraform/plan.txt', 'utf8');
+            const truncated = plan.length > 60000
+              ? plan.slice(0, 60000) + '\n...\n[truncated — see action logs for full plan]'
+              : plan;
+            const body = `### Terraform plan (staging)\n\n<details><summary>Show plan</summary>\n\n\`\`\`hcl\n${truncated}\n\`\`\`\n\n</details>`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body
+            });
+
+      - name: Fail if plan errored
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1

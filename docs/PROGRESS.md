@@ -698,11 +698,58 @@ Resource count ≈ 80. First `terraform apply` ≈ 25 minutes (RDS is the
 long tail). Operator runs `terraform init` + `apply` after installing
 Terraform 1.9+ and configuring `aws configure`.
 
-#### Step 12c — GitHub Actions (queued)
+#### Step 12c — GitHub Actions ✅ **DONE 2026-05-19**
 
-- CI workflow: lint + ruff + mypy + pytest + bandit + semgrep on every PR
-- CD workflow: manual-trigger build → push to ECR → update ECS services
-- No GitHub-hosted runners needed beyond ubuntu-latest
+Three workflows + setup doc. Authenticate to AWS via OIDC (no long-lived
+keys stored in GitHub).
+
+Delivered ([.github/workflows/](../.github/workflows/)):
+- [ci.yml](../.github/workflows/ci.yml) — runs on every PR + push to main:
+  - 4× backend matrix (api / ingestion / ml / notifications): ruff + pytest
+  - Frontend: `npm ci` + lint + production build (with placeholder envs)
+  - Security: bandit (HIGH only) + semgrep (OWASP top-10 + python rule pack)
+  - `ci-passed` aggregate job — point branch protection at this single name
+- [terraform.yml](../.github/workflows/terraform.yml) — runs on PRs touching
+  `infrastructure/terraform/`:
+  - `terraform fmt -check` + `terraform validate` (credential-free)
+  - `terraform plan` against staging via OIDC role `github-actions-terraform-plan`
+  - Posts the plan as a PR comment (truncated at 60KB) so reviewers see
+    the diff before approving
+- [deploy.yml](../.github/workflows/deploy.yml) — manual trigger
+  (`workflow_dispatch`):
+  - Inputs: environment (staging/production), services (`all` or
+    comma-list), image_tag (default: commit SHA)
+  - Builds each service Dockerfile in parallel with buildx GHA cache
+  - Pushes two tags (`:$SHA` + `:latest`) per ECR repo
+  - Sequential `aws ecs update-service --force-new-deployment` per service,
+    waiting for steady state between each — one-at-a-time so rollback
+    is straightforward
+  - Production gated by a GitHub Environment with required-reviewer
+    protection
+- [.github/workflows/README.md](../.github/workflows/README.md) — operator
+  setup guide:
+  - Create GitHub OIDC provider in AWS
+  - Two IAM roles (`github-actions-terraform-plan` read-only,
+    `github-actions-deploy` ECR + ECS) with copy-paste trust + permission
+    policies
+  - Repo secrets (`NEXT_PUBLIC_MAPBOX_TOKEN`) and environments
+    (`staging` / `production`) to configure
+
+**Known gaps left for later:**
+- `terraform apply` is operator-only (not auto-applied by CI — by design)
+- `alembic upgrade head` not yet wired into the deploy workflow; the
+  operator runs it manually before breaking schema changes ship
+- Auto-deploy on merge to `main` deferred until staging has been
+  exercised enough to trust it
+
+---
+
+### Step 12 — Q1 finale closed 2026-05-19
+
+12a (containerization) + 12b (Terraform IaC) + 12c (GitHub Actions) all
+landed. The platform is *deployable* — `terraform apply` followed by a
+`Run workflow → Deploy` click is the path from this repo to a running
+AWS staging environment.
 
 Anything beyond Step 12 belongs to Q2 and onwards — see [ROADMAP.md](ROADMAP.md).
 

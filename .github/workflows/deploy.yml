@@ -1,0 +1,189 @@
+# EconomicBridge — Deploy (build → ECR → ECS rolling update).
+#
+# Manual trigger (workflow_dispatch). The operator picks which services
+# to deploy and which environment (staging/production). Image tag defaults
+# to the commit SHA so rollbacks are just re-running with an older SHA.
+#
+# Why manual rather than auto-on-merge: prod deploys cost money + can break
+# things; we want an explicit human gate. Staging deploys can be promoted
+# to auto-on-merge later by removing the workflow_dispatch and adding
+# `push: branches: [main]` + an environment guard.
+#
+# OIDC role required:
+#   arn:aws:iam::198566079411:role/github-actions-deploy
+# with permissions: ecr:* on the project repos, ecs:UpdateService +
+# ecs:DescribeServices on the cluster, iam:PassRole on the task role.
+
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options: [staging, production]
+        default: staging
+      services:
+        description: "Services to deploy (comma-separated, or 'all')"
+        required: true
+        default: "all"
+      image_tag:
+        description: "Image tag to build + deploy (default: commit SHA)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write   # OIDC -> AWS
+
+env:
+  AWS_REGION_STAGING: eu-west-1
+  AWS_REGION_PRODUCTION: af-south-1
+  PROJECT_NAME: economicbridge
+
+jobs:
+  # ───────── Resolve inputs (env-derived region + service list) ───────
+  setup:
+    name: setup
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.resolve.outputs.services }}
+      region:   ${{ steps.resolve.outputs.region }}
+      tag:      ${{ steps.resolve.outputs.tag }}
+      role_arn: ${{ steps.resolve.outputs.role_arn }}
+      cluster:  ${{ steps.resolve.outputs.cluster }}
+    steps:
+      - id: resolve
+        run: |
+          if [ "${{ inputs.services }}" = "all" ]; then
+            echo 'services=["api","ingestion","ml","notifications","frontend"]' >> $GITHUB_OUTPUT
+          else
+            # Convert "api,ingestion" → ["api","ingestion"]
+            list=$(echo "${{ inputs.services }}" | tr -d ' ' | sed 's/,/","/g' | sed 's/^/["/' | sed 's/$/"]/')
+            echo "services=$list" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "${{ inputs.environment }}" = "production" ]; then
+            echo "region=${{ env.AWS_REGION_PRODUCTION }}" >> $GITHUB_OUTPUT
+          else
+            echo "region=${{ env.AWS_REGION_STAGING }}" >> $GITHUB_OUTPUT
+          fi
+
+          tag="${{ inputs.image_tag }}"
+          if [ -z "$tag" ]; then
+            tag="${{ github.sha }}"
+          fi
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
+          echo "role_arn=arn:aws:iam::198566079411:role/github-actions-deploy" >> $GITHUB_OUTPUT
+          echo "cluster=${{ env.PROJECT_NAME }}-${{ inputs.environment }}-cluster" >> $GITHUB_OUTPUT
+
+  # ───────── Build + push images (parallel per service) ───────────────
+  build:
+    name: build (${{ matrix.service }})
+    needs: setup
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}  # GitHub environment for approval gates
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.setup.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ needs.setup.outputs.role_arn }}
+          aws-region: ${{ needs.setup.outputs.region }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build + push image
+        uses: docker/build-push-action@v5
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPO: ${{ env.PROJECT_NAME }}-${{ inputs.environment }}/${{ matrix.service }}
+          TAG: ${{ needs.setup.outputs.tag }}
+        with:
+          context: economic-bridge-project
+          file: economic-bridge-project/apps/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REPO }}:${{ env.TAG }}
+            ${{ env.REGISTRY }}/${{ env.REPO }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          # Frontend needs the public env vars baked into the build.
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ inputs.environment == 'production' && 'https://app.economicbridge.org' || 'https://staging.economicbridge.org' }}
+            NEXT_PUBLIC_MAPBOX_TOKEN=${{ secrets.NEXT_PUBLIC_MAPBOX_TOKEN }}
+
+  # ───────── Rolling deploy (sequential — gives ECS time per service) ──
+  deploy:
+    name: deploy (${{ matrix.service }})
+    needs: [setup, build]
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1   # one service at a time — easier to rollback
+      matrix:
+        service: ${{ fromJSON(needs.setup.outputs.services) }}
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ needs.setup.outputs.role_arn }}
+          aws-region: ${{ needs.setup.outputs.region }}
+
+      - name: Force new deployment
+        env:
+          CLUSTER: ${{ needs.setup.outputs.cluster }}
+          SERVICE: ${{ env.PROJECT_NAME }}-${{ inputs.environment }}-${{ matrix.service }}
+        run: |
+          echo "Triggering rolling deploy on $SERVICE..."
+          aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$SERVICE" \
+            --force-new-deployment \
+            --no-cli-pager > /dev/null
+
+      - name: Wait for stability
+        env:
+          CLUSTER: ${{ needs.setup.outputs.cluster }}
+          SERVICE: ${{ env.PROJECT_NAME }}-${{ inputs.environment }}-${{ matrix.service }}
+        run: |
+          echo "Waiting for $SERVICE to reach steady state..."
+          aws ecs wait services-stable \
+            --cluster "$CLUSTER" \
+            --services "$SERVICE"
+          echo "$SERVICE is stable"
+
+  # ───────── Summary comment ─────────────────────────────────────────
+  summary:
+    name: summary
+    needs: [setup, deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Write summary
+        run: |
+          {
+            echo "## Deploy result"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Environment | ${{ inputs.environment }} |"
+            echo "| Region      | ${{ needs.setup.outputs.region }} |"
+            echo "| Image tag   | \`${{ needs.setup.outputs.tag }}\` |"
+            echo "| Services    | ${{ inputs.services }} |"
+            echo "| Result      | ${{ needs.deploy.result }} |"
+          } >> $GITHUB_STEP_SUMMARY
