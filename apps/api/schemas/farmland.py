@@ -35,6 +35,7 @@ class AlertType(str, Enum):
     FLOOD = "flood"
     CROP_DISEASE = "crop_disease"
     DROUGHT = "drought"
+    FIRE = "fire"  # NASA FIRMS-derived; added in migration 0011
 
 
 class LonLat(BaseModel):

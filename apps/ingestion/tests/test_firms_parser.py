@@ -27,9 +27,13 @@ def test_mock_detections_are_inside_bbox() -> None:
         assert s <= r.latitude <= n
 
 
-def test_mock_client_returns_data_when_no_map_key() -> None:
+def test_mock_client_returns_data_when_no_map_key(monkeypatch) -> None:
+    # Clear the cached settings + env var so we exercise the empty-key path
+    # even when .env has a real key configured.
+    monkeypatch.setenv("NASA_FIRMS_MAP_KEY", "")
+    from config import get_settings
+    get_settings.cache_clear()
     client = FirmsClient()
-    # default test env should have no MAP_KEY → mock-mode
     assert client.configured is False
 
 

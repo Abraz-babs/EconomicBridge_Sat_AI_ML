@@ -30,8 +30,23 @@ class FirmsTriggerRequest(BaseModel):
             "Defaults to MODIS_NRT."
         ),
     )
-    day_range: int = Field(default=1, ge=1, le=10)
+    # NASA caps NRT endpoints at 5 days (archive endpoint allows 10, but we
+    # only use NRT here). Going above 5 returns a 400.
+    day_range: int = Field(default=1, ge=1, le=5)
     dry_run: bool = False
+    generate_alerts: bool = Field(
+        default=False,
+        description=(
+            "If true, promote high-confidence detections into "
+            "tenant_<id>.alert_events so the farmland dashboard shows them."
+        ),
+    )
+
+
+class AlertWriteSummary(BaseModel):
+    candidates: int
+    inserted: int
+    skipped_duplicates: int
 
 
 class FirmsTriggerResponse(BaseModel):
@@ -45,9 +60,17 @@ class FirmsTriggerResponse(BaseModel):
     finished_at: datetime | None
     dry_run: bool
     error_message: str | None
+    alerts: AlertWriteSummary | None = None
 
 
 def _to_response(result: IngestResult) -> FirmsTriggerResponse:
+    alerts: AlertWriteSummary | None = None
+    if result.alerts is not None:
+        alerts = AlertWriteSummary(
+            candidates=result.alerts.candidates,
+            inserted=result.alerts.inserted,
+            skipped_duplicates=result.alerts.skipped_duplicates,
+        )
     return FirmsTriggerResponse(
         run_id=result.run_id,
         source=result.source,
@@ -59,6 +82,7 @@ def _to_response(result: IngestResult) -> FirmsTriggerResponse:
         finished_at=result.finished_at,
         dry_run=result.dry_run,
         error_message=result.error_message,
+        alerts=alerts,
     )
 
 
@@ -88,6 +112,7 @@ async def trigger_firms(
             source=body.source,
             day_range=body.day_range,
             dry_run=body.dry_run,
+            generate_alerts=body.generate_alerts,
             trace_id=trace_id,
             trigger="manual",
         )

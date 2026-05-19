@@ -36,16 +36,21 @@ log = logging.getLogger(__name__)
 # Default RoI bounding boxes (W, S, E, N) for the pilot tenants — mirrors
 # satellite_roi in tenants.yaml. Kept here so the ingestion service has a
 # self-contained config; production reads these from tenants.yaml directly.
+# Bounding boxes (W, S, E, N) for every tenant that has a schema in the DB.
+# Source of truth for the satellite_roi is tenants.yaml; this dict mirrors it
+# so the ingestion service has a self-contained config in dev. Keep this in
+# sync with the schemas created by migrations 0002 + 0008.
 PILOT_BBOX: dict[str, tuple[float, float, float, float]] = {
-    "kebbi":   (3.60, 10.80, 5.50, 13.20),
-    "benue":   (7.70, 6.30, 10.00, 8.10),
-    "plateau": (8.30, 8.40, 10.20, 10.50),
-    "kaduna":  (6.90, 9.20, 9.40, 11.60),
-    "niger":   (3.50, 8.40, 7.50, 12.20),
-    "zamfara": (5.50, 11.00, 7.70, 13.40),
-    "fct":     (6.70, 8.30, 8.10, 9.30),
-    "ghana":   (-3.50, 4.70, 1.20, 11.20),
-    "senegal": (-17.50, 12.30, -11.30, 15.70),
+    "kebbi":    (3.60, 10.80, 5.50, 13.20),
+    "benue":    (7.70, 6.30, 10.00, 8.10),
+    "plateau":  (8.30, 8.40, 10.20, 10.50),
+    "kaduna":   (6.90, 9.20, 9.40, 11.60),
+    "niger":    (3.50, 8.40, 7.50, 12.20),
+    "zamfara":  (5.50, 11.00, 7.70, 13.40),
+    "fct":      (6.70, 8.30, 8.10, 9.30),
+    "nasarawa": (7.70, 7.70, 9.60, 9.30),
+    "ghana":    (-3.50, 4.70, 1.20, 11.20),
+    "senegal":  (-17.50, 12.30, -11.30, 15.70),
 }
 
 
@@ -100,8 +105,8 @@ class FirmsClient:
             return _mock_detections(bbox)
 
         src = source or self._settings.nasa_firms_default_source
-        if not 1 <= day_range <= 10:
-            raise ValueError(f"day_range must be 1..10 (got {day_range})")
+        if not 1 <= day_range <= 5:
+            raise ValueError(f"day_range must be 1..5 for NRT (got {day_range})")
 
         w, s, e, n = bbox
         path = (
@@ -158,8 +163,15 @@ def _parse_csv(text: str) -> Iterable[FirmsDetection]:
             yield FirmsDetection(
                 latitude=float(row["latitude"]),
                 longitude=float(row["longitude"]),
-                brightness_k=_maybe_float(row.get("brightness")),
-                bright_t31_k=_maybe_float(row.get("bright_t31")),
+                # MODIS calls them brightness / bright_t31.
+                # VIIRS calls them bright_ti4 / bright_ti5. Same physics,
+                # different column names — accept either.
+                brightness_k=_maybe_float(
+                    row.get("brightness") or row.get("bright_ti4")
+                ),
+                bright_t31_k=_maybe_float(
+                    row.get("bright_t31") or row.get("bright_ti5")
+                ),
                 scan=_maybe_float(row.get("scan")),
                 track=_maybe_float(row.get("track")),
                 detected_at=_parse_acq(row.get("acq_date"), row.get("acq_time")),

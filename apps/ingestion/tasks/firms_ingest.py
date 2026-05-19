@@ -25,7 +25,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import is_valid_tenant_id, set_tenant_schema
+from processors.firms_to_alerts import firms_to_alerts
 from sources.nasa_firms import PILOT_BBOX, FirmsClient, FirmsDetection, FirmsError
+from tasks.firms_alerts import AlertWriteResult, write_alert_candidates
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +46,9 @@ class IngestResult:
     finished_at: datetime | None
     dry_run: bool
     error_message: str | None
+    # Populated when generate_alerts=True; None otherwise. Keeps the
+    # heat-signature counts and the alert-promotion counts disambiguated.
+    alerts: AlertWriteResult | None = None
 
 
 async def ingest_firms_for_tenant(
@@ -55,6 +60,7 @@ async def ingest_firms_for_tenant(
     trace_id: UUID | None = None,
     trigger: str = "manual",
     dry_run: bool = False,
+    generate_alerts: bool = False,
     client: FirmsClient | None = None,
 ) -> IngestResult:
     """Run one FIRMS pull for `tenant_id` and persist the detections.
@@ -105,6 +111,13 @@ async def ingest_firms_for_tenant(
             session, tenant_id=tenant_id, run_id=run_id, detections=detections
         )
 
+    alert_result: AlertWriteResult | None = None
+    if generate_alerts and not dry_run and detections:
+        candidates = firms_to_alerts(detections, tenant_id=tenant_id)
+        alert_result = await write_alert_candidates(
+            session, tenant_id=tenant_id, candidates=candidates
+        )
+
     duration_ms = int((time.monotonic() - started_ms) * 1000)
     finished_at = datetime.now(timezone.utc)
     await _finalise_run(
@@ -118,8 +131,11 @@ async def ingest_firms_for_tenant(
     await session.commit()
 
     log.info(
-        "firms.ingest tenant=%s source=%s records=%d duration_ms=%d dry_run=%s",
-        tenant_id, src_label, inserted, duration_ms, dry_run,
+        "firms.ingest tenant=%s source=%s records=%d alerts_inserted=%s "
+        "duration_ms=%d dry_run=%s",
+        tenant_id, src_label, inserted,
+        alert_result.inserted if alert_result else "n/a",
+        duration_ms, dry_run,
     )
     return IngestResult(
         run_id=run_id,
@@ -132,6 +148,7 @@ async def ingest_firms_for_tenant(
         finished_at=finished_at,
         dry_run=dry_run,
         error_message=None,
+        alerts=alert_result,
     )
 
 

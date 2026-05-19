@@ -23,7 +23,13 @@ from sqlalchemy.ext.asyncio import (
 from config import get_settings
 
 PILOT_TENANT_IDS: frozenset[str] = frozenset(
-    {"kebbi", "benue", "plateau", "kaduna", "niger", "zamfara", "fct", "ghana", "senegal"}
+    {
+        # Created by migration 0002
+        "kebbi", "benue", "plateau", "kaduna", "niger", "zamfara",
+        "fct", "ghana", "senegal",
+        # Added by migration 0008
+        "nasarawa",
+    }
 )
 
 
