@@ -46,7 +46,10 @@ jobs:
           if [ -f apps/${{ matrix.service }}/requirements-dev.txt ]; then
             pip install -r apps/${{ matrix.service }}/requirements-dev.txt
           fi
-          pip install ruff pytest pytest-asyncio
+          # httpx is required by fastapi.testclient.TestClient — used by
+          # every service's test_health.py but only listed in apps/api's
+          # requirements-dev.txt. Install unconditionally for the matrix.
+          pip install ruff pytest pytest-asyncio httpx
 
       - name: Ruff (lint)
         run: ruff check apps/${{ matrix.service }}
