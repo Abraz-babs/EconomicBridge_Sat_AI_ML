@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     # VIIRS_SNPP_NRT, VIIRS_NOAA20_NRT, MODIS_SP (standard product, 24h delay).
     nasa_firms_default_source: str = "MODIS_NRT"
 
+    # N2YO — live satellite-pass predictions. Empty key => 503 from the
+    # passes endpoint, which is the right answer: no fake pass schedules.
+    n2yo_api_key: str = ""
+    n2yo_base_url: str = "https://api.n2yo.com/rest/v1/satellite"
+    # Minimum elevation (degrees) we consider a "useful" overhead pass.
+    # Below ~25° the satellite is too oblique for good imagery of the
+    # target ROI. 30° matches Copernicus' own pass-planning heuristics.
+    n2yo_default_min_elevation: int = 30
+
 
 @lru_cache
 def get_settings() -> Settings:
