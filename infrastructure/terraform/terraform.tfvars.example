@@ -1,0 +1,62 @@
+# EconomicBridge — example tfvars file.
+#
+# Copy to `terraform.tfvars` (gitignored) and edit. Don't put real
+# secrets here — secrets live in AWS Secrets Manager, populated via
+# `aws secretsmanager put-secret-value` after `terraform apply`.
+
+# ─── Staging defaults (cheap, single-NAT, db.t3.small) ────────────────
+
+aws_region   = "eu-west-1"
+environment  = "staging"
+project_name = "economicbridge"
+
+vpc_cidr           = "10.40.0.0/16"
+az_count           = 2
+single_nat_gateway = true   # one shared NAT — ~$32/mo instead of $64/mo
+
+# RDS — staging defaults
+rds_instance_class         = "db.t3.small"
+rds_allocated_storage_gb   = 20
+rds_max_storage_gb         = 100
+rds_multi_az               = true   # still Multi-AZ; staging is the rehearsal
+rds_backup_retention_days  = 7
+rds_deletion_protection    = false
+
+# Redis — single node staging
+redis_node_type        = "cache.t3.micro"
+redis_num_cache_nodes  = 1
+
+# ECS — small footprint, autoscaling enabled
+ecs_min_count           = 1
+ecs_max_count           = 4
+ecs_target_cpu_percent  = 70
+
+# TLS — set to your ACM cert ARN. Leave empty to start with HTTP only.
+acm_certificate_arn = ""
+
+# Lock down ALB access if you're not ready for public yet.
+# Default is open to the internet:
+alb_allowed_cidrs = ["0.0.0.0/0"]
+
+# Container image tag — set by CI/CD to git SHA in production.
+image_tag = "latest"
+
+# Alarms — fill in to receive CloudWatch alarm emails.
+alarm_email = ""
+
+# ─── PRODUCTION OVERRIDES (uncomment in a separate prod.tfvars) ───────
+#
+# aws_region                 = "af-south-1"
+# environment                = "production"
+# single_nat_gateway         = false               # one NAT per AZ (HA)
+# rds_instance_class         = "db.t3.medium"     # or db.r6g.large
+# rds_allocated_storage_gb   = 100
+# rds_max_storage_gb         = 500
+# rds_backup_retention_days  = 30
+# rds_deletion_protection    = true
+# redis_num_cache_nodes      = 2                  # primary + replica
+# ecs_min_count              = 2
+# ecs_max_count              = 10
+# alb_allowed_cidrs          = ["0.0.0.0/0"]      # or your office CIDRs
+# acm_certificate_arn        = "arn:aws:acm:af-south-1:198566079411:certificate/..."
+# alarm_email                = "ops@bizrafarms.com"

@@ -638,18 +638,65 @@ Two source files edited to support the build:
 - [next.config.ts](../apps/frontend/next.config.ts) — added `output: "standalone"`
 - [requirements.txt](../apps/api/requirements.txt) — added `shapely>=2.0,<3.0`
 
-#### Step 12b — Terraform IaC (queued)
+#### Step 12b — Terraform IaC ✅ **DONE 2026-05-19**
 
-Full production layout per CLAUDE.md §3 — not a lean MVP:
-- Region `af-south-1` (Cape Town) for data sovereignty
-- VPC across 2 AZs, public + private subnets, NAT gateway
-- RDS PostgreSQL 16 Multi-AZ with PostGIS, ElastiCache Redis, S3 (tenant-prefix)
-- ECS Fargate per microservice, ALB in front, autoscaling
-- Secrets Manager at the paths in CLAUDE.md §8 — NEVER env files in production
-- IAM least-privilege task roles per service
+Full production layout shipped. 20 files, ~70 AWS resources. Staging
+targets `eu-west-1` (Ireland) for cost (~$60-100/mo) with production
+overrides queued for `af-south-1` (Cape Town).
 
-Estimated scope: ~15 files, ~1200 lines. Code-only — `terraform apply` is
-the user's call once AWS credentials + state bucket exist.
+Delivered ([infrastructure/terraform/](../infrastructure/terraform/)):
+- [versions.tf](../infrastructure/terraform/versions.tf), [backend.tf](../infrastructure/terraform/backend.tf),
+  [providers.tf](../infrastructure/terraform/providers.tf) — Terraform 1.9+,
+  AWS provider ~> 5.70, S3 backend at
+  `economicbridge-tf-state-198566079411` with DynamoDB locking,
+  workspace-namespaced state keys
+- [variables.tf](../infrastructure/terraform/variables.tf),
+  [locals.tf](../infrastructure/terraform/locals.tf),
+  [data.tf](../infrastructure/terraform/data.tf) — all input variables
+  (staging-optimised defaults), `services` map driving every `for_each`,
+  `secret_paths` matching CLAUDE.md §8
+- [network.tf](../infrastructure/terraform/network.tf) — VPC `10.40.0.0/16`,
+  2 AZs, public + private subnets, IGW + NAT (single for staging,
+  per-AZ for prod), S3 gateway endpoint to dodge NAT egress costs
+- [security_groups.tf](../infrastructure/terraform/security_groups.tf) — ALB
+  (443/80 from internet), ECS tasks (per-service port from ALB), RDS
+  (5432 from ECS only), Redis (6379 from ECS only) — strict
+  defence-in-depth
+- [ecr.tf](../infrastructure/terraform/ecr.tf) — 5 repos, IMMUTABLE tags,
+  scan-on-push, lifecycle (keep 20 tagged, expire untagged after 7d)
+- [secrets.tf](../infrastructure/terraform/secrets.tf) — RDS password
+  (Terraform-generated, 32 chars) + 10 external-provider secrets created
+  empty with `PLACEHOLDER_NOT_SET`, `lifecycle.ignore_changes` so the
+  operator's `aws secretsmanager put-secret-value` doesn't fight Terraform
+- [iam.tf](../infrastructure/terraform/iam.tf) — shared ECS execution role +
+  one task role per service (least-privilege), RDS enhanced-monitoring role
+- [rds.tf](../infrastructure/terraform/rds.tf) — PostgreSQL 16.4 Multi-AZ,
+  gp3 storage with autoscaling 20→100GB, encrypted at rest, `rds.force_ssl`,
+  enhanced monitoring + Performance Insights, deletion-protection toggle
+- [redis.tf](../infrastructure/terraform/redis.tf) — Redis 7.1 replication
+  group, at-rest + in-transit encryption, automatic failover when
+  `redis_num_cache_nodes >= 2`
+- [alb.tf](../infrastructure/terraform/alb.tf) — ALB, 5 target groups, HTTPS
+  listener (TLS-1.3 policy) when ACM cert provided else HTTP-only, path-based
+  routing (`/api/v1/*` → api, `/ingestion/*` → ingestion, etc., `/*` →
+  frontend)
+- [logs.tf](../infrastructure/terraform/logs.tf) — 1 CloudWatch log group
+  per service, 14d retention staging / 90d prod
+- [ecs.tf](../infrastructure/terraform/ecs.tf) — Fargate cluster + 5
+  task definitions + 5 services with `awsvpc` networking, container insights
+  enabled, CPU target-tracking autoscaling, deployment circuit breaker with
+  auto-rollback, secrets injected via Secrets Manager
+- [alarms.tf](../infrastructure/terraform/alarms.tf) — SNS topic + alarms
+  on ALB 5xx, ECS CPU per service, RDS CPU + storage, Redis CPU
+- [outputs.tf](../infrastructure/terraform/outputs.tf) — ALB DNS, RDS
+  endpoint, ECR URLs, secret ARNs, log groups
+- [terraform.tfvars.example](../infrastructure/terraform/terraform.tfvars.example),
+  [README.md](../infrastructure/terraform/README.md) — operator runbook
+  for first-time deploy, secret population, image push, prod promotion
+
+Resource count ≈ 80. First `terraform apply` ≈ 25 minutes (RDS is the
+long tail). Operator runs `terraform init` + `apply` after installing
+Terraform 1.9+ and configuring `aws configure`.
 
 #### Step 12c — GitHub Actions (queued)
 
