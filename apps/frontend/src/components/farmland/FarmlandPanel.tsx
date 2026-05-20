@@ -236,7 +236,9 @@ function fmtNgn(value: number, isEcowas: boolean): string {
 // ─── Component ────────────────────────────────────────────────────────────
 
 export default function FarmlandPanel() {
-  const [activeMapLayer, setActiveMapLayer] = useState<MapLayerKey>('heat');
+  // Default to SAR — the radar backscatter is what the conflict / encroachment
+  // model actually consumes. Heat is a secondary feeder signal (CLAUDE.md §2).
+  const [activeMapLayer, setActiveMapLayer] = useState<MapLayerKey>('sar');
   const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
 
   const query = useFarmlandAlerts({ tenantId: activeTenantId, perPage: 50 });
@@ -310,7 +312,7 @@ export default function FarmlandPanel() {
       <div className="fp-header">
         <div>
           <div className="fp-title">Farmland Protection &amp; Livelihood Alert System</div>
-          <div className="fp-subtitle">Copernicus SAR · Heat Signature Analysis · 48–72hr Conflict Prediction Window</div>
+          <div className="fp-subtitle">Encroachment prediction · Copernicus Sentinel-1 SAR · 48–72hr conflict-risk window · Heat &amp; NDVI as supporting signals</div>
         </div>
         <div className="fp-live-badge">
           <div className="fp-pulse" />
@@ -385,7 +387,7 @@ export default function FarmlandPanel() {
         <div className="fp-map">
           <div className="fp-map-header">
             <span className="fp-map-title">
-              Satellite Heat &amp; Boundary Overlay — {stateLabel}
+              Encroachment &amp; Boundary Monitor — {stateLabel}
             </span>
             <div className="fp-map-controls">
               {mapLayers.map((l) => (

@@ -29,6 +29,25 @@ class AlertWriteResult:
     candidates: int       # high-confidence detections produced by the processor
     inserted: int         # new alert_events rows
     skipped_duplicates: int  # candidates whose model_input_hash already existed
+    skipped_capped: int = 0  # candidates dropped because per-run cap was hit
+
+
+# Severity rank used to pick which candidates survive the per-run cap.
+# Lower number = louder alert.
+_SEVERITY_RANK: dict[str, int] = {
+    "critical": 0,
+    "high": 1,
+    "medium": 2,
+    "low": 3,
+}
+
+
+# Fire is a SECONDARY signal in the encroachment story. The Farmland
+# Protection dashboard is centred on conflict prediction; a 30-pixel burn
+# front turning into 30 alert rows drowns the conflict feed. Cap the
+# scheduled FIRMS sweep to the top N fires per tenant per run and let the
+# rest live in heat_signatures for the conflict model to consume.
+DEFAULT_MAX_ALERTS_PER_RUN: int = 2
 
 
 async def write_alert_candidates(
@@ -36,36 +55,54 @@ async def write_alert_candidates(
     *,
     tenant_id: str,
     candidates: list[AlertCandidate],
+    max_per_run: int = DEFAULT_MAX_ALERTS_PER_RUN,
 ) -> AlertWriteResult:
-    """Insert each candidate, skipping any whose model_input_hash already exists.
+    """Insert candidates (capped + dedup'd) into the tenant alert_events.
 
-    Caller owns the AsyncSession. We commit one row at a time so a single
-    constraint violation doesn't poison the rest of the batch.
+    Selection rule:
+      1. Sort by severity (critical first, low last), then confidence DESC.
+      2. Take the top `max_per_run` candidates.
+      3. For each, skip if a row with the same model_input_hash already
+         exists (dedup across re-runs of the same FIRMS window).
+
+    The rest stay in heat_signatures (already written by the upstream
+    ingest task) so the conflict-prediction model can still consume them.
     """
     if not candidates:
         return AlertWriteResult(candidates=0, inserted=0, skipped_duplicates=0)
 
+    ranked = sorted(
+        candidates,
+        key=lambda c: (
+            _SEVERITY_RANK.get(c.severity, len(_SEVERITY_RANK)),
+            -c.confidence_score,
+        ),
+    )
+    survivors = ranked[: max(0, int(max_per_run))]
+    dropped_by_cap = len(ranked) - len(survivors)
+
     await set_tenant_schema(session, tenant_id)
 
     inserted = 0
-    skipped = 0
-    for c in candidates:
-        existed = await _hash_exists(session, c.model_input_hash)
-        if existed:
-            skipped += 1
+    skipped_dups = 0
+    for c in survivors:
+        if await _hash_exists(session, c.model_input_hash):
+            skipped_dups += 1
             continue
         await _insert_alert(session, c)
         await session.commit()
         inserted += 1
 
     log.info(
-        "firms.alerts tenant=%s candidates=%d inserted=%d skipped_dups=%d",
-        tenant_id, len(candidates), inserted, skipped,
+        "firms.alerts tenant=%s candidates=%d inserted=%d "
+        "skipped_dups=%d skipped_capped=%d",
+        tenant_id, len(candidates), inserted, skipped_dups, dropped_by_cap,
     )
     return AlertWriteResult(
         candidates=len(candidates),
         inserted=inserted,
-        skipped_duplicates=skipped,
+        skipped_duplicates=skipped_dups,
+        skipped_capped=dropped_by_cap,
     )
 
 

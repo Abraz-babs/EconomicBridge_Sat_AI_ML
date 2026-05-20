@@ -47,6 +47,7 @@ class AlertWriteSummary(BaseModel):
     candidates: int
     inserted: int
     skipped_duplicates: int
+    skipped_capped: int = 0
 
 
 class FirmsTriggerResponse(BaseModel):
@@ -70,6 +71,7 @@ def _to_response(result: IngestResult) -> FirmsTriggerResponse:
             candidates=result.alerts.candidates,
             inserted=result.alerts.inserted,
             skipped_duplicates=result.alerts.skipped_duplicates,
+            skipped_capped=result.alerts.skipped_capped,
         )
     return FirmsTriggerResponse(
         run_id=result.run_id,
