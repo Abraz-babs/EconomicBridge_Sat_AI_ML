@@ -107,10 +107,12 @@ terraform.rc
 models/artifacts/*.joblib
 models/artifacts/*.pkl
 models/artifacts/*.pt
+models/artifacts/*.pth
 models/artifacts/*.h5
 apps/ml/artifacts/*.joblib
 apps/ml/artifacts/*.pkl
 apps/ml/artifacts/*.pt
+apps/ml/artifacts/*.pth
 apps/ml/artifacts/*.h5
 # Keep directory structure and README
 !models/artifacts/.gitkeep

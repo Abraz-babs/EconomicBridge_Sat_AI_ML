@@ -1,14 +1,19 @@
 """Tests for POST /api/v1/predict/crop_disease.
 
 Same pattern as test_predict_router.py — `persist=False` for non-DB tests,
-`persist=True` is integration-only. Torch is not installed in this test
-suite, so the classifier runs in stub mode (which is what we want — keeps
-the API contract honest while not paying a 750MB install for unit tests).
+`persist=True` is integration-only.
+
+These tests must work whether torch is installed (untuned mode, decodes
+the image) or not (stub mode, hashes the bytes). The fixture generates
+a real 32×32 PNG so the untuned-mode path succeeds either way.
 """
 from __future__ import annotations
 
 import base64
 import hashlib
+import io
+
+import pytest
 
 from fastapi.testclient import TestClient
 
@@ -21,12 +26,36 @@ client = TestClient(app)
 
 
 def _tiny_png_b64() -> str:
-    """A tiny PNG-looking blob that's enough for the request to validate.
+    """Generate a real 32×32 PNG so the untuned-mode PIL decoder succeeds
+    even when torch is installed. Stub mode treats it as bytes regardless."""
+    try:
+        from PIL import Image
+    except ImportError:
+        # Stub mode only — bytes never get decoded by PIL.
+        return base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"x" * 64).decode()
+    img = Image.new("RGB", (32, 32), color=(120, 160, 90))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
 
-    We're in stub mode (no torch) so the bytes are never actually decoded
-    by PIL — the classifier hashes them and derives probabilities from
-    the hash."""
-    return base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"x" * 64).decode()
+
+@pytest.fixture(scope="module", autouse=True)
+def _force_stub_mode():
+    """Pin the singleton to stub mode for these tests.
+
+    Stub mode is deterministic + zero-deps, which is what router-contract
+    tests need. Even when torch + a trained .pth are present, we don't
+    want this suite to depend on either — that's covered by the slow
+    end-to-end test in test_crop_trainer.py.
+    """
+    from models import crop_classifier as cc
+
+    saved = cc._CLASSIFIER
+    instance = cc.CropClassifier()
+    instance._mode = "stub"
+    cc._CLASSIFIER = instance
+    yield
+    cc._CLASSIFIER = saved
 
 
 def _body(**overrides) -> dict:
