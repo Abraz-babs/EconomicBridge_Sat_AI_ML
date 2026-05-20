@@ -1,21 +1,24 @@
 """GET /api/v1/imagery/recent — live Sentinel scene metadata for a tenant.
+POST /api/v1/imagery/download — pull one SAFE bundle to S3 (Phase A.6).
 
-Stateless STAC search against CDSE. We do NOT download the raster
-products here — that's a separate concern (Phase A.6). This endpoint
-answers "what Sentinel data is available for {tenant} in the last
-{days} days?" which is enough to drive the dashboard's data-recency
-indicators.
+`/recent` is stateless STAC search. `/download` is the SAFE archiver
+that streams one scene from CDSE to tenant-prefixed S3 and records
+the catalogue row.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from db import is_valid_tenant_id
+from db import get_session, is_valid_tenant_id
 from sources.copernicus import CopernicusClient, CopernicusError
 from sources.nasa_firms import PILOT_BBOX
+from tasks.imagery_download import ImageryDownloadResult, download_scene_to_s3
 
 router = APIRouter(prefix="/imagery", tags=["imagery"])
 
@@ -134,3 +137,84 @@ async def recent_imagery(
             for s in scenes
         ],
     )
+
+
+# ─── POST /imagery/download ───────────────────────────────────────────────
+
+
+class ImageryDownloadRequest(BaseModel):
+    tenant_id: str = Field(min_length=1, max_length=50)
+    scene_id: str = Field(min_length=1, max_length=200)
+    collection: str = "sentinel-2-l2a"
+    captured_at: datetime
+
+
+class ImageryDownloadResponse(BaseModel):
+    download_id: UUID
+    tenant_id: str
+    scene_id: str
+    collection: str
+    status: str
+    s3_bucket: str
+    s3_key: str
+    size_bytes: int
+    sha256: str | None
+    duration_ms: int
+    error_message: str | None
+
+
+def _to_response(r: ImageryDownloadResult) -> ImageryDownloadResponse:
+    return ImageryDownloadResponse(
+        download_id=r.download_id,
+        tenant_id=r.tenant_id,
+        scene_id=r.scene_id,
+        collection=r.collection,
+        status=r.status,
+        s3_bucket=r.s3_bucket,
+        s3_key=r.s3_key,
+        size_bytes=r.size_bytes,
+        sha256=r.sha256,
+        duration_ms=r.duration_ms,
+        error_message=r.error_message,
+    )
+
+
+@router.post(
+    "/download",
+    response_model=ImageryDownloadResponse,
+    summary="Archive one Sentinel SAFE bundle to tenant-prefixed S3",
+)
+async def trigger_download(
+    body: ImageryDownloadRequest,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ImageryDownloadResponse:
+    tid = body.tenant_id.strip().lower()
+    if not is_valid_tenant_id(tid):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unknown tenant: {tid!r}",
+        )
+    if body.collection not in SUPPORTED_COLLECTIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported collection: {body.collection!r}. "
+                f"Valid: {sorted(SUPPORTED_COLLECTIONS)}"
+            ),
+        )
+
+    trace_id = getattr(request.state, "trace_id", uuid4())
+    try:
+        result = await download_scene_to_s3(
+            session,
+            tenant_id=tid,
+            scene_id=body.scene_id,
+            collection=body.collection,
+            captured_at=body.captured_at,
+            trace_id=trace_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return _to_response(result)

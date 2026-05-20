@@ -219,6 +219,88 @@ class CopernicusClient:
         scenes.sort(key=lambda s: s.captured_at, reverse=True)
         return scenes
 
+    # ─── Scene download (OData) ────────────────────────────────────────────
+
+    async def lookup_scene_uuid(self, scene_id: str) -> str | None:
+        """Resolve a SAFE-style scene id (e.g. 'S2A_MSIL2A_...SAFE') to the
+        CDSE Products UUID needed by the OData $value endpoint.
+
+        Returns None when no product with that name is found.
+        """
+        token = await self.access_token()
+        url = (
+            f"{self._settings.copernicus_odata_url}/Products"
+            f"?$filter=Name eq '{scene_id}'&$select=Id,Name&$top=1"
+        )
+        async with self._http_ctx() as client:
+            resp = await client.get(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                },
+                timeout=30.0,
+            )
+        if resp.status_code != 200:
+            raise CopernicusError(
+                f"CDSE OData {resp.status_code}: {resp.text[:200]}"
+            )
+        payload = resp.json()
+        rows = payload.get("value") or []
+        if not rows:
+            return None
+        uuid = rows[0].get("Id")
+        return str(uuid) if uuid else None
+
+    def odata_download_url(self, scene_uuid: str) -> str:
+        """Build the OData $value URL for a product UUID. Caller streams it."""
+        return f"{self._settings.copernicus_odata_url}/Products({scene_uuid})/$value"
+
+    async def stream_download(
+        self,
+        *,
+        scene_uuid: str,
+        timeout_seconds: int | None = None,
+    ) -> httpx.Response:
+        """Open a streaming GET against the OData $value URL.
+
+        Returns an httpx.Response with `stream=True` so the caller can
+        `iter_bytes()` straight into S3. Caller MUST close the response.
+        We do not buffer the body in memory — SAFE bundles are huge.
+        """
+        token = await self.access_token()
+        timeout = timeout_seconds or self._settings.copernicus_download_timeout_seconds
+
+        # We DON'T use the borrowed/owned client wrapper here: streaming
+        # responses need the underlying httpx client to outlive the call.
+        # Tests pass `http=` explicitly so we route through theirs.
+        client = self._http if self._http is not None else httpx.AsyncClient()
+        try:
+            request = client.build_request(
+                "GET",
+                self.odata_download_url(scene_uuid),
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/octet-stream",
+                },
+                timeout=timeout,
+            )
+            resp = await client.send(request, stream=True, follow_redirects=True)
+        except Exception:
+            if self._http is None:
+                await client.aclose()
+            raise
+
+        if resp.status_code != 200:
+            body = (await resp.aread())[:200]
+            await resp.aclose()
+            if self._http is None:
+                await client.aclose()
+            raise CopernicusError(
+                f"CDSE download {resp.status_code}: {body!r}"
+            )
+        return resp
+
     # ─── HTTP context ──────────────────────────────────────────────────────
 
     def _http_ctx(self) -> httpx.AsyncClient | _Borrowed:

@@ -72,6 +72,13 @@ class Settings(BaseSettings):
     # Refresh the token this many seconds before stated expiry — protects
     # against clock skew + in-flight requests landing post-expiry.
     copernicus_token_refresh_skew_seconds: int = 60
+    # CDSE OData endpoint for raw SAFE downloads. Search is via the Sentinel
+    # Hub Catalog API (above); download is via OData on dataspace.
+    copernicus_odata_url: str = "https://catalogue.dataspace.copernicus.eu/odata/v1"
+    # Hard timeout for one SAFE download. Sentinel-2 L2A scenes run
+    # ~600 MB — over a 10 Mbps link that's ~8 minutes. 15 min headroom
+    # for slower networks and the SAR (Sentinel-1 GRD) which is larger.
+    copernicus_download_timeout_seconds: int = 15 * 60
 
     # ML service (conflict predictor + future ShockGuard, CropGuard). The
     # ingestion service calls ML over HTTP per the production architecture
@@ -83,6 +90,21 @@ class Settings(BaseSettings):
     # Cap conflict alerts inserted per tenant per scheduled run. Same logic
     # as DEFAULT_MAX_ALERTS_PER_RUN for FIRMS — keeps the feed legible.
     conflict_max_alerts_per_run: int = 3
+
+    # S3 imagery archive — Phase A.6. Empty bucket name = mock mode; the
+    # downloader records what *would* have happened but doesn't call AWS.
+    # Production Terraform (infrastructure/terraform/) provisions the
+    # bucket per tenant naming convention.
+    s3_imagery_bucket: str = ""
+    s3_imagery_region: str = "eu-west-1"
+    # Multipart-upload part size in bytes. 8 MB matches boto3's default
+    # transfer config; smaller parts mean more requests but lower retry
+    # cost on flaky links — sane staging default.
+    s3_imagery_part_size_bytes: int = 8 * 1024 * 1024
+    # Cap on per-attempt download size to protect dev disks. Sentinel SAFE
+    # bundles run ~600 MB-1 GB; this is set at 2 GB to give headroom for
+    # future Sentinel-3 OLCI tiles (which can hit 1.5 GB).
+    s3_imagery_max_bytes: int = 2 * 1024 * 1024 * 1024
 
 
 @lru_cache
