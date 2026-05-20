@@ -18,6 +18,54 @@
 export const API_BASE_URL: string =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:8000/api/v1';
 
+/**
+ * Base URL for the satellite-ingestion microservice (separate process,
+ * separate port). Used for live N2YO pass queries, manual FIRMS triggers,
+ * and scheduler introspection. Unlike the API service it returns plain
+ * JSON (no success/data envelope) — call via `ingestionFetch`, not
+ * `apiFetch`.
+ */
+export const INGESTION_BASE_URL: string =
+  process.env.NEXT_PUBLIC_INGESTION_BASE_URL ?? 'http://localhost:8001/api/v1';
+
+/** Raw JSON fetcher for the ingestion service (no envelope unwrap). */
+export async function ingestionFetch<T>(
+  path: string,
+  opts: { signal?: AbortSignal; method?: string; body?: unknown } = {},
+): Promise<T> {
+  const url = path.startsWith('http') ? path : `${INGESTION_BASE_URL}${path}`;
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: opts.method ?? 'GET',
+      headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      signal: opts.signal,
+    });
+  } catch (err) {
+    throw new ApiException(
+      err instanceof Error ? err.message : 'Network error',
+      0,
+      null,
+    );
+  }
+
+  if (!response.ok) {
+    let detail = `${response.status} ${response.statusText}`;
+    try {
+      const body = await response.json();
+      detail = (body && (body.detail ?? body.error)) ?? detail;
+    } catch {
+      // non-JSON body — keep the status text we already have
+    }
+    throw new ApiException(`Ingestion: ${detail}`, response.status, null);
+  }
+  return (await response.json()) as T;
+}
+
 // ─── Envelope types (mirror schemas/envelope.py) ───────────────────────────
 
 export interface ResponseMeta {

@@ -3,6 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { Tenant } from '@/data/tenants';
+import {
+  minutesUntil,
+  pickLastPass,
+  pickNextPass,
+  useSatellitePasses,
+} from '@/hooks/useSatellitePasses';
 
 export type AlertSeverity = 'critical' | 'high' | 'medium' | 'low' | 'resolved';
 
@@ -96,6 +102,22 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
   const [mapError, setMapError] = useState<string | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [pulse, setPulse] = useState(0);
+
+  // Wall-clock tick that drives the "next pass in X min" countdown. Updates
+  // every 30s — finer than that is wasted re-renders for a minute-resolution
+  // countdown. Initialised lazily so the first render is correct without a
+  // setState-in-effect.
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Live satellite-pass schedule from the ingestion service.
+  const passesQuery = useSatellitePasses({ tenantId: tenant.id, days: 2 });
+  const now = new Date(nowMs);
+  const nextPass = pickNextPass(passesQuery.data?.passes, now);
+  const lastPass = pickLastPass(passesQuery.data?.passes, now);
 
   // Heartbeat for the pulsing critical/high pins. 60ms = ~16fps, plenty for a
   // halo expand/shrink while keeping deck.gl re-renders cheap.
@@ -380,11 +402,33 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
       </div>
 
       <div className="fp-map-overlay">
-        {cadence.source}<br />
-        N2YO Pass: {cadence.lastPassMin} min ago<br />
-        Resolution: {cadence.resolution}<br />
-        Coverage: {cadence.coverage}<br />
-        Next pass: {cadence.nextPassMin} min
+        {/* Live N2YO data when available, deterministic fallback otherwise. */}
+        {nextPass ? (
+          <>
+            {nextPass.satellite_name} ({nextPass.satellite_group})<br />
+            {lastPass
+              ? `Last pass: ${Math.abs(minutesUntil(lastPass.start_utc, now))} min ago`
+              : 'Last pass: —'}<br />
+            Resolution: {cadence.resolution}<br />
+            Coverage: {cadence.coverage}<br />
+            Next pass: in {minutesUntil(nextPass.start_utc, now)} min · {' '}
+            {nextPass.max_elevation_deg.toFixed(0)}° {nextPass.max_azimuth_compass}
+          </>
+        ) : passesQuery.isError ? (
+          <>
+            {cadence.source}<br />
+            <span className="fp-map-overlay__warn">Live pass feed unavailable</span><br />
+            Resolution: {cadence.resolution}<br />
+            Coverage: {cadence.coverage}
+          </>
+        ) : (
+          <>
+            {cadence.source}<br />
+            {passesQuery.isLoading ? 'Loading N2YO schedule…' : 'No upcoming passes in window'}<br />
+            Resolution: {cadence.resolution}<br />
+            Coverage: {cadence.coverage}
+          </>
+        )}
       </div>
 
       {hover && <HoverTooltip info={hover} />}

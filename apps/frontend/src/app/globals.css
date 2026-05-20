@@ -756,6 +756,8 @@ footer.app-footer {
   font-size: 9px; color: #aaa; letter-spacing: 1px; text-align: right; line-height: 1.8;
 }
 
+.fp-map-overlay__warn { color: #c97d00; }
+
 .fp-map-tooltip {
   position: absolute;
   pointer-events: none;
