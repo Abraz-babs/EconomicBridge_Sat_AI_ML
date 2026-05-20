@@ -34,7 +34,7 @@ from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 from starlette.responses import Response  # noqa: E402
 
 from config import get_settings  # noqa: E402
-from routers import health, jobs, passes, triggers  # noqa: E402
+from routers import health, imagery, jobs, passes, triggers  # noqa: E402
 from scheduler import setup_scheduler  # noqa: E402
 
 settings = get_settings()
@@ -101,3 +101,4 @@ app.include_router(health.router, prefix="/api/v1")
 app.include_router(triggers.router, prefix="/api/v1")
 app.include_router(passes.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
+app.include_router(imagery.router, prefix="/api/v1")

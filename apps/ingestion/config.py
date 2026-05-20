@@ -53,6 +53,26 @@ class Settings(BaseSettings):
     # target ROI. 30° matches Copernicus' own pass-planning heuristics.
     n2yo_default_min_elevation: int = 30
 
+    # Copernicus Data Space Ecosystem (CDSE) — Sentinel Hub on CDSE, NOT
+    # commercial Sentinel Hub. OAuth client_credentials at the identity
+    # endpoint; STAC catalog at the sh.dataspace endpoint. See
+    # docs/memory ref_copernicus_endpoints.md for the why.
+    copernicus_client_id: str = ""
+    copernicus_client_secret: str = ""
+    copernicus_oauth_url: str = (
+        "https://identity.dataspace.copernicus.eu"
+        "/auth/realms/CDSE/protocol/openid-connect/token"
+    )
+    copernicus_catalog_url: str = (
+        "https://sh.dataspace.copernicus.eu/api/v1/catalog/1.0.0/search"
+    )
+    # Default collection: Sentinel-2 L2A (atmospherically corrected optical).
+    # Other valid: sentinel-1-grd (SAR), sentinel-3-olci-l1b (ocean colour).
+    copernicus_default_collection: str = "sentinel-2-l2a"
+    # Refresh the token this many seconds before stated expiry — protects
+    # against clock skew + in-flight requests landing post-expiry.
+    copernicus_token_refresh_skew_seconds: int = 60
+
 
 @lru_cache
 def get_settings() -> Settings:
