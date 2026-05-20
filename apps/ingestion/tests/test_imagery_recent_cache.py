@@ -21,7 +21,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
-from routers.imagery import _clear_recent_cache
+from services.imagery_recent import clear_cache as _clear_recent_cache
 from sources import copernicus as copernicus_module
 
 
