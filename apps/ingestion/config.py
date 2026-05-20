@@ -73,6 +73,17 @@ class Settings(BaseSettings):
     # against clock skew + in-flight requests landing post-expiry.
     copernicus_token_refresh_skew_seconds: int = 60
 
+    # ML service (conflict predictor + future ShockGuard, CropGuard). The
+    # ingestion service calls ML over HTTP per the production architecture
+    # (CLAUDE.md §5 — never call satellite/ML in-process).
+    ml_base_url: str = "http://127.0.0.1:8002/api/v1"
+    # Confidence floor for promoting a prediction into alert_events.
+    # CLAUDE.md §9: >= 0.90 HIGH, >= 0.75 MEDIUM, < 0.75 LOW (audit-only).
+    conflict_alert_min_confidence: float = 0.75
+    # Cap conflict alerts inserted per tenant per scheduled run. Same logic
+    # as DEFAULT_MAX_ALERTS_PER_RUN for FIRMS — keeps the feed legible.
+    conflict_max_alerts_per_run: int = 3
+
 
 @lru_cache
 def get_settings() -> Settings:

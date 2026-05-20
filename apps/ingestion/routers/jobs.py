@@ -16,7 +16,12 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
-from scheduler import JOB_ID_FIRMS_DAILY, run_daily_firms_ingest
+from scheduler import (
+    JOB_ID_CONFLICT_DAILY,
+    JOB_ID_FIRMS_DAILY,
+    run_daily_firms_ingest,
+)
+from tasks.conflict_pipeline import run_daily_conflict_pipeline
 
 router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 
@@ -63,6 +68,7 @@ async def list_jobs(request: Request) -> JobsListResponse:
 
 _TRIGGERABLE_JOBS = {
     JOB_ID_FIRMS_DAILY: run_daily_firms_ingest,
+    JOB_ID_CONFLICT_DAILY: run_daily_conflict_pipeline,
 }
 
 

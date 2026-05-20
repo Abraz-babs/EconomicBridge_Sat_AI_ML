@@ -24,6 +24,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from db import PILOT_TENANT_IDS, get_session_factory
+from tasks.conflict_pipeline import run_daily_conflict_pipeline
 from tasks.firms_ingest import ingest_firms_for_tenant
 
 log = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ log = logging.getLogger(__name__)
 
 # Job IDs — exposed so the introspection endpoint + tests can reference them.
 JOB_ID_FIRMS_DAILY = "firms_daily_06utc"
+JOB_ID_CONFLICT_DAILY = "conflict_daily_0630utc"
 
 
 def setup_scheduler() -> AsyncIOScheduler:
@@ -49,6 +51,18 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         max_instances=1,
         misfire_grace_time=3600,  # if we missed the 06:00 fire by <1h, still run
+    )
+
+    scheduler.add_job(
+        run_daily_conflict_pipeline,
+        # Fire 30min after FIRMS so the freshest heat_signatures feed the
+        # conflict feature extractor.
+        trigger=CronTrigger(hour=6, minute=30, timezone="UTC"),
+        id=JOB_ID_CONFLICT_DAILY,
+        name="Conflict predictor daily sweep (all pilot tenants)",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=3600,
     )
 
     return scheduler
