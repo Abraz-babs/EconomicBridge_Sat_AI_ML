@@ -18,6 +18,7 @@ import CoverageTrend from '@/components/CoverageTrend';
 import CropHealthIndex from '@/components/CropHealthIndex';
 import ActiveResponse from '@/components/ActiveResponse';
 import FarmlandPanel from '@/components/farmland/FarmlandPanel';
+import CropGuardPanel from '@/components/cropguard/CropGuardPanel';
 import AdminPanel from '@/components/admin/AdminPanel';
 import ModuleStub from '@/components/stubs/ModuleStub';
 
@@ -131,20 +132,9 @@ function DashboardContent() {
         {/* MODULE 04 — AGRICULTURE (CROPGUARD) */}
         {activeTab === 'cropguard' && (
           <div className="tab-content" key="cropguard">
-            <ModuleStub
-              num="04"
-              title="Agriculture (CropGuard)"
-              description="Crop disease detection 14 days before visible symptoms via NDVI anomaly detection and computer vision. Yield prediction and harvest optimization for smallholder farms."
-              dataSources={['Sentinel-2 MSI', 'ResNet-50 CNN', 'NDVI Analysis', 'MODIS']}
-              quarter="Q2 2026"
-              quarterLabel="Coming September 2026"
-              capabilities={[
-                'Pre-symptomatic disease detection (14-day early warning)',
-                'ResNet-50 CNN for crop disease classification',
-                'Yield prediction models per crop type and region',
-                'Market price correlation for 14 staple crops',
-              ]}
-            />
+            <ErrorBoundary fallbackModule="CropGuard">
+              <CropGuardPanel />
+            </ErrorBoundary>
           </div>
         )}
 

@@ -28,6 +28,15 @@ export const API_BASE_URL: string =
 export const INGESTION_BASE_URL: string =
   process.env.NEXT_PUBLIC_INGESTION_BASE_URL ?? 'http://localhost:8001/api/v1';
 
+/**
+ * Base URL for the ML model-serving microservice (port 8002).
+ * Hosts the conflict predictor + the ResNet-50 crop disease classifier.
+ * Returns the SuccessResponse[T] envelope (same shape as the API
+ * service), so `mlFetch` reuses the envelope-unwrapping logic.
+ */
+export const ML_BASE_URL: string =
+  process.env.NEXT_PUBLIC_ML_BASE_URL ?? 'http://localhost:8002/api/v1';
+
 /** Raw JSON fetcher for the ingestion service (no envelope unwrap). */
 export async function ingestionFetch<T>(
   path: string,
@@ -189,5 +198,75 @@ export async function apiGet<T>(
   opts: Omit<RequestOptions, 'method' | 'body'> = {},
 ): Promise<T> {
   const envelope = await apiFetch<T>(path, { ...opts, method: 'GET' });
+  return envelope.data;
+}
+
+// ─── ML service helper ─────────────────────────────────────────────────────
+
+
+/**
+ * Issue a request against the ML microservice (port 8002) and return the
+ * unwrapped `data` block. The ML service returns the same envelope shape
+ * as the API service (CLAUDE.md §7) but lives on a separate origin, so
+ * we just swap the base URL and reuse the envelope logic.
+ *
+ * Thrown ApiException carries the parsed FastAPI `detail` when present.
+ */
+export async function mlFetch<T>(
+  path: string,
+  opts: RequestOptions = {},
+): Promise<T> {
+  const url = path.startsWith('http') ? path : `${ML_BASE_URL}${path}`;
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    ...(opts.headers ?? {}),
+  };
+  if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (opts.tenantId) headers['X-Tenant-Id'] = opts.tenantId;
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: opts.method ?? 'GET',
+      headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      signal: opts.signal,
+    });
+  } catch (err) {
+    throw new ApiException(
+      err instanceof Error ? err.message : 'Network error',
+      0,
+      null,
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch {
+    parsed = null;
+  }
+
+  if (!response.ok) {
+    // ML service uses FastAPI's default {detail: "..."} for 4xx/5xx;
+    // some routes wrap as our error envelope. Handle both.
+    let detail = `${response.status} ${response.statusText}`;
+    if (parsed && typeof parsed === 'object') {
+      const obj = parsed as { detail?: unknown; error?: { message?: string } };
+      if (typeof obj.detail === 'string') detail = obj.detail;
+      else if (obj.error?.message) detail = obj.error.message;
+    }
+    throw new ApiException(`ML: ${detail}`, response.status, null);
+  }
+
+  // Success envelope shape: { success, data, meta, error }
+  const envelope = parsed as SuccessEnvelope<T> | null;
+  if (!envelope || envelope.success !== true) {
+    throw new ApiException(
+      'ML service returned an unexpected response shape',
+      response.status,
+      null,
+    );
+  }
   return envelope.data;
 }
