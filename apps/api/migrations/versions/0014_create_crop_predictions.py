@@ -60,7 +60,9 @@ def _create_crop_predictions_for(tenant: str) -> None:
 
             -- Class output
             predicted_class         VARCHAR(80) NOT NULL,
-            top_k                   JSONB NOT NULL,  -- [{class_name, probability}, ...]
+            -- Top-K leaderboard: JSONB array of (class_name, probability) pairs,
+            -- highest probability first. See ml.models.crop_classifier for shape.
+            top_k                   JSONB NOT NULL,
 
             -- Input image provenance
             image_source            VARCHAR(10) NOT NULL,  -- 's3' | 'inline'
