@@ -35,8 +35,13 @@ class Settings(BaseSettings):
     db_pool_size: int = 3
     db_pool_max_overflow: int = 5
 
-    # Model paths — joblib snapshots live next to the source code by default.
+    # Model paths — joblib / .pth snapshots live next to the source code.
     model_dir: Path = PROJECT_ROOT / "apps" / "ml" / "artifacts"
+
+    # CropGuard ResNet-50 — how many top classes the response ships back.
+    # 3 hits the sweet spot: top-1 + two runners-up gives the dashboard
+    # enough context for "are we confident?" without exploding payload size.
+    crop_top_k_classes: int = 3
 
 
 @lru_cache

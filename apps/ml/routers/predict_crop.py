@@ -1,17 +1,12 @@
-"""POST /api/v1/predict/conflict — Random Forest conflict predictor.
+"""POST /api/v1/predict/crop_disease — ResNet-50 crop disease classifier.
 
-(Crop disease classifier lives in routers/predict_crop.py — same prefix,
-separate file to keep each model's persistence path readable on its own.)
-
-Pipeline:
-  1. Validate the request body (Pydantic).
-  2. Validate tenant_id against the allowlist (404 if unknown).
-  3. Run the Random Forest predictor → ModelPrediction (CLAUDE.md §9).
-  4. If `persist=True`, INSERT one row into tenant_<id>.conflict_predictions.
-  5. Return the standard SuccessResponse[ConflictPredictionData] envelope.
+Mirrors the predict_conflict pipeline (CLAUDE.md §9): validate, run model,
+optionally persist to tenant_<id>.crop_predictions, return the standard
+envelope. Inline base64 only in Slice 5a; S3 fetch arrives in Slice 5c.
 """
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from datetime import datetime, timezone
@@ -23,8 +18,17 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session, is_valid_tenant_id, set_tenant_schema
-from models.conflict_predictor import ConflictFeatures, get_predictor
-from schemas.conflict import ConflictPredictionData, ConflictPredictionRequest
+from models.crop_classifier import (
+    CropPredictionInput,
+    CropTopKEntry,
+    get_classifier,
+    hash_image_bytes,
+)
+from schemas.crop import (
+    CropPredictionData,
+    CropPredictionRequest,
+    CropTopKEntryResponse,
+)
 from schemas.envelope import ResponseMeta, SuccessResponse
 
 log = logging.getLogger(__name__)
@@ -36,15 +40,15 @@ def _trace_id(request: Request) -> UUID:
 
 
 @router.post(
-    "/conflict",
-    response_model=SuccessResponse[ConflictPredictionData],
-    summary="Run the conflict Random Forest for one feature vector",
+    "/crop_disease",
+    response_model=SuccessResponse[CropPredictionData],
+    summary="Run the ResNet-50 crop disease classifier on one image",
 )
-async def predict_conflict(
-    body: ConflictPredictionRequest,
+async def predict_crop_disease(
+    body: CropPredictionRequest,
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> SuccessResponse[ConflictPredictionData]:
+) -> SuccessResponse[CropPredictionData]:
     tenant_id = body.tenant_id.strip().lower()
     if not is_valid_tenant_id(tenant_id):
         raise HTTPException(
@@ -52,20 +56,24 @@ async def predict_conflict(
             detail=f"Unknown tenant: {tenant_id!r}",
         )
 
-    features = ConflictFeatures(
-        heat_signature_intensity=body.heat_signature_intensity,
-        boundary_distance_km=body.boundary_distance_km,
-        ndvi_delta=body.ndvi_delta,
-        herder_density=body.herder_density,
-        historical_incidents=body.historical_incidents,
-        rainfall_anomaly=body.rainfall_anomaly,
-        is_new_geography=body.is_new_geography,
+    image_bytes, image_source = _resolve_image_bytes(body)
+    image_sha = hash_image_bytes(image_bytes)
+    classifier_input = CropPredictionInput(
+        image_bytes=image_bytes,
+        image_sha256=image_sha,
+        image_source=image_source,
+        image_s3_bucket=body.image_s3_bucket,
+        image_s3_key=body.image_s3_key,
     )
 
-    predictor = get_predictor()
+    classifier = get_classifier()
     trace = _trace_id(request)
     try:
-        result = predictor.predict(tenant_id=tenant_id, features=features)
+        result, top_k = classifier.predict(
+            tenant_id=tenant_id,
+            image=classifier_input,
+            top_k=body.top_k,
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
@@ -74,27 +82,38 @@ async def predict_conflict(
     prediction_id: UUID | None = None
     persisted = False
     if body.persist:
-        prediction_id = await _persist_prediction(
+        prediction_id = await _persist_crop_prediction(
             session,
             tenant_id=tenant_id,
             body=body,
             result=result,
+            image=classifier_input,
+            top_k=top_k,
             trace_id=trace,
         )
         persisted = prediction_id is not None
 
     return SuccessResponse(
-        data=ConflictPredictionData(
+        data=CropPredictionData(
             prediction_id=prediction_id,
             model_name=result.model_name,
             model_version=result.model_version,
             tenant_id=result.tenant_id,
+            predicted_class=result.features["predicted_class"],
             prediction=result.prediction,
             confidence=result.confidence,
             confidence_band=result.confidence_band,
             requires_human_review=result.requires_human_review,
-            shap_values=result.shap_values,
-            shap_base_value=result.shap_base_value,
+            top_k=[
+                CropTopKEntryResponse(
+                    class_name=e.class_name, probability=e.probability
+                )
+                for e in top_k
+            ],
+            image_source=classifier_input.image_source,
+            image_s3_bucket=classifier_input.image_s3_bucket,
+            image_s3_key=classifier_input.image_s3_key,
+            image_sha256=image_sha,
             input_hash=result.input_hash,
             inference_time_ms=result.inference_time_ms,
             timestamp=result.timestamp,
@@ -108,38 +127,58 @@ async def predict_conflict(
     )
 
 
-async def _persist_prediction(
+def _resolve_image_bytes(
+    body: CropPredictionRequest,
+) -> tuple[bytes, str]:
+    if body.image_base64 is not None:
+        return base64.b64decode(body.image_base64, validate=True), "inline"
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail=(
+            "S3-keyed image fetch is not wired yet (arrives with Slice 5c). "
+            "For now, submit images inline via `image_base64`."
+        ),
+    )
+
+
+async def _persist_crop_prediction(
     session: AsyncSession,
     *,
     tenant_id: str,
-    body: ConflictPredictionRequest,
+    body: CropPredictionRequest,
     result,
+    image: CropPredictionInput,
+    top_k: list[CropTopKEntry],
     trace_id: UUID,
 ) -> UUID:
-    """Insert into tenant_<id>.conflict_predictions. Returns the new row id."""
+    """Insert into tenant_<id>.crop_predictions. Returns the new row id."""
     prediction_id = uuid4()
     await set_tenant_schema(session, tenant_id)
+    top_k_blob = json.dumps(
+        [{"class_name": e.class_name, "probability": e.probability}
+         for e in top_k]
+    )
     await session.execute(
         text(
             """
-            INSERT INTO conflict_predictions (
+            INSERT INTO crop_predictions (
                 id, tenant_id,
                 model_name, model_version, input_hash,
                 prediction, confidence, confidence_band, requires_human_review,
-                features, shap_values, shap_base_value,
+                predicted_class, top_k,
+                image_source, image_s3_bucket, image_s3_key, image_sha256,
                 location, lga, zone_name,
-                related_alert_id,
                 inference_time_ms, trace_id, created_at
             ) VALUES (
                 :id, :tenant_id,
                 :model_name, :model_version, :input_hash,
                 :prediction, :confidence, :confidence_band, :requires_human_review,
-                CAST(:features AS JSONB), CAST(:shap_values AS JSONB), :shap_base_value,
+                :predicted_class, CAST(:top_k AS JSONB),
+                :image_source, :image_s3_bucket, :image_s3_key, :image_sha256,
                 CASE WHEN :lon IS NULL OR :lat IS NULL THEN NULL
                      ELSE ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
                 END,
                 :lga, :zone_name,
-                :related_alert_id,
                 :inference_time_ms, :trace_id, :created_at
             )
             """
@@ -154,14 +193,16 @@ async def _persist_prediction(
             "confidence": result.confidence,
             "confidence_band": result.confidence_band,
             "requires_human_review": result.requires_human_review,
-            "features": json.dumps(result.features),
-            "shap_values": json.dumps(result.shap_values),
-            "shap_base_value": result.shap_base_value,
+            "predicted_class": result.features["predicted_class"],
+            "top_k": top_k_blob,
+            "image_source": image.image_source,
+            "image_s3_bucket": image.image_s3_bucket,
+            "image_s3_key": image.image_s3_key,
+            "image_sha256": image.image_sha256,
             "lat": body.lat,
             "lon": body.lon,
             "lga": body.lga,
             "zone_name": body.zone_name,
-            "related_alert_id": body.related_alert_id,
             "inference_time_ms": result.inference_time_ms,
             "trace_id": trace_id,
             "created_at": result.timestamp,

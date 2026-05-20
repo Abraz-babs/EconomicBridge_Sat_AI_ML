@@ -18,3 +18,12 @@ scikit-learn>=1.5,<2.0
 numpy>=1.26,<3.0
 shap>=0.46,<1.0
 joblib>=1.4,<2.0
+
+# CropGuard ResNet-50 (Slice 5a+). torch + torchvision power real
+# inference; Pillow handles JPEG/PNG decoding. The classifier
+# gracefully degrades to a deterministic stub when these are missing
+# (see models/crop_classifier.py) so tests can run without the 750MB
+# torch install.
+torch>=2.2,<3.0
+torchvision>=0.17,<1.0
+pillow>=10.0,<12.0
