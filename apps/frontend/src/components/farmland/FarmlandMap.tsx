@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { Tenant } from '@/data/tenants';
 import {
+  hoursAgo,
+  newestScene,
+  useRecentImagery,
+} from '@/hooks/useRecentImagery';
+import {
   minutesUntil,
   pickLastPass,
   pickNextPass,
@@ -118,6 +123,14 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
   const now = new Date(nowMs);
   const nextPass = pickNextPass(passesQuery.data?.passes, now);
   const lastPass = pickLastPass(passesQuery.data?.passes, now);
+
+  // Live recency: latest optical (Sentinel-2 L2A) + radar (Sentinel-1 GRD)
+  // scenes for this tenant. Backed by a 10-min server-side TTL cache so
+  // refetches are cheap.
+  const opticalQuery = useRecentImagery(tenant.id, 'sentinel-2-l2a');
+  const sarQuery = useRecentImagery(tenant.id, 'sentinel-1-grd');
+  const latestOptical = newestScene(opticalQuery.data?.scenes);
+  const latestSar = newestScene(sarQuery.data?.scenes);
 
   // Heartbeat for the pulsing critical/high pins. 60ms = ~16fps, plenty for a
   // halo expand/shrink while keeping deck.gl re-renders cheap.
@@ -429,10 +442,72 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
             Coverage: {cadence.coverage}
           </>
         )}
+        <FreshnessLines
+          optical={latestOptical}
+          opticalLoading={opticalQuery.isLoading}
+          opticalError={opticalQuery.isError}
+          sar={latestSar}
+          sarLoading={sarQuery.isLoading}
+          sarError={sarQuery.isError}
+          now={now}
+        />
       </div>
 
       {hover && <HoverTooltip info={hover} />}
     </div>
+  );
+}
+
+/**
+ * Two short lines showing how fresh the most recent Sentinel-2 (optical)
+ * and Sentinel-1 (SAR) scenes are for this tenant. Backed by the
+ * /api/v1/imagery/recent endpoint's 10-minute server-side cache so the
+ * lines are cheap to render on every dashboard load.
+ *
+ * Each line is "Optical: 14h ago · 12% cloud (T31PEN)" / "SAR: 32h ago".
+ * Falls back to "—" while loading and a quiet warning on error.
+ */
+function FreshnessLines(props: {
+  optical: ReturnType<typeof newestScene>;
+  opticalLoading: boolean;
+  opticalError: boolean;
+  sar: ReturnType<typeof newestScene>;
+  sarLoading: boolean;
+  sarError: boolean;
+  now: Date;
+}) {
+  const { optical, opticalLoading, opticalError, sar, sarLoading, sarError, now } = props;
+  return (
+    <>
+      <br />
+      <span className="fp-map-overlay__freshness">
+        Optical:{' '}
+        {opticalLoading
+          ? '—'
+          : opticalError
+          ? <span className="fp-map-overlay__warn">unavailable</span>
+          : optical
+          ? <>
+              {hoursAgo(optical.captured_at, now)}h ago
+              {optical.cloud_cover_pct != null
+                ? ` · ${Math.round(optical.cloud_cover_pct)}% cloud`
+                : ''}
+              {optical.mgrs_tile ? ` (${optical.mgrs_tile})` : ''}
+            </>
+          : 'no recent scene'}
+      </span>
+      <br />
+      <span className="fp-map-overlay__freshness">
+        SAR:{' '}
+        {sarLoading
+          ? '—'
+          : sarError
+          ? <span className="fp-map-overlay__warn">unavailable</span>
+          : sar
+          ? <>{hoursAgo(sar.captured_at, now)}h ago</>
+          : 'no recent scene'}
+      </span>
+    </>
   );
 }
 
