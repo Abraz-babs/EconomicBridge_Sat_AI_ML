@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 
 import EBMap from '@/components/map/EBMap';
 import type { Tenant } from '@/data/tenants';
-import type { PovertyVillage } from '@/data/povertySeed';
+import type { PovertyVillage } from '@/hooks/usePovertyVillages';
 
 
 /** Severity colour ramp — green (low) → red (critical). */
@@ -25,7 +25,6 @@ interface Props {
 export default function PovertyMap({ tenant, villages }: Props) {
   const [layers, setLayers] = useState<unknown[]>([]);
 
-  // Build layers lazily on the client (deck.gl is browser-only).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -36,11 +35,10 @@ export default function PovertyMap({ tenant, villages }: Props) {
       if (cancelled) return;
 
       const built: unknown[] = [
-        // Vulnerability heatmap underneath the pins.
         new HeatmapLayer<PovertyVillage>({
           id: 'poverty-heatmap',
           data: villages,
-          getPosition: (v: PovertyVillage) => [v.lon, v.lat],
+          getPosition: (v: PovertyVillage) => [v.location.lon, v.location.lat],
           getWeight: (v: PovertyVillage) => v.poverty_score * v.population,
           radiusPixels: 60,
           intensity: 1.2,
@@ -52,11 +50,10 @@ export default function PovertyMap({ tenant, villages }: Props) {
             [255, 69, 0],
           ],
         }),
-        // Village pins on top.
         new ScatterplotLayer<PovertyVillage>({
           id: 'poverty-villages',
           data: villages,
-          getPosition: (v: PovertyVillage) => [v.lon, v.lat],
+          getPosition: (v: PovertyVillage) => [v.location.lon, v.location.lat],
           getRadius: (v: PovertyVillage) => 4000 + Math.sqrt(v.population) * 40,
           getFillColor: (v: PovertyVillage) => colourFor(v.poverty_score),
           getLineColor: [255, 255, 255, 220],
@@ -72,6 +69,8 @@ export default function PovertyMap({ tenant, villages }: Props) {
     })();
     return () => { cancelled = true; };
   }, [villages]);
+
+  const sources = Array.from(new Set(villages.map((v) => v.source)));
 
   return (
     <EBMap
@@ -96,9 +95,9 @@ export default function PovertyMap({ tenant, villages }: Props) {
       }
       overlay={
         <>
-          VIIRS Nightlight + WorldPop · {villages.length} vulnerable settlements<br />
-          Pin size ≈ population estimate · colour ≈ poverty score<br />
-          <span className="fp-map-overlay__warn">DEV — seed data</span>
+          {villages.length} vulnerable settlements<br />
+          Pin size ≈ population · colour ≈ poverty score<br />
+          {sources.length > 0 && <>Sources: {sources.join(', ')}</>}
         </>
       }
     />
