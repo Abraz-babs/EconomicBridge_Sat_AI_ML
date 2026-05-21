@@ -221,3 +221,24 @@ def test_predict_crop_top1_matches_predicted_class():
     response = client.post("/api/v1/predict/crop_disease", json=_body())
     data = response.json()["data"]
     assert data["predicted_class"] == data["top_k"][0]["class_name"]
+
+
+# ─── Grad-CAM saliency contract (Slice 5d) ────────────────────────────────
+
+
+def test_predict_crop_omits_saliency_by_default():
+    """Saliency is opt-in — default request must return null."""
+    response = client.post("/api/v1/predict/crop_disease", json=_body())
+    assert response.status_code == 200
+    assert response.json()["data"]["saliency_b64"] is None
+
+
+def test_predict_crop_stub_mode_returns_null_saliency_even_when_requested():
+    """Stub mode (forced by the fixture) cannot compute Grad-CAM →
+    saliency_b64 stays None even when compute_saliency=true."""
+    response = client.post(
+        "/api/v1/predict/crop_disease",
+        json=_body(compute_saliency=True),
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["saliency_b64"] is None

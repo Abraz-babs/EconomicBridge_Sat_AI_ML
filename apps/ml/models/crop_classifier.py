@@ -1,18 +1,14 @@
 """ResNet-50 crop disease classifier (CropGuard, Q2 deliverable).
 
-Three execution modes, picked by `_load()`:
+Three execution modes picked by `_load()`:
+  trained  — apps/ml/artifacts/crop_classifier.pth on disk (Slice 5b)
+  untuned  — torch installed, no artifact → ImageNet backbone + random head.
+             requires_human_review stays True; never auto-routed.
+  stub     — torch not installed (CI). Deterministic-from-image-hash probs.
 
-  1. `trained`  — apps/ml/artifacts/crop_classifier.pth on disk → real
-                  inference. Q2-end goal; populated by Slice 5b.
-  2. `untuned`  — torch installed, no artifact → ImageNet backbone +
-                  randomly-initialised 12-class head. `requires_human_review`
-                  is True for every call so dashboards never mistake these
-                  for production output.
-  3. `stub`     — torch not installed (CI / minimal dev) → deterministic-
-                  from-image-hash probabilities. Honest contract, zero deps.
-
-Inference contract is `ModelPrediction` (CLAUDE.md §9); Top-K probabilities
-ride in the `features` dict so the router can persist them as JSONB.
+Inference contract: `ModelPrediction` (CLAUDE.md §9). Top-K rides in the
+`features` dict so the router can persist as JSONB. Grad-CAM saliency
+(Slice 5d) is response-only via `compute_saliency()`.
 """
 from __future__ import annotations
 
@@ -124,13 +120,10 @@ class CropClassifier:
         top1 = topk_entries[0]
         confidence = top1.probability
         # `prediction` = total probability mass on disease classes. Higher =
-        # more concerning. A confident healthy top-1 drains most mass into
-        # the healthy classes → low prediction; a disease top-1 (or even
-        # uncertain spread) keeps disease mass high → high prediction.
+        # more concerning across all confidence levels (see test_crop_classifier).
         prediction_score = _disease_probability_mass(probabilities)
 
         band = band_for_confidence(confidence)
-        # Untuned + stub modes never auto-route.
         requires_review = (self._mode != "trained") or (band != "HIGH")
 
         elapsed_ms = int((time.monotonic() - started) * 1000)
@@ -141,7 +134,7 @@ class CropClassifier:
                 tenant_id=tenant_id,
                 prediction=float(prediction_score),
                 confidence=float(confidence),
-                shap_values={},  # Grad-CAM saliency arrives in Slice 5e
+                shap_values={},  # CNN saliency comes via compute_saliency()
                 input_hash=image.image_sha256,
                 inference_time_ms=elapsed_ms,
                 timestamp=utcnow(),
@@ -172,20 +165,14 @@ class CropClassifier:
         try:
             import torch  # noqa: F401
         except ImportError:
-            log.warning(
-                "crop_classifier: torch not installed → STUB mode "
-                "(requires_human_review will be True for every call)."
-            )
+            log.warning("crop_classifier: torch missing → STUB mode (review=True).")
             self._mode = "stub"
             return
 
         try:
             self._build_torch_model(artifact_path=artifact)
         except Exception as exc:  # noqa: BLE001 — fall back to stub gracefully
-            log.warning(
-                "crop_classifier: torch init failed (%s) → falling back "
-                "to STUB mode", exc,
-            )
+            log.warning("crop_classifier: torch init failed (%s) → STUB", exc)
             self._mode = "stub"
 
     def _build_torch_model(self, *, artifact_path: Path) -> None:
@@ -224,6 +211,17 @@ class CropClassifier:
                 std=[0.229, 0.224, 0.225],
             ),
         ])
+
+    def compute_saliency(self, image_bytes: bytes) -> str | None:
+        """Grad-CAM overlay as a base64 PNG. None in stub mode."""
+        self._load()
+        if self._mode == "stub" or self._model is None:
+            return None
+        from models.crop_saliency import compute_gradcam
+        return compute_gradcam(
+            model=self._model, device=self._device,
+            transform=self._transform, image_bytes=image_bytes,
+        )
 
     def _torch_inference(self, image_bytes: bytes) -> list[float]:
         """One forward pass through ResNet-50. Returns 12 probabilities."""

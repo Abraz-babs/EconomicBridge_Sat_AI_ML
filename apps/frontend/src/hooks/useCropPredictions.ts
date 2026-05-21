@@ -32,6 +32,9 @@ export interface CropPredictionData {
   image_s3_bucket: string | null;
   image_s3_key: string | null;
   image_sha256: string;
+  /** Grad-CAM heatmap overlay as a base64 PNG (Slice 5d). Null when the
+   *  caller didn't request it OR when the classifier is in stub mode. */
+  saliency_b64: string | null;
   input_hash: string;
   inference_time_ms: number;
   timestamp: string;
@@ -43,6 +46,8 @@ export interface CropPredictionRequest {
   tenant_id: string;
   image_base64: string;
   top_k?: number;
+  /** Request Grad-CAM saliency overlay (Slice 5d). +~150ms compute. */
+  compute_saliency?: boolean;
   persist?: boolean;
   lat?: number;
   lon?: number;

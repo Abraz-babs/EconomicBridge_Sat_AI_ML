@@ -79,6 +79,12 @@ async def predict_crop_disease(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
 
+    saliency_b64: str | None = None
+    if body.compute_saliency:
+        # Failure surfaces internally as None — never block the prediction
+        # on an explainability hiccup (CLAUDE.md §4.4).
+        saliency_b64 = classifier.compute_saliency(classifier_input.image_bytes)
+
     prediction_id: UUID | None = None
     persisted = False
     if body.persist:
@@ -114,6 +120,7 @@ async def predict_crop_disease(
             image_s3_bucket=classifier_input.image_s3_bucket,
             image_s3_key=classifier_input.image_s3_key,
             image_sha256=image_sha,
+            saliency_b64=saliency_b64,
             input_hash=result.input_hash,
             inference_time_ms=result.inference_time_ms,
             timestamp=result.timestamp,

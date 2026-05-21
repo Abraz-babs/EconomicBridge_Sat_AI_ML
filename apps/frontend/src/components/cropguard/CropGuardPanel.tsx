@@ -62,6 +62,7 @@ export default function CropGuardPanel() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<CropPredictionData | null>(null);
+  const [requestSaliency, setRequestSaliency] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const recentQuery = useCropPredictions({ tenantId: activeTenantId, limit: 10 });
@@ -119,6 +120,7 @@ export default function CropGuardPanel() {
         tenant_id: activeTenantId,
         image_base64: base64,
         top_k: 5,
+        compute_saliency: requestSaliency,
         persist: true,
       });
       setLastResult(result);
@@ -238,6 +240,15 @@ export default function CropGuardPanel() {
                 Clear
               </button>
             )}
+            <label className="cg-saliency-toggle">
+              <input
+                type="checkbox"
+                checked={requestSaliency}
+                onChange={(e) => setRequestSaliency(e.target.checked)}
+                disabled={predictMutation.isPending}
+              />
+              <span>Show Grad-CAM heatmap</span>
+            </label>
           </div>
 
           {lastResult && (
@@ -292,6 +303,20 @@ function ResultCard({ result }: { result: CropPredictionData }) {
           <span className="cg-result-score-unit">/100</span>
         </div>
       </div>
+
+      {result.saliency_b64 && (
+        <div className="cg-saliency-wrap">
+          <div className="cg-saliency-label">
+            Grad-CAM saliency · where the model looked
+          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`data:image/png;base64,${result.saliency_b64}`}
+            alt="Grad-CAM heatmap overlay highlighting attended regions"
+            className="cg-saliency-img"
+          />
+        </div>
+      )}
 
       <div className="cg-topk-list">
         {result.top_k.map((entry, idx) => (

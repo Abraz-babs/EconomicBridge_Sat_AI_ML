@@ -61,6 +61,10 @@ class CropPredictionRequest(BaseModel):
     # How many top classes to return. Default comes from settings.crop_top_k_classes.
     top_k: Annotated[int, Field(ge=1, le=12)] = 3
 
+    # Opt-in Grad-CAM saliency overlay (Slice 5d). Adds ~150ms of compute
+    # for the backward pass + PNG encode, so callers must request it.
+    compute_saliency: bool = False
+
     # Caller controls persistence (dry-run for model evaluation).
     persist: bool = True
 
@@ -126,6 +130,11 @@ class CropPredictionData(BaseModel):
     image_s3_bucket: str | None
     image_s3_key: str | None
     image_sha256: str
+
+    # Grad-CAM saliency overlay (base64 PNG, 224×224). None unless the
+    # request set compute_saliency=True AND the classifier is in a
+    # torch-enabled mode (stub mode always returns None).
+    saliency_b64: str | None = None
 
     input_hash: str
     inference_time_ms: int
