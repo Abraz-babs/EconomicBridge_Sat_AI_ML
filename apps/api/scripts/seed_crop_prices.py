@@ -105,8 +105,15 @@ class PriceRow:
 
 
 def _hash_noise(crop: str, region: str, ym: int) -> float:
-    """Deterministic small noise factor in [-0.06, +0.06]."""
-    h = hashlib.md5(f"{crop}|{region}|{ym}".encode()).digest()
+    """Deterministic small noise factor in [-0.06, +0.06].
+
+    MD5 is fine here — this is a fast non-cryptographic mixer for
+    seeded fixture generation, not auth/integrity. `usedforsecurity=False`
+    tells bandit + downstream readers the intent.
+    """
+    h = hashlib.md5(
+        f"{crop}|{region}|{ym}".encode(), usedforsecurity=False,
+    ).digest()
     return ((int.from_bytes(h[:2], "big") % 121) - 60) / 1000.0
 
 
