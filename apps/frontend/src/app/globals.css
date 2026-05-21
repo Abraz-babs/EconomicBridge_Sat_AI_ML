@@ -1965,3 +1965,106 @@ nav::-webkit-scrollbar {
 
 .cg-pct-up   { color: #2d6a4f; font-weight: 700; }
 .cg-pct-down { color: #e05a2b; font-weight: 700; }
+
+/* ─── Yield forecast grid (Slice 04.c) ─── */
+
+.cg-yield-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.cg-yield-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cg-yield-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.cg-yield-label {
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.cg-yield-max {
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+
+.cg-yield-val {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--ink);
+}
+
+.cg-yield-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cg-yield-bar-fill {
+  height: 100%;
+  background: var(--ngo);
+  border-radius: 3px;
+  transition: width 0.25s ease;
+}
+
+.cg-yield-bar-fill--review {
+  background: var(--warn, #f4a832);
+}
+
+.cg-yield-sub {
+  font-size: 10px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cg-yield-empty { font-style: italic; }
+
+.cg-yield-btn {
+  margin-top: 4px;
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--ink2);
+  padding: 4px 10px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.cg-yield-btn:hover:not(:disabled) {
+  background: var(--ngo);
+  color: white;
+  border-color: var(--ngo);
+}
+
+.cg-yield-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cg-yield-driver-dir {
+  font-style: italic;
+  color: var(--muted);
+}

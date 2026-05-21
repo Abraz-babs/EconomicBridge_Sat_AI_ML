@@ -88,3 +88,35 @@ class CropPriceCorrelationData(BaseModel):
     crops: list[str] = Field(default_factory=list)
     # Square matrix len(crops) × len(crops). matrix[i][j] = corr(crops[i], crops[j]).
     matrix: list[list[float]] = Field(default_factory=list)
+
+
+# ─── Yield forecasts (Slice 04.c) ─────────────────────────────────────────
+
+
+class YieldForecastRow(BaseModel):
+    """One row from `tenant_<id>.yield_predictions`."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: str
+    crop: str
+
+    prediction: float
+    confidence: float
+    confidence_band: ConfidenceBand
+    requires_human_review: bool
+
+    predicted_yield_t_ha: float
+    yield_pi_low_t_ha: float | None
+    yield_pi_high_t_ha: float | None
+
+    model_name: str
+    model_version: str
+    inference_time_ms: int | None
+
+    created_at: datetime
+
+
+class YieldForecastListData(BaseModel):
+    forecasts: list[YieldForecastRow] = Field(default_factory=list)
