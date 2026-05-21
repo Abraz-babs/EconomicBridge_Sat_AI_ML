@@ -32,7 +32,7 @@ from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 from starlette.responses import Response  # noqa: E402
 
 from config import get_settings  # noqa: E402
-from routers import health, predict, predict_crop  # noqa: E402
+from routers import health, predict, predict_crop, predict_crop_tiled  # noqa: E402
 
 settings = get_settings()
 
@@ -72,3 +72,4 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(predict.router, prefix="/api/v1")
 app.include_router(predict_crop.router, prefix="/api/v1")
+app.include_router(predict_crop_tiled.router, prefix="/api/v1")

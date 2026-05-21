@@ -7,8 +7,11 @@ import {
   fileToBase64,
   useCropPredictions,
   usePredictCropDisease,
+  usePredictCropDiseaseTiled,
   type CropPredictionData,
   type CropPredictionRow,
+  type CropTiledPredictionData,
+  type TileResult,
 } from '@/hooks/useCropPredictions';
 
 
@@ -58,10 +61,12 @@ function bandClass(band: 'HIGH' | 'MEDIUM' | 'LOW'): string {
 export default function CropGuardPanel() {
   const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
 
+  const [analysisMode, setAnalysisMode] = useState<'leaf' | 'field'>('leaf');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<CropPredictionData | null>(null);
+  const [lastTiledResult, setLastTiledResult] = useState<CropTiledPredictionData | null>(null);
   const [requestSaliency, setRequestSaliency] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -72,6 +77,8 @@ export default function CropGuardPanel() {
   );
 
   const predictMutation = usePredictCropDisease(activeTenantId);
+  const predictTiledMutation = usePredictCropDiseaseTiled(activeTenantId);
+  const isPending = predictMutation.isPending || predictTiledMutation.isPending;
 
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
   const modeBadge = useMemo(() => {
@@ -87,6 +94,7 @@ export default function CropGuardPanel() {
   function handleFile(file: File) {
     setUploadError(null);
     setLastResult(null);
+    setLastTiledResult(null);
     if (!ACCEPTED_TYPES.includes(file.type)) {
       setUploadError(`Unsupported file type: ${file.type}. Use JPEG, PNG, or WebP.`);
       return;
@@ -107,6 +115,7 @@ export default function CropGuardPanel() {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
     setLastResult(null);
+    setLastTiledResult(null);
     setUploadError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
@@ -116,14 +125,27 @@ export default function CropGuardPanel() {
     setUploadError(null);
     try {
       const base64 = await fileToBase64(selectedFile);
-      const result = await predictMutation.mutateAsync({
-        tenant_id: activeTenantId,
-        image_base64: base64,
-        top_k: 5,
-        compute_saliency: requestSaliency,
-        persist: true,
-      });
-      setLastResult(result);
+      if (analysisMode === 'leaf') {
+        const result = await predictMutation.mutateAsync({
+          tenant_id: activeTenantId,
+          image_base64: base64,
+          top_k: 5,
+          compute_saliency: requestSaliency,
+          persist: true,
+        });
+        setLastResult(result);
+        setLastTiledResult(null);
+      } else {
+        const result = await predictTiledMutation.mutateAsync({
+          tenant_id: activeTenantId,
+          image_base64: base64,
+          rows: 4, cols: 4,
+          top_k: 3,
+          persist: true,
+        });
+        setLastTiledResult(result);
+        setLastResult(null);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Prediction failed';
       setUploadError(msg);
@@ -184,7 +206,27 @@ export default function CropGuardPanel() {
       <div className="cg-main-row">
         {/* LEFT: UPLOAD + RESULT */}
         <div className="cg-upload-col">
-          <div className="cg-section-header">Analyze a leaf photo</div>
+          <div className="cg-section-header">
+            Analyze {analysisMode === 'leaf' ? 'a leaf photo' : 'a field photo'}
+            <div className="cg-mode-switch">
+              <button
+                type="button"
+                className={`cg-mode-btn ${analysisMode === 'leaf' ? 'is-active' : ''}`}
+                onClick={() => setAnalysisMode('leaf')}
+                disabled={isPending}
+              >
+                Leaf
+              </button>
+              <button
+                type="button"
+                className={`cg-mode-btn ${analysisMode === 'field' ? 'is-active' : ''}`}
+                onClick={() => setAnalysisMode('field')}
+                disabled={isPending}
+              >
+                Field (4×4 tiles)
+              </button>
+            </div>
+          </div>
 
           <label
             htmlFor="cg-file-input"
@@ -226,34 +268,35 @@ export default function CropGuardPanel() {
               type="button"
               className="cg-primary-btn"
               onClick={analyze}
-              disabled={!selectedFile || predictMutation.isPending}
+              disabled={!selectedFile || isPending}
             >
-              {predictMutation.isPending ? 'Analyzing…' : 'Analyze'}
+              {isPending ? 'Analyzing…' : 'Analyze'}
             </button>
             {selectedFile && (
               <button
                 type="button"
                 className="fp-refresh-btn"
                 onClick={clearSelection}
-                disabled={predictMutation.isPending}
+                disabled={isPending}
               >
                 Clear
               </button>
             )}
-            <label className="cg-saliency-toggle">
-              <input
-                type="checkbox"
-                checked={requestSaliency}
-                onChange={(e) => setRequestSaliency(e.target.checked)}
-                disabled={predictMutation.isPending}
-              />
-              <span>Show Grad-CAM heatmap</span>
-            </label>
+            {analysisMode === 'leaf' && (
+              <label className="cg-saliency-toggle">
+                <input
+                  type="checkbox"
+                  checked={requestSaliency}
+                  onChange={(e) => setRequestSaliency(e.target.checked)}
+                  disabled={isPending}
+                />
+                <span>Show Grad-CAM heatmap</span>
+              </label>
+            )}
           </div>
 
-          {lastResult && (
-            <ResultCard result={lastResult} />
-          )}
+          {lastResult && <ResultCard result={lastResult} />}
+          {lastTiledResult && <TiledResultCard result={lastTiledResult} />}
         </div>
 
         {/* RIGHT: RECENT FEED */}
@@ -337,6 +380,70 @@ function ResultCard({ result }: { result: CropPredictionData }) {
       <div className="cg-result-footnote">
         {result.model_name} {result.model_version} · {result.inference_time_ms} ms
         {result.persisted ? ' · saved to predictions log' : ' · dry run (not saved)'}
+      </div>
+    </div>
+  );
+}
+
+
+function TiledResultCard({ result }: { result: CropTiledPredictionData }) {
+  const hottest = result.hottest_tile;
+  const isDisease = !hottest.predicted_class.endsWith('_healthy');
+  return (
+    <div className="cg-result">
+      <div className="cg-result-header">
+        <div>
+          <div className="cg-result-class">
+            {prettifyClass(hottest.predicted_class)}
+            <span className="cg-tiled-flag"> · hottest tile (row {hottest.row}, col {hottest.col})</span>
+          </div>
+          <div className="cg-result-sub">
+            {result.rows}×{result.cols} grid · {result.tiles.length} tiles ·{' '}
+            {result.tile_width}×{result.tile_height}px each ·{' '}
+            {result.total_inference_time_ms} ms total
+          </div>
+        </div>
+        <div className={`cg-result-score ${isDisease ? 'cg-result-score--bad' : 'cg-result-score--ok'}`}>
+          {Math.round(result.aggregate_prediction * 100)}
+          <span className="cg-result-score-unit">/100</span>
+        </div>
+      </div>
+
+      <div
+        className="cg-tile-grid"
+        data-cols={result.cols}
+      >
+        {result.tiles.map((tile) => (
+          <TileCell key={`${tile.row}-${tile.col}`} tile={tile} cols={result.cols} />
+        ))}
+      </div>
+
+      <div className="cg-result-footnote">
+        {result.model_name} {result.model_version} ·{' '}
+        {result.persisted ? 'aggregate row saved to predictions log' : 'dry run'}
+      </div>
+    </div>
+  );
+}
+
+
+function TileCell({ tile, cols }: { tile: TileResult; cols: number }) {
+  const isDisease = !tile.predicted_class.endsWith('_healthy');
+  const intensity = Math.round(tile.prediction * 100);
+  return (
+    <div
+      className={`cg-tile-cell ${isDisease ? 'cg-tile-cell--bad' : 'cg-tile-cell--ok'}`}
+      title={`Row ${tile.row}, Col ${tile.col} · ${prettifyClass(tile.predicted_class)} · ${intensity}%`}
+      style={{
+        // The grid layout itself is in CSS; only the per-cell heat fill
+        // is dynamic and must stay inline.
+        '--cg-tile-heat': `${intensity}%`,
+        width: `${100 / cols}%`,
+      } as React.CSSProperties}
+    >
+      <div className="cg-tile-fill" />
+      <div className="cg-tile-label">
+        <span className={bandClass(tile.confidence_band)}>{intensity}</span>
       </div>
     </div>
   );

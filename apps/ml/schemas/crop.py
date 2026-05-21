@@ -16,6 +16,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 MAX_INLINE_IMAGE_BYTES: int = 8 * 1024 * 1024
 
 
+ConfidenceBand = Literal["HIGH", "MEDIUM", "LOW"]
+
+
 class CropPredictionRequest(BaseModel):
     """Body of POST /api/v1/predict/crop_disease.
 
@@ -138,5 +141,93 @@ class CropPredictionData(BaseModel):
 
     input_hash: str
     inference_time_ms: int
+    timestamp: datetime
+    persisted: bool
+
+
+# ─── Tiled mode (Slice 5e-a) ──────────────────────────────────────────────
+
+
+class CropTiledPredictionRequest(BaseModel):
+    """Body of POST /api/v1/predict/crop_disease/tiled.
+
+    Chops `image_base64` into a `rows × cols` grid and predicts on each
+    tile. Returns one row per tile plus the headline "hottest" tile.
+    Useful for wide field photos and (later) Sentinel-2 chips.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str = Field(min_length=1, max_length=50)
+    image_base64: str = Field(min_length=1)
+    rows: Annotated[int, Field(ge=1, le=8)] = 4
+    cols: Annotated[int, Field(ge=1, le=8)] = 4
+    top_k: Annotated[int, Field(ge=1, le=12)] = 3
+
+    # Optional spatial / field context — same fields as the single-leaf
+    # request so the persistence path can write them through.
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
+    lga: str | None = Field(default=None, max_length=120)
+    zone_name: str | None = Field(default=None, max_length=200)
+
+    persist: bool = True
+
+    @model_validator(mode="after")
+    def _decode_image(self) -> "CropTiledPredictionRequest":
+        try:
+            raw = base64.b64decode(self.image_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError(
+                f"image_base64 is not valid base64: {exc}"
+            ) from exc
+        if len(raw) == 0:
+            raise ValueError("image_base64 decodes to zero bytes.")
+        if len(raw) > MAX_INLINE_IMAGE_BYTES:
+            raise ValueError(
+                f"Image too large: {len(raw)} bytes > "
+                f"{MAX_INLINE_IMAGE_BYTES} bytes."
+            )
+        return self
+
+
+class TileResultResponse(BaseModel):
+    row: int
+    col: int
+    bbox_x: int
+    bbox_y: int
+    bbox_w: int
+    bbox_h: int
+    predicted_class: str
+    prediction: float
+    confidence: float
+    confidence_band: ConfidenceBand
+    top_k: list[CropTopKEntryResponse]
+
+
+class CropTiledPredictionData(BaseModel):
+    """Body of the SuccessResponse[T] returned by predict_crop_disease_tiled."""
+
+    prediction_id: UUID | None
+    model_name: str
+    model_version: str
+    tenant_id: str
+
+    rows: int
+    cols: int
+    source_width: int
+    source_height: int
+    tile_width: int
+    tile_height: int
+
+    # Aggregate (= hottest tile).
+    aggregate_class: str
+    aggregate_prediction: float
+    hottest_tile: TileResultResponse
+
+    tiles: list[TileResultResponse]
+
+    image_sha256: str
+    total_inference_time_ms: int
     timestamp: datetime
     persisted: bool

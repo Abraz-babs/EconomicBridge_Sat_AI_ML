@@ -165,3 +165,79 @@ export function usePredictCropDisease(
     },
   });
 }
+
+// ─── Tiled mode (Slice 5e-a) ───────────────────────────────────────────────
+
+
+export interface TileResult {
+  row: number;
+  col: number;
+  bbox_x: number;
+  bbox_y: number;
+  bbox_w: number;
+  bbox_h: number;
+  predicted_class: string;
+  prediction: number;
+  confidence: number;
+  confidence_band: 'HIGH' | 'MEDIUM' | 'LOW';
+  top_k: CropTopKEntry[];
+}
+
+export interface CropTiledPredictionData {
+  prediction_id: string | null;
+  model_name: string;
+  model_version: string;
+  tenant_id: string;
+  rows: number;
+  cols: number;
+  source_width: number;
+  source_height: number;
+  tile_width: number;
+  tile_height: number;
+  aggregate_class: string;
+  aggregate_prediction: number;
+  hottest_tile: TileResult;
+  tiles: TileResult[];
+  image_sha256: string;
+  total_inference_time_ms: number;
+  timestamp: string;
+  persisted: boolean;
+}
+
+export interface CropTiledPredictionRequest {
+  tenant_id: string;
+  image_base64: string;
+  rows?: number;
+  cols?: number;
+  top_k?: number;
+  persist?: boolean;
+  lat?: number;
+  lon?: number;
+  lga?: string;
+  zone_name?: string;
+}
+
+
+export function usePredictCropDiseaseTiled(
+  tenantId: string,
+): UseMutationResult<
+  CropTiledPredictionData,
+  ApiException,
+  CropTiledPredictionRequest
+> {
+  const qc = useQueryClient();
+  return useMutation<
+    CropTiledPredictionData,
+    ApiException,
+    CropTiledPredictionRequest
+  >({
+    mutationFn: async (body) =>
+      mlFetch<CropTiledPredictionData>('/predict/crop_disease/tiled', {
+        method: 'POST',
+        body,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crop-predictions', tenantId] });
+    },
+  });
+}
