@@ -1808,3 +1808,78 @@ nav::-webkit-scrollbar {
   text-shadow: 0 0 4px rgba(255, 255, 255, 0.7);
   pointer-events: none;
 }
+
+/* ─── Aid Coordination matrix (Module 02) ─── */
+
+.ac-matrix-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.ac-matrix-scroll {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+
+.ac-matrix {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 11px;
+}
+
+.ac-matrix th,
+.ac-matrix td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: center;
+}
+
+.ac-agency-head {
+  text-align: left !important;
+  background: var(--surface2);
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  min-width: 180px;
+}
+
+.ac-lga-head {
+  background: var(--surface2);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  min-width: 28px;
+  white-space: nowrap;
+  padding: 8px 4px;
+}
+
+.ac-agency-cell {
+  text-align: left !important;
+}
+
+.ac-agency-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.ac-agency-sub {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.ac-cell {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ac-cell--on { color: var(--ngo); background: var(--ngo-light); }
+.ac-cell--off { color: var(--dim); }

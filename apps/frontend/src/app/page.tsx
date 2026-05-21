@@ -19,6 +19,8 @@ import CropHealthIndex from '@/components/CropHealthIndex';
 import ActiveResponse from '@/components/ActiveResponse';
 import FarmlandPanel from '@/components/farmland/FarmlandPanel';
 import CropGuardPanel from '@/components/cropguard/CropGuardPanel';
+import EconomicVisibilityPanel from '@/components/economic-visibility/EconomicVisibilityPanel';
+import AidCoordinationPanel from '@/components/aid-coordination/AidCoordinationPanel';
 import AdminPanel from '@/components/admin/AdminPanel';
 import ModuleStub from '@/components/stubs/ModuleStub';
 
@@ -92,40 +94,18 @@ function DashboardContent() {
         {/* MODULE 01 — POVERTY MAPPING (ECONOMIC VISIBILITY) */}
         {activeTab === 'economic-visibility' && (
           <div className="tab-content" key="econ-vis">
-            <ModuleStub
-              num="01"
-              title="Poverty Mapping (Economic Visibility)"
-              description="Satellite-based poverty mapping identifying villages and households missed by traditional census methods. Enables targeted aid delivery to the unreached."
-              dataSources={['VIIRS Nightlight', 'WorldPop', 'DHS Survey', 'Landsat 9']}
-              quarter="Q1 2026"
-              quarterLabel="Coming June 2026"
-              capabilities={[
-                'Village-level poverty classification via nightlight analysis',
-                'Building footprint extraction for population estimation',
-                'Multi-spectral vegetation index for agricultural poverty indicators',
-                'Integration with DHS survey data for validation',
-              ]}
-            />
+            <ErrorBoundary fallbackModule="Economic Visibility">
+              <EconomicVisibilityPanel />
+            </ErrorBoundary>
           </div>
         )}
 
         {/* MODULE 02 — AID COORDINATION BRIDGE */}
         {activeTab === 'aid-coordination' && (
           <div className="tab-content" key="aid-coord">
-            <ModuleStub
-              num="02"
-              title="Aid Coordination Bridge"
-              description="Multi-tenant coordination layer preventing aid duplication. Shows which organisations are operating where, what has been delivered, and where gaps remain."
-              dataSources={['Multi-tenant', 'Real-time Sync', 'WFP SCOPE', 'UNHCR proGres']}
-              quarter="Q1 2026"
-              quarterLabel="Coming June 2026"
-              capabilities={[
-                'Real-time organisation operational coverage mapping',
-                'Aid delivery deduplication engine',
-                'Gap analysis dashboard per region and sector',
-                'WFP SCOPE and UNHCR proGres API integration',
-              ]}
-            />
+            <ErrorBoundary fallbackModule="Aid Coordination Bridge">
+              <AidCoordinationPanel />
+            </ErrorBoundary>
           </div>
         )}
 
