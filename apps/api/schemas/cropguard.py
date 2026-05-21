@@ -120,3 +120,82 @@ class YieldForecastRow(BaseModel):
 
 class YieldForecastListData(BaseModel):
     forecasts: list[YieldForecastRow] = Field(default_factory=list)
+
+
+# ─── NDVI anomaly detection (Slice 04.d) ─────────────────────────────────
+
+
+class NdviSamplePoint(BaseModel):
+    observed_at: datetime
+    ndvi: float
+
+
+class NdviScanRequest(BaseModel):
+    """Body of POST /api/v1/cropguard/ndvi/scan."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Optional crop hint — surfaced in the persisted row, doesn't
+    # affect detection (algorithm is canopy-level NDVI, crop-agnostic).
+    crop: str | None = Field(default=None, max_length=40)
+    # When true, demo path: inject a synthetic 18% NDVI drop into the
+    # last 14 days so the dashboard renders a clear anomaly. Useful
+    # for screenshots + walkthroughs.
+    demo_inject_anomaly: bool = False
+    # Persist the detection event into ndvi_anomalies.
+    persist: bool = True
+
+
+class NdviScanData(BaseModel):
+    """Body of the SuccessResponse[T] returned by POST /ndvi/scan."""
+
+    anomaly_id: UUID | None
+    tenant_id: str
+    detector_name: str
+    detector_version: str
+
+    # Window
+    window_start: datetime
+    window_end: datetime
+    days_early_warning: int
+
+    # Metrics
+    ndvi_recent_mean: float
+    ndvi_baseline_mean: float
+    ndvi_baseline_std: float
+    z_score: float
+    disease_probability: float
+    anomaly: bool
+    confidence_band: ConfidenceBand
+
+    # 90-day series for the chart
+    series: list[NdviSamplePoint] = Field(default_factory=list)
+
+    crop: str | None
+    persisted: bool
+
+
+class NdviAnomalyRow(BaseModel):
+    """One row from `tenant_<id>.ndvi_anomalies`."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: str
+    detector_name: str
+    detector_version: str
+    window_start: datetime
+    window_end: datetime
+    ndvi_recent_mean: float
+    ndvi_baseline_mean: float
+    ndvi_baseline_std: float
+    z_score: float
+    disease_probability: float
+    anomaly: bool
+    confidence_band: ConfidenceBand
+    crop: str | None
+    created_at: datetime
+
+
+class NdviAnomalyListData(BaseModel):
+    anomalies: list[NdviAnomalyRow] = Field(default_factory=list)

@@ -15,6 +15,7 @@ import {
 } from '@/hooks/useCropPredictions';
 import CropGuardMap from './CropGuardMap';
 import CropMarketPanel from './CropMarketPanel';
+import NdviAnomalyPanel from './NdviAnomalyPanel';
 import YieldForecastPanel from './YieldForecastPanel';
 
 
@@ -339,6 +340,9 @@ export default function CropGuardPanel() {
           {recent.map((row) => <RecentRow key={row.id} row={row} />)}
         </div>
       </div>
+
+      {/* PRE-SYMPTOMATIC NDVI ANOMALY (Slice 04.d) */}
+      <NdviAnomalyPanel />
 
       {/* YIELD FORECASTS (Slice 04.c) */}
       <YieldForecastPanel />
