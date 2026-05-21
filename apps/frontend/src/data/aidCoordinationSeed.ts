@@ -65,6 +65,18 @@ export interface AgencyCoverage {
   beneficiaries_served: number;  // estimate
 }
 
+export interface LgaPoint {
+  lga: string;
+  lon: number;
+  lat: number;
+  /** Number of agencies operating in this LGA. */
+  agency_count: number;
+  /** `gap` (0 agencies) | `covered` (1) | `duplicated` (2+). */
+  status: 'gap' | 'covered' | 'duplicated';
+  /** Names of agencies present (empty when status='gap'). */
+  agency_ids: string[];
+}
+
 export interface CoordinationStats {
   tenant_id: string;
   state_label: string;
@@ -78,10 +90,15 @@ export interface CoordinationStats {
   /** Matrix: rows = agencies, cols = LGAs. value = 0 (off) or 1 (covered) */
   matrix: { agency_id: string; agency_name: string; row: number[] }[];
   lga_columns: string[];
+  /** Per-LGA centroids (jittered around tenant centroid) for the map. */
+  lga_points: LgaPoint[];
 }
 
 
-export function coordinationStatsFor(tenantId: string): CoordinationStats {
+export function coordinationStatsFor(
+  tenantId: string,
+  centroid: [number, number] = [0, 0],
+): CoordinationStats {
   const lgas = LGA_POOL[tenantId] ?? [`${tenantId} Region 1`, `${tenantId} Region 2`];
   const r = rng(hashString(tenantId));
 
@@ -132,6 +149,27 @@ export function coordinationStatsFor(tenantId: string): CoordinationStats {
     row: lgas.map(lga => a.lgas_covered.includes(lga) ? 1 : 0),
   }));
 
+  // LGA centroids deterministically jittered around tenant centroid.
+  // Real LGA polygons land with the Module 02 real-data slice; for now
+  // this gives the map a clear visual story per tenant.
+  const lga_points: LgaPoint[] = lgas.map((lga, idx) => {
+    // 8-direction spiral pattern using LGA index so points fan out
+    // around the tenant centre.
+    const angle = (idx * 360 / lgas.length) * Math.PI / 180;
+    const radius = 0.45 + (idx % 3) * 0.18;
+    const lon = centroid[0] + Math.cos(angle) * radius;
+    const lat = centroid[1] + Math.sin(angle) * radius * 0.85;
+    const count = lga_to_agencies[lga]?.length ?? 0;
+    const status: LgaPoint['status'] =
+      count === 0 ? 'gap' : count === 1 ? 'covered' : 'duplicated';
+    return {
+      lga, lon, lat,
+      agency_count: count,
+      status,
+      agency_ids: lga_to_agencies[lga] ?? [],
+    };
+  });
+
   return {
     tenant_id: tenantId,
     state_label: STATE_NAMES[tenantId] ?? tenantId,
@@ -144,5 +182,6 @@ export function coordinationStatsFor(tenantId: string): CoordinationStats {
     agencies,
     matrix,
     lga_columns: lgas,
+    lga_points,
   };
 }

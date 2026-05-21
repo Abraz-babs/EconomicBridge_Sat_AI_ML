@@ -1883,3 +1883,12 @@ nav::-webkit-scrollbar {
 
 .ac-cell--on { color: var(--ngo); background: var(--ngo-light); }
 .ac-cell--off { color: var(--dim); }
+
+.ac-map-wrap { margin-bottom: 16px; }
+
+.ev-map-meta {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}

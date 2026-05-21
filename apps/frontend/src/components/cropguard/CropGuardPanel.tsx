@@ -13,6 +13,7 @@ import {
   type CropTiledPredictionData,
   type TileResult,
 } from '@/hooks/useCropPredictions';
+import CropGuardMap from './CropGuardMap';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -201,6 +202,21 @@ export default function CropGuardPanel() {
         >
           {recentQuery.isFetching ? 'Refreshing…' : 'Refresh feed'}
         </button>
+      </div>
+
+      {/* MAP — predictions geography */}
+      <div className="fp-map ac-map-wrap">
+        <div className="fp-map-header">
+          <span className="fp-map-title">
+            Disease Geography — {stateLabel}
+          </span>
+          <span className="ev-map-meta">
+            {recent.length} prediction{recent.length === 1 ? '' : 's'} ·
+            Sources: ResNet-50 + Sentinel-2 ROI · synthesised positions for
+            non-geolocated uploads
+          </span>
+        </div>
+        <CropGuardMap tenant={activeTenant} predictions={recent} />
       </div>
 
       <div className="cg-main-row">

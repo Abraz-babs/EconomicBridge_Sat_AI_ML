@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
 import { povertyStatsFor, type PovertyVillage } from '@/data/povertySeed';
+import PovertyMap from './PovertyMap';
 
 
 function fmtNum(n: number): string {
@@ -83,8 +84,21 @@ export default function EconomicVisibilityPanel() {
         </div>
       </div>
 
-      {/* MAIN: village table */}
+      {/* MAP + RANKING */}
       <div className="fp-main-row">
+        <div className="fp-map">
+          <div className="fp-map-header">
+            <span className="fp-map-title">
+              Poverty Intensity — {stats.state_label}
+            </span>
+            <span className="ev-map-meta">
+              {stats.villages.length} settlements ·
+              Sources: VIIRS · WorldPop · DHS · Landsat 9
+            </span>
+          </div>
+          <PovertyMap tenant={activeTenant} villages={stats.villages} />
+        </div>
+
         <div className="fp-alerts">
           <div className="fp-alerts-header">
             Vulnerability Ranking — {stats.state_label}

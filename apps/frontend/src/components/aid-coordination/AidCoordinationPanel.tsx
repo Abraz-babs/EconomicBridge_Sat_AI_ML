@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
 import { coordinationStatsFor } from '@/data/aidCoordinationSeed';
+import AidCoverageMap from './AidCoverageMap';
 
 
 function fmtNum(n: number): string {
@@ -18,10 +19,10 @@ function fmtPct(n: number): string {
 
 
 export default function AidCoordinationPanel() {
-  const { activeTenantId, pilotTenants, setActiveTenant } = useTenant();
+  const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
   const stats = useMemo(
-    () => coordinationStatsFor(activeTenantId),
-    [activeTenantId],
+    () => coordinationStatsFor(activeTenantId, activeTenant.centroid),
+    [activeTenantId, activeTenant.centroid],
   );
 
   return (
@@ -77,6 +78,20 @@ export default function AidCoordinationPanel() {
           <div className="fp-stat-val">{stats.gap_lgas.length}</div>
           <div className="fp-stat-sub">LGAs with zero agency presence</div>
         </div>
+      </div>
+
+      {/* MAP — agency coverage geography */}
+      <div className="fp-map ac-map-wrap">
+        <div className="fp-map-header">
+          <span className="fp-map-title">
+            Agency Geography — {stats.state_label}
+          </span>
+          <span className="ev-map-meta">
+            {stats.gap_lgas.length} gap LGAs ·
+            Sources: WFP SCOPE · UNHCR proGres · NEMA · State SEMA
+          </span>
+        </div>
+        <AidCoverageMap tenant={activeTenant} lgaPoints={stats.lga_points} />
       </div>
 
       {/* COVERAGE MATRIX */}
