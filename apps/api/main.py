@@ -23,7 +23,15 @@ from middleware.audit import AuditLogMiddleware
 from middleware.security import SecurityHeadersMiddleware
 from middleware.tenant import TenantContextMiddleware
 from middleware.trace import TraceIdMiddleware
-from routers import cropguard, dpa, farmland, health, health_db, tenants
+from routers import (
+    cropguard,
+    cropguard_prices,
+    dpa,
+    farmland,
+    health,
+    health_db,
+    tenants,
+)
 
 settings = get_settings()
 
@@ -59,4 +67,5 @@ app.include_router(health_db.router, prefix="/api/v1")
 app.include_router(tenants.router, prefix="/api/v1")
 app.include_router(farmland.router, prefix="/api/v1")
 app.include_router(cropguard.router, prefix="/api/v1")
+app.include_router(cropguard_prices.router, prefix="/api/v1")
 app.include_router(dpa.router, prefix="/api/v1")

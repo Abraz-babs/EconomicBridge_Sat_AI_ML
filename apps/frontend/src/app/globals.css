@@ -1892,3 +1892,76 @@ nav::-webkit-scrollbar {
   text-transform: uppercase;
   color: var(--muted);
 }
+
+/* ─── CropGuard market panel (Slice 04.b) ─── */
+
+.cg-market {
+  margin-top: 20px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.cg-crop-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 18px;
+}
+
+.cg-crop-chip {
+  background: var(--surface2);
+  color: var(--ink2);
+  border: 1px solid var(--border2);
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.cg-crop-chip:hover { background: var(--bg); }
+
+.cg-crop-chip.is-active {
+  background: var(--ngo);
+  color: white;
+  border-color: var(--ngo);
+}
+
+.cg-market-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+@media(max-width: 1024px) {
+  .cg-market-row { grid-template-columns: 1fr; }
+}
+
+.cg-chart-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px;
+  min-height: 280px;
+}
+
+.cg-chart-head { margin-bottom: 10px; }
+
+.cg-chart-title {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--ink);
+}
+
+.cg-chart-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.cg-pct-up   { color: #2d6a4f; font-weight: 700; }
+.cg-pct-down { color: #e05a2b; font-weight: 700; }

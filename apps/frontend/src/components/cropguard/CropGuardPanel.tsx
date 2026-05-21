@@ -14,6 +14,7 @@ import {
   type TileResult,
 } from '@/hooks/useCropPredictions';
 import CropGuardMap from './CropGuardMap';
+import CropMarketPanel from './CropMarketPanel';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -337,6 +338,9 @@ export default function CropGuardPanel() {
           {recent.map((row) => <RecentRow key={row.id} row={row} />)}
         </div>
       </div>
+
+      {/* MARKET PRICES (Slice 04.b) */}
+      <CropMarketPanel />
     </div>
   );
 }
