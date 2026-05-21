@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 
 import EBMap from '@/components/map/EBMap';
 import type { Tenant } from '@/data/tenants';
-import type { LgaPoint } from '@/data/aidCoordinationSeed';
+import type { LgaPoint } from '@/hooks/useAidCoordination';
 
 
 /** Status colour: red gap → yellow covered-by-one → green well-served. */
