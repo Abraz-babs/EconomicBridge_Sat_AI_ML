@@ -201,6 +201,66 @@ export async function apiGet<T>(
   return envelope.data;
 }
 
+/**
+ * Multipart POST for bulk-upload endpoints. Same envelope handling +
+ * tenant header attach as `apiFetch`, but the body is FormData. Do NOT
+ * set Content-Type manually — fetch derives it with the multipart
+ * boundary automatically.
+ */
+export interface UploadOptions {
+  tenantId?: string | null;
+  signal?: AbortSignal;
+}
+
+export async function apiUpload<T>(
+  path: string,
+  formData: FormData,
+  opts: UploadOptions = {},
+): Promise<SuccessEnvelope<T>> {
+  const url = path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (opts.tenantId) headers['X-Tenant-Id'] = opts.tenantId;
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+      signal: opts.signal,
+    });
+  } catch (err) {
+    throw new ApiException(
+      err instanceof Error ? err.message : 'Network error',
+      0,
+      null,
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch {
+    parsed = null;
+  }
+
+  if (!response.ok) {
+    const body = (parsed as ErrorEnvelope | null) ?? null;
+    // FastAPI emits 4xx as `{ detail: "..." }` for our HTTPException paths;
+    // the success envelope only fires on 2xx. Cover both shapes.
+    let message =
+      body?.error?.message ??
+      `Upload failed: ${response.status} ${response.statusText}`;
+    if (parsed && typeof parsed === 'object') {
+      const obj = parsed as { detail?: unknown };
+      if (typeof obj.detail === 'string') message = obj.detail;
+    }
+    throw new ApiException(message, response.status, body);
+  }
+
+  return parsed as SuccessEnvelope<T>;
+}
+
 // ─── ML service helper ─────────────────────────────────────────────────────
 
 

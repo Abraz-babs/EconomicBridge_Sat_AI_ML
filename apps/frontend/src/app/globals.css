@@ -559,6 +559,98 @@ main {
 .aorg-type { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
 .aorg-perms { display: flex; flex-wrap: wrap; gap: 4px; }
 .aperm { padding: 2px 6px; border-radius: 2px; font-size: 8px; letter-spacing: 1px; }
+.aperm--ngo        { background: #d8f3dc; color: #2d6a4f; }
+.aperm--gov        { background: #dce8f5; color: #1d3557; }
+.aperm--un         { background: #f0d9ec; color: #6b2d5e; }
+.aperm--research   { background: #fef3dc; color: #7b4f00; }
+.aperm--restricted { background: #fde8e1; color: #c1440e; }
+.aperm--limited    { background: #fef3dc; color: #c97d00; }
+.admin-footer {
+  padding: 14px 18px; border-top: 1px solid var(--border);
+  font-size: 10px; color: var(--muted);
+}
+
+/* ─── ADMIN STACK (multiple panels in the admin tab) ─── */
+.admin-stack { display: flex; flex-direction: column; gap: 14px; padding: 14px 0; }
+
+/* ─── BULK UPLOAD CARDS ─── */
+.upload-body { padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; }
+.upload-desc {
+  font-size: 11px; color: var(--muted); line-height: 1.55; margin: 0;
+}
+.upload-desc code {
+  background: var(--surface2); padding: 1px 5px; border-radius: 2px;
+  font-size: 10px; color: var(--ink);
+}
+.upload-row {
+  display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;
+}
+.upload-field { display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
+.upload-field--grow { flex: 1 1 280px; }
+.upload-field-label {
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--muted);
+}
+.upload-select, .upload-file {
+  font-size: 11px; padding: 6px 8px; border: 1px solid var(--border);
+  border-radius: 3px; background: var(--surface); color: var(--ink);
+}
+.upload-file { padding: 5px; }
+.upload-reset-btn {
+  font-size: 10px; padding: 6px 12px; border: 1px solid var(--border);
+  border-radius: 3px; background: var(--surface); color: var(--muted);
+  cursor: pointer;
+}
+.upload-reset-btn:hover:not(:disabled) { border-color: var(--border2); color: var(--ink); }
+.upload-reset-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.upload-sample {
+  font-size: 10px; color: var(--muted);
+  border: 1px dashed var(--border); border-radius: 3px; padding: 8px 12px;
+}
+.upload-sample summary { cursor: pointer; }
+.upload-sample pre {
+  margin: 8px 0 0 0; font-size: 10px; color: var(--ink);
+  background: var(--surface2); padding: 8px; border-radius: 2px;
+  overflow-x: auto;
+}
+
+.upload-result {
+  padding: 12px 14px; border-radius: 3px; font-size: 11px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.upload-result--ok    { background: #f0f9f4; border-left: 4px solid #52b788; }
+.upload-result--mixed { background: #fef3dc; border-left: 4px solid #f4a832; }
+.upload-result-summary { color: var(--ink); }
+.upload-result-summary code {
+  background: var(--surface); padding: 1px 5px; border-radius: 2px;
+  font-size: 10px;
+}
+.upload-result-detail {
+  font-size: 10px; color: var(--muted); line-height: 1.5;
+}
+.upload-result-detail code {
+  background: var(--surface); padding: 1px 4px; border-radius: 2px;
+}
+
+.upload-errors-header {
+  font-size: 10px; color: var(--muted); letter-spacing: 1px;
+  text-transform: uppercase; margin-bottom: 4px;
+}
+.upload-errors-table {
+  width: 100%; border-collapse: collapse; font-size: 10px;
+}
+.upload-errors-table th, .upload-errors-table td {
+  text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.upload-errors-table th {
+  color: var(--muted); letter-spacing: 1px; font-weight: 500;
+}
+.upload-errors-table code {
+  font-size: 9px; color: var(--ink); background: rgba(0,0,0,0.04);
+  padding: 1px 4px; border-radius: 2px;
+}
 
 /* ─── FOOTER ─── */
 footer.app-footer {
