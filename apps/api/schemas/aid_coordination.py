@@ -103,3 +103,26 @@ class AidCoverageRow(BaseModel):
     source: str
     created_at: datetime
     updated_at: datetime
+
+
+# ─── Bulk CSV upload contract ─────────────────────────────────────────────
+
+
+class BulkCoverageRowError(BaseModel):
+    """One row that couldn't be ingested. Reported back to the operator
+    alongside the successful upsert count."""
+
+    line_number: int                    # 1-based, includes header line
+    raw_row: dict[str, str]             # exactly what was in the CSV cell
+    error: str                          # human-readable reason
+
+
+class BulkCoverageUploadResult(BaseModel):
+    """Summary returned from POST /aid_coordination/coverage/bulk."""
+
+    tenant_id: str
+    source: str                         # tagged on every row inserted
+    rows_received: int                  # total CSV data rows (excludes header)
+    rows_inserted: int                  # upserts that landed (new + updated)
+    rows_skipped: int                   # rows rejected — see errors list
+    errors: list[BulkCoverageRowError] = Field(default_factory=list)

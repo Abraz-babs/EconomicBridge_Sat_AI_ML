@@ -21,6 +21,7 @@ Design notes:
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
 from typing import Any
 
@@ -91,11 +92,26 @@ def _data_type(path: str) -> str | None:
 
 
 def _client_ip(request: Request) -> str | None:
-    """Best-effort client IP: trust X-Forwarded-For first, fall back to client.host."""
+    """Best-effort client IP, validated as a real v4/v6 address.
+
+    audit_log.ip_address is INET — Postgres rejects anything that doesn't
+    parse, which would explode the whole audit insert. We see non-IP
+    values from TestClient ('testclient'), some load balancers (literal
+    hostnames in X-Forwarded-For), and badly-configured proxies. None
+    is preferable to a 500 on the audit path.
+    """
     xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else None
+    candidate = (
+        xff.split(",")[0].strip() if xff
+        else (request.client.host if request.client else None)
+    )
+    if not candidate:
+        return None
+    try:
+        ipaddress.ip_address(candidate)
+    except ValueError:
+        return None
+    return candidate
 
 
 def _severity_for_status(status_code: int) -> str:
