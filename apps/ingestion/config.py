@@ -75,6 +75,14 @@ class Settings(BaseSettings):
     # CDSE OData endpoint for raw SAFE downloads. Search is via the Sentinel
     # Hub Catalog API (above); download is via OData on dataspace.
     copernicus_odata_url: str = "https://catalogue.dataspace.copernicus.eu/odata/v1"
+    # Statistical API: server-side raster aggregation that returns JSON
+    # time series (mean/min/max/percentiles per requested time-bucket) over
+    # a polygon or bbox. Lets ShockGuard + NDVI anomaly detectors run on
+    # real Sentinel-1 SAR + Sentinel-2 NDVI without us touching raster
+    # bytes. See docs/memory reference_copernicus_endpoints.md.
+    copernicus_statistical_url: str = (
+        "https://sh.dataspace.copernicus.eu/api/v1/statistics"
+    )
     # Hard timeout for one SAFE download. Sentinel-2 L2A scenes run
     # ~600 MB — over a 10 Mbps link that's ~8 minutes. 15 min headroom
     # for slower networks and the SAR (Sentinel-1 GRD) which is larger.
