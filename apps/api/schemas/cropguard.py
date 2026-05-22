@@ -199,3 +199,27 @@ class NdviAnomalyRow(BaseModel):
 
 class NdviAnomalyListData(BaseModel):
     anomalies: list[NdviAnomalyRow] = Field(default_factory=list)
+
+
+# ─── Bulk price CSV upload (Slice 04.b.live) ──────────────────────────────
+
+
+class BulkPriceRowError(BaseModel):
+    """One CSV row that couldn't be ingested. Returned alongside the
+    inserted/skipped counts so the operator gets a clean diagnostic."""
+
+    line_number: int                    # 1-based, includes header line
+    raw_row: dict[str, str]             # echo of the offending cell values
+    error: str
+
+
+class BulkPriceUploadResult(BaseModel):
+    """Summary returned from POST /cropguard/prices/bulk."""
+
+    source: str                         # audit tag stamped on every row
+    rows_received: int                  # total CSV data rows (excludes header)
+    rows_inserted: int                  # upserts that landed (new or updated)
+    rows_skipped: int                   # rows rejected — see errors[]
+    crops_seen: list[str] = Field(default_factory=list)
+    regions_seen: list[str] = Field(default_factory=list)
+    errors: list[BulkPriceRowError] = Field(default_factory=list)
