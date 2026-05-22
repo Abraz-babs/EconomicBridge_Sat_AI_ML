@@ -226,6 +226,13 @@ main {
 
 @keyframes slideIn { from { opacity:0; transform:translateX(-10px); } to { opacity:1; transform:translateX(0); } }
 
+/* Quiet variant — used when no high/critical events flagged. */
+.alert-bar--quiet {
+  border-left-color: #52b788;
+  background: #f0f9f4;
+  color: #2f7c52;
+}
+
 /* ─── STATS ─── */
 .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 
@@ -475,8 +482,18 @@ main {
 .feed-item:last-child { border-bottom: none; }
 
 .feed-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+.feed-dot--critical { background: #e05a2b; }
+.feed-dot--high     { background: #e05a2b; }
+.feed-dot--medium   { background: #f4a832; }
+.feed-dot--low      { background: #52b788; }
 .feed-text { font-size: 11px; color: var(--ink); line-height: 1.5; margin-bottom: 3px; }
-.feed-sub { font-size: 9px; color: var(--muted); letter-spacing: 1px; display: flex; gap: 8px; }
+.feed-sub { font-size: 9px; color: var(--muted); letter-spacing: 1px; display: flex; gap: 8px; flex-wrap: wrap; }
+.feed-source { color: var(--muted); opacity: 0.8; }
+.feed-item--empty {
+  cursor: default; color: var(--muted); font-size: 11px;
+  font-style: italic; padding: 16px 18px;
+}
+.feed-item--empty:hover { background: transparent; }
 
 .tag {
   display: inline-block; padding: 1px 6px; border-radius: 2px;
