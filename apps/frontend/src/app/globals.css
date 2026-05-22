@@ -749,6 +749,7 @@ footer.app-footer {
 .fp-legend-dot--high     { background: #ff8c00; }
 .fp-legend-dot--resolved { background: #52b788; }
 .fp-legend-dot--boundary { background: #52b788; }
+.fp-legend-dot--flood    { background: #41aeda; }
 
 .fp-map-overlay {
   position: absolute; top: 12px; right: 12px;

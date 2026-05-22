@@ -33,6 +33,7 @@ from routers import (
     farmland,
     health,
     health_db,
+    shockguard,
     tenants,
 )
 
@@ -74,4 +75,5 @@ app.include_router(cropguard_prices.router, prefix="/api/v1")
 app.include_router(cropguard_ndvi.router, prefix="/api/v1")
 app.include_router(economic_visibility.router, prefix="/api/v1")
 app.include_router(aid_coordination.router, prefix="/api/v1")
+app.include_router(shockguard.router, prefix="/api/v1")
 app.include_router(dpa.router, prefix="/api/v1")

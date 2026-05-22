@@ -21,6 +21,7 @@ import FarmlandPanel from '@/components/farmland/FarmlandPanel';
 import CropGuardPanel from '@/components/cropguard/CropGuardPanel';
 import EconomicVisibilityPanel from '@/components/economic-visibility/EconomicVisibilityPanel';
 import AidCoordinationPanel from '@/components/aid-coordination/AidCoordinationPanel';
+import ShockGuardPanel from '@/components/shockguard/ShockGuardPanel';
 import AdminPanel from '@/components/admin/AdminPanel';
 import ModuleStub from '@/components/stubs/ModuleStub';
 
@@ -121,20 +122,9 @@ function DashboardContent() {
         {/* MODULE 05 — DISASTER RELIEF (SHOCKGUARD) */}
         {activeTab === 'shockguard' && (
           <div className="tab-content" key="shockguard">
-            <ModuleStub
-              num="05"
-              title="Disaster Relief (ShockGuard)"
-              description="Flood and drought early warning with 48-hour advance alerts. SAR-based flood extent mapping penetrates cloud cover — critical during monsoon events when optical imagery fails."
-              dataSources={['Sentinel-1 SAR', 'U-Net Segmentation', 'NASA FIRMS', 'MODIS VIIRS']}
-              quarter="Q2 2026"
-              quarterLabel="Coming September 2026"
-              capabilities={[
-                '48-hour flood advance warning system',
-                'U-Net SAR-based flood extent mapping (works through clouds)',
-                'Drought monitoring with MODIS/VIIRS thermal data',
-                'AI-optimised aid corridor routing during emergencies',
-              ]}
-            />
+            <ErrorBoundary fallbackModule="ShockGuard">
+              <ShockGuardPanel />
+            </ErrorBoundary>
           </div>
         )}
 
