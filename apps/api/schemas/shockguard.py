@@ -31,6 +31,9 @@ class DroughtSeriesPoint(BaseModel):
 # ─── Scan request ─────────────────────────────────────────────────────────
 
 
+DataSource = Literal["synthetic", "live"]
+
+
 class ShockScanRequest(BaseModel):
     """Body of POST /api/v1/shockguard/scan."""
 
@@ -41,6 +44,14 @@ class ShockScanRequest(BaseModel):
     # a clear positive event for walkthroughs/screenshots.
     demo_inject_anomaly: bool = False
     persist: bool = True
+    # Where the SAR/NDVI series comes from:
+    #   'synthetic' (default) — deterministic per-tenant series. Useful
+    #     for demos + tests, never makes a CDSE call.
+    #   'live' — reads real Sentinel-1 / Sentinel-2 rows from
+    #     tenant_<id>.satellite_observations (populated by the ingestion
+    #     service's scheduled run). Drought stays synthetic until MODIS
+    #     LST ingestion lands in Phase B.
+    data_source: DataSource = "synthetic"
 
 
 # ─── Scan result ──────────────────────────────────────────────────────────

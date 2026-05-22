@@ -130,6 +130,9 @@ class NdviSamplePoint(BaseModel):
     ndvi: float
 
 
+NdviDataSource = Literal["synthetic", "live"]
+
+
 class NdviScanRequest(BaseModel):
     """Body of POST /api/v1/cropguard/ndvi/scan."""
 
@@ -144,6 +147,12 @@ class NdviScanRequest(BaseModel):
     demo_inject_anomaly: bool = False
     # Persist the detection event into ndvi_anomalies.
     persist: bool = True
+    # Where the NDVI series comes from:
+    #   'synthetic' (default) — deterministic per-tenant seasonal sinusoid.
+    #   'live' — reads real Sentinel-2 NDVI rows from
+    #     tenant_<id>.satellite_observations (populated by the ingestion
+    #     service's Statistical API ingest task).
+    data_source: NdviDataSource = "synthetic"
 
 
 class NdviScanData(BaseModel):

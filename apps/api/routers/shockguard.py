@@ -29,7 +29,9 @@ from schemas.shockguard import (
     ShockScanRequest,
 )
 from services import shock_detector
+from services.live_satellite import LiveDataMissingError, load_flood_series
 from services.shock_detector import to_utc_dt
+from services.tenants import tenant_schema_name
 
 
 router = APIRouter(prefix="/shockguard", tags=["shockguard"])
@@ -64,12 +66,39 @@ async def scan_shock(
 ) -> SuccessResponse[ShockScanData]:
     tenant_id = _require_tenant(request)
 
+    # Live mode pulls real Sentinel-1 SAR rows from
+    # tenant_<id>.satellite_observations (drought stays synthetic for
+    # now — MODIS LST ingestion is Phase B). data_source='synthetic'
+    # is the default and remains the demo path.
+    live_series = None
+    if body.data_source == "live" and body.event_type == "flood":
+        await session.execute(
+            text(f"SET search_path TO {tenant_schema_name(tenant_id)}, public"),
+        )
+        try:
+            live_series = await load_flood_series(session)
+        except LiveDataMissingError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+
     try:
         if body.event_type == "flood":
+            # Real S1 SAR has a ~6-day repeat per ROI — pass sparse-data
+            # window sizes so the detector doesn't choke on point-counts
+            # below the synthetic-daily defaults.
+            flood_kwargs = (
+                {"recent_n": 3, "baseline_n": 8} if live_series is not None else {}
+            )
             detection = shock_detector.detect_flood(
-                tenant_id, inject_flood=body.demo_inject_anomaly,
+                tenant_id,
+                series=live_series,
+                inject_flood=body.demo_inject_anomaly and live_series is None,
+                **flood_kwargs,
             )
         else:
+            # Drought detector remains synthetic until MODIS LST lands.
             detection = shock_detector.detect_drought(
                 tenant_id, inject_drought=body.demo_inject_anomaly,
             )

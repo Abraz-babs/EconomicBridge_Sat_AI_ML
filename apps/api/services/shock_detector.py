@@ -174,21 +174,31 @@ def detect_flood(
     *,
     series: tuple[FloodSeriesPoint, ...] | None = None,
     inject_flood: bool = False,
+    recent_n: int | None = None,
+    baseline_n: int | None = None,
 ) -> ShockDetection:
-    """Linear-detrended z-score on SAR backscatter. NEGATIVE z = flood."""
+    """Linear-detrended z-score on SAR backscatter. NEGATIVE z = flood.
+
+    `recent_n` / `baseline_n` override the window sizes (in points, not
+    days). Defaults to FLOOD_RECENT_DAYS / FLOOD_BASELINE_DAYS for the
+    daily synthetic series. Real Sentinel-1 GRD has a ~6-day repeat over
+    a state-sized ROI, so the live caller passes smaller point counts
+    (≈ recent_n=2, baseline_n=8 for 12-day recent / 48-day baseline).
+    """
     if series is None:
         series = synthetic_flood_series(tenant_id, inject_flood=inject_flood)
-    if len(series) < FLOOD_BASELINE_DAYS + FLOOD_RECENT_DAYS:
+    rwindow = recent_n if recent_n is not None else FLOOD_RECENT_DAYS
+    bwindow = baseline_n if baseline_n is not None else FLOOD_BASELINE_DAYS
+    if len(series) < bwindow + rwindow:
         raise ValueError(
-            f"flood series too short: {len(series)} < "
-            f"{FLOOD_BASELINE_DAYS + FLOOD_RECENT_DAYS}"
+            f"flood series too short: {len(series)} < {bwindow + rwindow}"
         )
 
-    baseline = series[-(FLOOD_RECENT_DAYS + FLOOD_BASELINE_DAYS): -FLOOD_RECENT_DAYS]
-    recent = series[-FLOOD_RECENT_DAYS:]
+    baseline = series[-(rwindow + bwindow): -rwindow]
+    recent = series[-rwindow:]
     baseline_values = [p.backscatter_db for p in baseline]
     intercept, slope, residual_std = _linear_detrend_stats(baseline_values)
-    expected_x = len(baseline_values) + FLOOD_RECENT_DAYS / 2.0
+    expected_x = len(baseline_values) + rwindow / 2.0
     expected = intercept + slope * expected_x
     recent_mean = sum(p.backscatter_db for p in recent) / len(recent)
     bstd = max(residual_std, 1e-6)

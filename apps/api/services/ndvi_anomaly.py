@@ -139,25 +139,35 @@ def detect_anomaly(
     tenant_id: str,
     series: tuple[NdviSample, ...],
     crop: str | None = None,
+    recent_n: int | None = None,
+    baseline_n: int | None = None,
 ) -> AnomalyResult:
-    """Run the 14-day z-score detector over a 90-day series."""
-    if len(series) < RECENT_WINDOW_DAYS + BASELINE_WINDOW_DAYS:
+    """Run the 14-day z-score detector over a 90-day series.
+
+    `recent_n` / `baseline_n` override the window sizes (in points, not
+    days). Defaults to RECENT_WINDOW_DAYS / BASELINE_WINDOW_DAYS which
+    works for the daily synthetic series. Real Sentinel-2 data is
+    sparser (~5-day repeat over a state-sized ROI), so the live caller
+    passes smaller point counts (≈ recent_n=3, baseline_n=12 for
+    14-day recent / 60-day baseline coverage).
+    """
+    rwindow = recent_n if recent_n is not None else RECENT_WINDOW_DAYS
+    bwindow = baseline_n if baseline_n is not None else BASELINE_WINDOW_DAYS
+    if len(series) < rwindow + bwindow:
         raise ValueError(
             f"NDVI series too short: got {len(series)}, need at least "
-            f"{RECENT_WINDOW_DAYS + BASELINE_WINDOW_DAYS}."
+            f"{rwindow + bwindow}."
         )
 
-    recent = series[-RECENT_WINDOW_DAYS:]
-    baseline = series[
-        -(RECENT_WINDOW_DAYS + BASELINE_WINDOW_DAYS): -RECENT_WINDOW_DAYS
-    ]
+    recent = series[-rwindow:]
+    baseline = series[-(rwindow + bwindow): -rwindow]
 
     rmean = _mean(s.ndvi for s in recent)
     baseline_values = [s.ndvi for s in baseline]
     intercept, slope, residual_std = _linear_detrend_stats(baseline_values)
     # `expected` = where the seasonal trajectory would put us at the
     # CENTRE of the recent window (index = n_baseline + recent_window/2).
-    expected_x = len(baseline_values) + RECENT_WINDOW_DAYS / 2.0
+    expected_x = len(baseline_values) + rwindow / 2.0
     expected = intercept + slope * expected_x
 
     bmean = expected

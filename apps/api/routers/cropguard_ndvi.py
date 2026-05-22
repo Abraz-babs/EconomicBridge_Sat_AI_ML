@@ -29,6 +29,8 @@ from schemas.cropguard import (
 )
 from schemas.envelope import ResponseMeta, SuccessResponse
 from services import ndvi_anomaly as ndvi_service
+from services.live_satellite import LiveDataMissingError, load_ndvi_series
+from services.tenants import tenant_schema_name
 
 
 router = APIRouter(prefix="/cropguard/ndvi", tags=["cropguard"])
@@ -70,12 +72,30 @@ async def scan_ndvi_anomaly(
 ) -> SuccessResponse[NdviScanData]:
     tenant_id = _require_tenant(request)
 
-    series = ndvi_service.synthetic_series(
-        tenant_id, inject_anomaly=body.demo_inject_anomaly,
+    if body.data_source == "live":
+        await session.execute(
+            text(f"SET search_path TO {tenant_schema_name(tenant_id)}, public"),
+        )
+        try:
+            series = await load_ndvi_series(session)
+        except LiveDataMissingError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+    else:
+        series = ndvi_service.synthetic_series(
+            tenant_id, inject_anomaly=body.demo_inject_anomaly,
+        )
+    # Real S2 has ~5-day repeat per state ROI — pass sparse-data window
+    # sizes so the detector works on actual acquisition counts (~3 recent,
+    # ~12 baseline gives the same 14d / 60d coverage as the synthetic path).
+    detect_kwargs = (
+        {"recent_n": 3, "baseline_n": 12} if body.data_source == "live" else {}
     )
     try:
         result = ndvi_service.detect_anomaly(
-            tenant_id=tenant_id, series=series, crop=body.crop,
+            tenant_id=tenant_id, series=series, crop=body.crop, **detect_kwargs,
         )
     except ValueError as exc:
         raise HTTPException(
