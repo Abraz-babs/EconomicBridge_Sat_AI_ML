@@ -36,10 +36,19 @@ export interface NdviScanData {
   persisted: boolean;
 }
 
+export type NdviDataSource = 'synthetic' | 'live';
+
 export interface NdviScanRequest {
   crop?: string;
   demo_inject_anomaly?: boolean;
   persist?: boolean;
+  /**
+   * 'synthetic' (default) — per-tenant seasonal sinusoid; demo_inject_anomaly works.
+   * 'live' — reads real Sentinel-2 NDVI rows from
+   * `tenant_<id>.satellite_observations`. Requires the ingestion task to
+   * have populated rows; otherwise the API returns 422 with a runbook hint.
+   */
+  data_source?: NdviDataSource;
 }
 
 

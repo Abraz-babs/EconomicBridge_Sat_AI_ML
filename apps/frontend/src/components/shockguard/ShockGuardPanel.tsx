@@ -6,6 +6,7 @@ import { useTenant } from '@/context/TenantContext';
 import {
   useShockEvents,
   useShockScan,
+  type DataSource,
   type ShockEventType,
   type ShockScanData,
 } from '@/hooks/useShockGuard';
@@ -53,13 +54,22 @@ export default function ShockGuardPanel() {
   const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
   const [eventType, setEventType] = useState<ShockEventType>('flood');
   const [demoMode, setDemoMode] = useState(true);
+  const [dataSource, setDataSource] = useState<DataSource>('synthetic');
   const [lastScan, setLastScan] = useState<ShockScanData | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
 
   const scanMutation = useShockScan(activeTenantId);
   const eventsQuery = useShockEvents({ tenantId: activeTenantId, limit: 10 });
 
-  // Auto-scan on tenant/event-type/demo-mode change so the chart isn't empty.
+  // Live mode for drought stays a Phase B story (MODIS LST not ingested
+  // yet) — flip the switch back when the user picks drought.
+  const effectiveDataSource: DataSource =
+    dataSource === 'live' && eventType === 'drought' ? 'synthetic' : dataSource;
+  // Demo injection is meaningless against real satellite data — can't
+  // inject into rows you don't own.
+  const demoEffective = effectiveDataSource === 'live' ? false : demoMode;
+
+  // Auto-scan on tenant/event-type/demo-mode/source change so the chart isn't empty.
   useEffect(() => {
     if (!activeTenantId) return;
     let cancelled = false;
@@ -69,7 +79,8 @@ export default function ShockGuardPanel() {
     scanMutation
       .mutateAsync({
         event_type: eventType, persist: false,
-        demo_inject_anomaly: demoMode,
+        demo_inject_anomaly: demoEffective,
+        data_source: effectiveDataSource,
       })
       .then((data) => { if (!cancelled) setLastScan(data); })
       .catch((err) => {
@@ -78,14 +89,15 @@ export default function ShockGuardPanel() {
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTenantId, eventType, demoMode]);
+  }, [activeTenantId, eventType, demoEffective, effectiveDataSource]);
 
   async function persistScan() {
     setScanError(null);
     try {
       const result = await scanMutation.mutateAsync({
         event_type: eventType, persist: true,
-        demo_inject_anomaly: demoMode,
+        demo_inject_anomaly: demoEffective,
+        data_source: effectiveDataSource,
       });
       setLastScan(result);
     } catch (err) {
@@ -107,7 +119,15 @@ export default function ShockGuardPanel() {
             MODIS thermal + NDVI composite
           </div>
         </div>
-        <div className="cg-mode-badge cg-mode-untuned">DETECTOR · synthetic series</div>
+        <div
+          className={`cg-mode-badge ${
+            effectiveDataSource === 'live' ? 'cg-mode-trained' : 'cg-mode-untuned'
+          }`}
+        >
+          {effectiveDataSource === 'live'
+            ? 'LIVE · sentinel_stat_v1'
+            : 'DETECTOR · synthetic series'}
+        </div>
       </div>
 
       {/* TENANT SELECTOR */}
@@ -186,14 +206,41 @@ export default function ShockGuardPanel() {
               Drought
             </button>
           </div>
+          <div className="cg-mode-switch" aria-label="ShockGuard data source">
+            <button
+              type="button"
+              className={`cg-mode-btn ${effectiveDataSource === 'synthetic' ? 'is-active' : ''}`}
+              onClick={() => setDataSource('synthetic')}
+              disabled={scanMutation.isPending}
+              title="Deterministic per-tenant series (no live API calls)"
+            >
+              Synthetic
+            </button>
+            <button
+              type="button"
+              className={`cg-mode-btn ${effectiveDataSource === 'live' ? 'is-active' : ''}`}
+              onClick={() => setDataSource('live')}
+              disabled={scanMutation.isPending || eventType === 'drought'}
+              title={
+                eventType === 'drought'
+                  ? 'Live drought needs MODIS LST ingestion (Phase B)'
+                  : 'Read real Sentinel-1 SAR from satellite_observations'
+              }
+            >
+              Live
+            </button>
+          </div>
           <label className="cg-saliency-toggle">
             <input
               type="checkbox"
               checked={demoMode}
               onChange={(e) => setDemoMode(e.target.checked)}
-              disabled={scanMutation.isPending}
+              disabled={scanMutation.isPending || effectiveDataSource === 'live'}
             />
-            <span>Demo mode (inject synthetic anomaly)</span>
+            <span>
+              Demo mode (inject synthetic anomaly)
+              {effectiveDataSource === 'live' && ' — N/A in live mode'}
+            </span>
           </label>
           <button
             type="button"

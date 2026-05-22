@@ -48,10 +48,21 @@ export interface ShockScanData {
   persisted: boolean;
 }
 
+export type DataSource = 'synthetic' | 'live';
+
 export interface ShockScanRequest {
   event_type: ShockEventType;
   demo_inject_anomaly?: boolean;
   persist?: boolean;
+  /**
+   * 'synthetic' (default) — deterministic per-tenant series; no live API
+   * call; demo_inject_anomaly works.
+   * 'live' — reads real Sentinel-1 / Sentinel-2 rows from
+   * `tenant_<id>.satellite_observations`. Requires the operator to have
+   * run `python -m scripts.ingest_satellite_observations` from apps/ingestion.
+   * Drought stays synthetic (MODIS LST is Phase B).
+   */
+  data_source?: DataSource;
 }
 
 

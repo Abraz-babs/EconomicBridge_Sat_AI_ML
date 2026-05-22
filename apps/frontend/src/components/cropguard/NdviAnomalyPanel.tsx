@@ -6,6 +6,7 @@ import { useTenant } from '@/context/TenantContext';
 import {
   useNdviAnomalies,
   useScanNdviAnomaly,
+  type NdviDataSource,
   type NdviScanData,
 } from '@/hooks/useNdviAnomaly';
 
@@ -29,14 +30,16 @@ export default function NdviAnomalyPanel() {
   const [lastScan, setLastScan] = useState<NdviScanData | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [demoMode, setDemoMode] = useState(true);
+  const [dataSource, setDataSource] = useState<NdviDataSource>('synthetic');
 
   const scanMutation = useScanNdviAnomaly(activeTenantId);
   const listQuery = useNdviAnomalies({ tenantId: activeTenantId, limit: 6 });
 
-  // Auto-run scan once per tenant/mode change so the chart isn't empty.
-  // The setState-in-effect lint rule is intentionally suppressed here:
-  // this is the canonical "fire-and-forget on prop change" pattern and
-  // the same shape FarmlandMap uses to reset hover state on tenant flip.
+  // Demo injection is meaningless against real Sentinel-2 rows — you
+  // can't inject a synthetic dip into data you don't own.
+  const demoEffective = dataSource === 'live' ? false : demoMode;
+
+  // Auto-run scan once per tenant/mode/source change so the chart isn't empty.
   useEffect(() => {
     if (!activeTenantId) return;
     let cancelled = false;
@@ -44,7 +47,11 @@ export default function NdviAnomalyPanel() {
     setScanError(null);
     setLastScan(null);
     scanMutation
-      .mutateAsync({ persist: false, demo_inject_anomaly: demoMode })
+      .mutateAsync({
+        persist: false,
+        demo_inject_anomaly: demoEffective,
+        data_source: dataSource,
+      })
       .then((data) => { if (!cancelled) setLastScan(data); })
       .catch((err) => {
         if (cancelled) return;
@@ -52,14 +59,15 @@ export default function NdviAnomalyPanel() {
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTenantId, demoMode]);
+  }, [activeTenantId, demoEffective, dataSource]);
 
   async function runConfirmedScan() {
     setScanError(null);
     try {
       const result = await scanMutation.mutateAsync({
         persist: true,
-        demo_inject_anomaly: demoMode,
+        demo_inject_anomaly: demoEffective,
+        data_source: dataSource,
       });
       setLastScan(result);
     } catch (err) {
@@ -72,19 +80,45 @@ export default function NdviAnomalyPanel() {
       <div className="cg-section-header">
         Pre-symptomatic Disease Detection — NDVI Anomaly
         <span className="ev-map-meta">
-          14-day early warning · Sentinel-2 NDVI vs detrended baseline
+          14-day early warning · Sentinel-2 NDVI vs detrended baseline ·{' '}
+          <span className={`cg-band ${dataSource === 'live' ? 'cg-band-high' : 'cg-band-low'}`}>
+            {dataSource === 'live' ? 'LIVE · sentinel_stat_v1' : 'SYNTHETIC'}
+          </span>
         </span>
       </div>
 
       <div className="cg-ndvi-controls">
+        <div className="cg-mode-switch" aria-label="NDVI data source">
+          <button
+            type="button"
+            className={`cg-mode-btn ${dataSource === 'synthetic' ? 'is-active' : ''}`}
+            onClick={() => setDataSource('synthetic')}
+            disabled={scanMutation.isPending}
+            title="Deterministic per-tenant seasonal sinusoid (no live API calls)"
+          >
+            Synthetic
+          </button>
+          <button
+            type="button"
+            className={`cg-mode-btn ${dataSource === 'live' ? 'is-active' : ''}`}
+            onClick={() => setDataSource('live')}
+            disabled={scanMutation.isPending}
+            title="Read real Sentinel-2 NDVI from satellite_observations"
+          >
+            Live
+          </button>
+        </div>
         <label className="cg-saliency-toggle">
           <input
             type="checkbox"
             checked={demoMode}
             onChange={(e) => setDemoMode(e.target.checked)}
-            disabled={scanMutation.isPending}
+            disabled={scanMutation.isPending || dataSource === 'live'}
           />
-          <span>Demo mode (inject 18% NDVI drop in last 14 days)</span>
+          <span>
+            Demo mode (inject 18% NDVI drop in last 14 days)
+            {dataSource === 'live' && ' — N/A in live mode'}
+          </span>
         </label>
         <button
           type="button"
