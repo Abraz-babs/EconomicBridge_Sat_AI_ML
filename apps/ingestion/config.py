@@ -91,6 +91,32 @@ class Settings(BaseSettings):
     # as DEFAULT_MAX_ALERTS_PER_RUN for FIRMS — keeps the feed legible.
     conflict_max_alerts_per_run: int = 3
 
+    # NASA Earthdata (LAADS DAAC) — VIIRS Black Marble nightlight catalog.
+    # Bearer token from urs.earthdata.nasa.gov → "Generate Token". Empty
+    # token means "catalog client returns no scenes" — the processor
+    # downgrades to seed_v1 rows in that case. NEVER hardcode the token.
+    earthdata_token: str = ""
+    # LAADS DAAC catalog base. The full search URL is built by the client
+    # — this is the host + version prefix only so we can override per env.
+    earthdata_laads_base_url: str = "https://ladsweb.modaps.eosdis.nasa.gov"
+    # VNP46A2 = daily moonlight-adjusted black marble (per-pixel radiance).
+    # VNP46A4 = annual composite (smoothed). A2 for change-detection; A4
+    # for stable poverty mapping baselines.
+    viirs_black_marble_product: str = "VNP46A2"
+
+    # WorldPop — population grid catalog. Anonymous REST API at
+    # worldpop.org/rest/data, plus open S3 bucket (s3://worldpop-data) for
+    # raster downloads. Catalog calls are auth-free; raster reads (later)
+    # use anonymous boto3 with signature_version=UNSIGNED.
+    worldpop_rest_base_url: str = "https://www.worldpop.org/rest/data"
+    # Population product family. "pop" = constrained gridded population.
+    # "wpgp" = unconstrained 100m global. "pop" matches WorldPop's official
+    # poverty-mapping pipeline so we mirror their methodology.
+    worldpop_default_dataset: str = "pop"
+    # Default year used when the caller doesn't pin one. WorldPop publishes
+    # ~2 years behind; 2024 layers are stable as of 2026-Q1.
+    worldpop_default_year: int = 2024
+
     # S3 imagery archive — Phase A.6. Empty bucket name = mock mode; the
     # downloader records what *would* have happened but doesn't call AWS.
     # Production Terraform (infrastructure/terraform/) provisions the
