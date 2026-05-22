@@ -55,7 +55,17 @@ class BlackMarbleClient:
     """Async LAADS DAAC catalog client for VIIRS Black Marble.
 
     The LAADS DAAC catalog exposes a JSON listing endpoint:
-        /archive/allData/5000/{PRODUCT}/{YYYY}/{DDD}/
+        /archive/allData/{COLLECTION}/{PRODUCT}/{YYYY}/{DDD}/.json
+
+    Response shape (LAADS v2):
+        {
+            "content": [
+                {"name": "VNP46A2.A2026100.h00v01.002.20260108.h5",
+                 "downloadsLink": "...", "size": 4181490, ...},
+                ...
+            ],
+            "file_count": 540, ...
+        }
 
     A granule's name encodes the date (A{YYYY}{DDD}), tile (h{HH}v{VV}),
     and processing collection. We filter to granules whose MODIS sinusoidal
@@ -99,11 +109,14 @@ class BlackMarbleClient:
             return []
 
         prod = product or self._settings.viirs_black_marble_product
+        collection = self._settings.earthdata_laads_collection
         yyyy = date.year
         ddd = date.timetuple().tm_yday
+        # Trailing-slash-before-.json is required: LAADS treats the path
+        # as a directory listing and .json is the response-format suffix.
         url = (
             f"{self._settings.earthdata_laads_base_url}"
-            f"/archive/allData/5000/{prod}/{yyyy}/{ddd:03d}.json"
+            f"/archive/allData/{collection}/{prod}/{yyyy}/{ddd:03d}/.json"
         )
 
         async with self._http_ctx() as client:
@@ -226,20 +239,35 @@ def _tile_intersects_bbox(
 def _approx_tile_bbox(h: int, v: int) -> tuple[float, float, float, float]:
     """Approximate WGS84 bbox of a MODIS sinusoidal tile (lon_w, lon_e, lat_s, lat_n).
 
-    The sinusoidal projection is equal-area; latitudes are exact:
-        lat_n = 90 - v * 10
-        lat_s = 90 - (v + 1) * 10
-    Longitudes shrink toward the poles. We approximate using the central
-    latitude — accurate within a few degrees, which suffices for ROI gating.
+    MODIS sinusoidal projection (Sanson-Flamsteed) — equal-area, with the
+    x-axis in metres centred on the prime meridian. The native grid:
+        x_left  = -20015109.354 + h * 1111950.5  (metres)
+        y_top   =  10007554.677 - v * 1111950.5  (metres)
+    To go back to WGS84 we use the projection equations:
+        lat = y / 111319.49  (degrees)
+        lon = x / (cos(lat_centre) * 111319.49)  (degrees)
+    Latitudes are exact (the projection preserves them); longitudes
+    are evaluated at the tile's central latitude.
     """
     import math
-    lat_n = 90.0 - v * 10.0
-    lat_s = 90.0 - (v + 1) * 10.0
+
+    # Sinusoidal grid constants (NASA MODLAND).
+    earth_radius_m = 6371007.181
+    tile_metres = 1111950.5
+    metres_per_deg_lat = math.pi * earth_radius_m / 180.0
+
+    y_top = (10.0 * tile_metres) - v * tile_metres
+    y_bottom = y_top - tile_metres
+    lat_n = y_top / metres_per_deg_lat
+    lat_s = y_bottom / metres_per_deg_lat
     centre_lat = (lat_n + lat_s) / 2.0
     cos_phi = max(math.cos(math.radians(centre_lat)), 0.05)
-    tile_width_deg = 10.0 / cos_phi
-    lon_w = -180.0 + h * tile_width_deg
-    lon_e = lon_w + tile_width_deg
+    metres_per_deg_lon = cos_phi * metres_per_deg_lat
+
+    x_left = (-18.0 * tile_metres) + h * tile_metres
+    x_right = x_left + tile_metres
+    lon_w = x_left / metres_per_deg_lon
+    lon_e = x_right / metres_per_deg_lon
     return lon_w, lon_e, lat_s, lat_n
 
 

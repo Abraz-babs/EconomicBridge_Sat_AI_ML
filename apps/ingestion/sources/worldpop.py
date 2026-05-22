@@ -79,23 +79,30 @@ class WorldPopClient:
 
         Args:
             iso3: ISO 3166-1 alpha-3 country code (NGA, GHA, SEN, …).
-            year: Calendar year (defaults to settings.worldpop_default_year).
-            dataset: Product family ('pop' constrained, 'wpgp' unconstrained).
+            year: Calendar year (None = no filter; many rows have null popyear).
+            dataset: Catalog path under /rest/data (defaults to settings,
+                which is "pop/pic" for individual-country populations).
             max_results: cap on returned layers.
 
         Returns:
             List of WorldPopLayer, latest year first. Empty when the
-            country/year combo has no published layer (legitimate — the
-            processor falls back to seed_v1 in that case).
+            catalog has no row for that ISO3.
+
+        Note: hub.worldpop.org's catalog returns one row per ISO3 with
+        sparse metadata (id, iso3, title, popyear — sometimes null). The
+        download_url is only resolvable via /pop/{dataset}/{id} which
+        currently 500s; Phase B raster sampling will resolve this once
+        WorldPop stabilises the detail endpoint.
         """
         ds = dataset or self._settings.worldpop_default_dataset
-        url = f"{self._settings.worldpop_rest_base_url}/{ds}/{iso3.upper()}"
+        url = f"{self._settings.worldpop_rest_base_url}/{ds}"
 
         async with self._http_ctx() as client:
             resp = await client.get(
                 url,
                 headers={"Accept": "application/json"},
                 timeout=30.0,
+                follow_redirects=True,
             )
         if resp.status_code == 404:
             return []
@@ -113,6 +120,11 @@ class WorldPopClient:
         rows = payload.get("data") if isinstance(payload, dict) else payload
         if not isinstance(rows, list):
             return []
+        # Filter by ISO3 client-side — the live catalog returns one row per
+        # country and ignores ISO3 as a path segment (returns 500).
+        iso3_upper = iso3.upper()
+        rows = [r for r in rows if isinstance(r, dict)
+                and (r.get("iso3") or r.get("country_iso") or "").upper() == iso3_upper]
         layers = [_parse_layer(r) for r in rows]
         layers = [layer for layer in layers if layer is not None]
         if year is not None:
@@ -160,13 +172,14 @@ def _parse_layer(row: Any) -> WorldPopLayer | None:
     iso3 = row.get("iso3") or row.get("country_iso") or row.get("alpha3")
     if not isinstance(iso3, str) or len(iso3) != 3:
         return None
+    # The list-view catalog often returns popyear=null. We keep the row so
+    # the swap-in can tag source='worldpop_v1'; the year is folded into
+    # the layer as 0 and filtered out only when the caller pins a year.
     year_raw = row.get("popyear") or row.get("year")
     try:
         year = int(year_raw) if year_raw is not None else 0
     except (TypeError, ValueError):
-        return None
-    if year == 0:
-        return None
+        year = 0
     title = str(row.get("title") or row.get("name") or "")
     download_url = str(
         row.get("data_file")

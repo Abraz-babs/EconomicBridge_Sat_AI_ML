@@ -89,10 +89,11 @@ class _FakeSession:
 
 
 def _viirs_client_with_granule() -> BlackMarbleClient:
-    # h17v07 covers Kebbi (lon -4..6, lat 10..20); h16v07 covers Senegal.
+    # h18v08 covers Kebbi (lat 10-20, lon 0-10). MODIS sinusoidal v is the
+    # latitude index — v=07 is lat 20-30 (Sahara), v=08 is lat 10-20.
     payload = [
         {
-            "name": "VNP46A2.A2026140.h17v07.001.x.h5",
+            "name": "VNP46A2.A2026140.h18v08.002.x.h5",
             "size": 12_345_678,
             "downloadsLink": "https://ladsweb...",
         }
@@ -217,8 +218,10 @@ async def test_ingest_rejects_unknown_tenant():
 
 
 @pytest.mark.asyncio
-async def test_ingest_for_senegal_uses_country_iso(monkeypatch):
-    """Senegal tenant should hit WorldPop with SEN — confirms tenant→ISO3 wiring."""
+async def test_ingest_for_senegal_calls_worldpop_catalog(monkeypatch):
+    """Senegal tenant must hit the WorldPop catalog list endpoint. The
+    live API doesn't take ISO3 in the path (returns 500), so we filter
+    client-side — but the catalog call still has to fire."""
     monkeypatch.setenv("EARTHDATA_TOKEN", "")
     from config import get_settings
     get_settings.cache_clear()
@@ -227,12 +230,14 @@ async def test_ingest_for_senegal_uses_country_iso(monkeypatch):
 
     def handler(req: httpx.Request) -> httpx.Response:
         captured.append(str(req.url))
-        return httpx.Response(200, content=b'{"data":[]}')
+        # Real Senegal row so the client picks it up after the ISO3 prefilter.
+        body = b'{"data":[{"id":127,"iso3":"SEN","popyear":2024,"title":"Senegal pop"}]}'
+        return httpx.Response(200, content=body)
 
     worldpop = WorldPopClient(http=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
     session = _FakeSession()
 
-    await ingest_tenant(
+    result = await ingest_tenant(
         session, tenant_id="senegal",
         viirs_client=_viirs_client_empty(),
         worldpop_client=worldpop,
@@ -241,4 +246,8 @@ async def test_ingest_for_senegal_uses_country_iso(monkeypatch):
 
     get_settings.cache_clear()
 
-    assert any("SEN" in url for url in captured)
+    # One catalog call fired
+    assert len(captured) == 1
+    assert "rest/data" in captured[0]
+    # ISO3 filter picked out the Senegal row
+    assert result.worldpop_dataset_id == 127

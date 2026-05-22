@@ -117,10 +117,11 @@ async def test_search_parses_real_laads_row_shape(configured):
 async def test_search_drops_granules_outside_bbox(configured):
     """Tiles that don't intersect the ROI bbox must be filtered out."""
     payload = [
-        # West Africa tile
-        _row("VNP46A2.A2026140.h17v07.001.20260141.h5"),
+        # Ghana coverage tile: h17v08 (lat 10-20, lon -10..0) intersects
+        # the Ghana ROI lat 4.7-11.2.
+        _row("VNP46A2.A2026140.h17v08.002.20260141.h5"),
         # Arctic tile — should be dropped for a sub-Saharan ROI
-        _row("VNP46A2.A2026140.h00v00.001.20260141.h5"),
+        _row("VNP46A2.A2026140.h00v00.002.20260141.h5"),
     ]
     transport = _route(payload)
     client = BlackMarbleClient(http=httpx.AsyncClient(transport=transport))
@@ -130,7 +131,7 @@ async def test_search_drops_granules_outside_bbox(configured):
     )
     tiles = {(g.tile_h, g.tile_v) for g in result}
     assert (0, 0) not in tiles
-    assert (17, 7) in tiles
+    assert (17, 8) in tiles
 
 
 @pytest.mark.asyncio
@@ -211,19 +212,23 @@ def test_parse_julian_rejects_bad_day_of_year():
         _parse_julian("A2026999")
 
 
-def test_tile_bbox_for_equatorial_tile():
-    """h18v08 covers the equator at ~0° longitude — central west Africa."""
+def test_tile_bbox_for_nigeria_tile():
+    """h18v08 sits at lat 10-20, lon 0-10 — central Nigeria (Kebbi, Zamfara)."""
     lon_w, lon_e, lat_s, lat_n = _approx_tile_bbox(18, 8)
-    assert lat_n == 10.0
-    assert lat_s == 0.0
-    # Sinusoidal tiles around the equator are ~10° wide.
-    assert (lon_e - lon_w) == pytest.approx(10.0, abs=0.5)
+    # Latitudes are exact in the sinusoidal projection (height-preserving).
+    assert lat_n == pytest.approx(20.0, abs=0.01)
+    assert lat_s == pytest.approx(10.0, abs=0.01)
+    # Mid-latitude tile width ~ 10.35° at lat 15° (cos(15) ≈ 0.97).
+    assert (lon_e - lon_w) == pytest.approx(10.35, abs=0.1)
+    assert lon_w == pytest.approx(0.0, abs=0.01)
 
 
 def test_tile_intersects_west_africa_roi():
-    # h16v07 sits at lat 10..20, lon ~ -14..-4 — covers Senegal.
+    # h16v08 sits at lat 10-20, lon ~-22..-11 — covers Senegal.
     # Senegal ROI: (-17.5, 12.3, -11.3, 15.7)
-    assert _tile_intersects_bbox(16, 7, (-17.5, 12.3, -11.3, 15.7)) is True
+    assert _tile_intersects_bbox(16, 8, (-17.5, 12.3, -11.3, 15.7)) is True
+    # h18v08 covers central Nigeria — includes Kebbi (3.6..5.5, 10.8..13.2).
+    assert _tile_intersects_bbox(18, 8, (3.6, 10.8, 5.5, 13.2)) is True
 
 
 def test_arctic_tile_does_not_intersect_tropical_roi():

@@ -103,16 +103,20 @@ class Settings(BaseSettings):
     # VNP46A4 = annual composite (smoothed). A2 for change-detection; A4
     # for stable poverty mapping baselines.
     viirs_black_marble_product: str = "VNP46A2"
+    # LAADS collection number. 5200 is the current VNP46A2 v002 collection
+    # (5000 was deprecated in 2023). When NASA bumps to a new collection
+    # — typically every 2-3 years — flip this without redeploying code.
+    earthdata_laads_collection: str = "5200"
 
     # WorldPop — population grid catalog. Anonymous REST API at
-    # worldpop.org/rest/data, plus open S3 bucket (s3://worldpop-data) for
-    # raster downloads. Catalog calls are auth-free; raster reads (later)
-    # use anonymous boto3 with signature_version=UNSIGNED.
-    worldpop_rest_base_url: str = "https://www.worldpop.org/rest/data"
-    # Population product family. "pop" = constrained gridded population.
-    # "wpgp" = unconstrained 100m global. "pop" matches WorldPop's official
-    # poverty-mapping pipeline so we mirror their methodology.
-    worldpop_default_dataset: str = "pop"
+    # hub.worldpop.org/rest/data (the www. host 301s here as of 2026-04).
+    # Open S3 bucket (s3://worldpop-data) for raster reads in Phase B.
+    worldpop_rest_base_url: str = "https://hub.worldpop.org/rest/data"
+    # Family path within the catalog. "pop/pic" = "Individual country
+    # populations" (one row per ISO3). The bare /pop list is a directory
+    # of 17 subdatasets — too coarse. /pop/{id} detail endpoints return
+    # 500 inconsistently, so we list /pop/pic and filter client-side.
+    worldpop_default_dataset: str = "pop/pic"
     # Default year used when the caller doesn't pin one. WorldPop publishes
     # ~2 years behind; 2024 layers are stable as of 2026-Q1.
     worldpop_default_year: int = 2024
