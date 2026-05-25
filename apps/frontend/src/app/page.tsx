@@ -22,6 +22,7 @@ import CropGuardPanel from '@/components/cropguard/CropGuardPanel';
 import EconomicVisibilityPanel from '@/components/economic-visibility/EconomicVisibilityPanel';
 import AidCoordinationPanel from '@/components/aid-coordination/AidCoordinationPanel';
 import ShockGuardPanel from '@/components/shockguard/ShockGuardPanel';
+import MobilityCompassPanel from '@/components/mobility/MobilityCompassPanel';
 import AdminPanel from '@/components/admin/AdminPanel';
 import ModuleStub from '@/components/stubs/ModuleStub';
 
@@ -131,20 +132,9 @@ function DashboardContent() {
         {/* MODULE 06 — ECONOMIC MOBILITY COMPASS */}
         {activeTab === 'mobility-compass' && (
           <div className="tab-content" key="mobility">
-            <ModuleStub
-              num="06"
-              title="Economic Mobility Compass"
-              description="Regional cost-of-living and income comparison for resettlement agencies and displaced households. Integrates NBS API and ECOWAS STAT data for cross-border economic analysis."
-              dataSources={['NBS API', 'ECOWAS STAT', 'World Bank', 'IOM DTM']}
-              quarter="Q2 2026"
-              quarterLabel="Coming September 2026"
-              capabilities={[
-                'Regional cost-of-living index with real-time updates',
-                'Income opportunity mapping per LGA and state',
-                'Resettlement suitability scoring for displaced populations',
-                'Cross-border economic comparison across ECOWAS nations',
-              ]}
-            />
+            <ErrorBoundary fallbackModule="Economic Mobility Compass">
+              <MobilityCompassPanel />
+            </ErrorBoundary>
           </div>
         )}
 

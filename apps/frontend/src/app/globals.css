@@ -860,6 +860,11 @@ footer.app-footer {
 .fp-legend-dot--boundary { background: #52b788; }
 .fp-legend-dot--flood    { background: #41aeda; }
 
+.fp-legend-dot--col-below   { background: rgb(82, 183, 136); }
+.fp-legend-dot--col-near    { background: rgb(240, 175, 60); }
+.fp-legend-dot--col-above   { background: rgb(224, 130, 50); }
+.fp-legend-dot--col-premium { background: rgb(192, 60, 40); }
+
 .fp-map-overlay {
   position: absolute; top: 12px; right: 12px;
   background: rgba(0,0,0,0.7); padding: 8px 12px; border-radius: 3px;
@@ -2219,3 +2224,107 @@ nav::-webkit-scrollbar {
 
 /* Variant for ResultCard when nothing is wrong — soften the header. */
 .cg-result.cg-result--ok .cg-result-class { color: var(--ngo); }
+
+
+/* ─── Module 06: Economic Mobility Compass (Slice 07) ─── */
+
+.mc-stat-val--small {
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.mc-table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.mc-table-scroll {
+  overflow-x: auto;
+}
+
+.mc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.mc-table thead th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  font-weight: 600;
+}
+
+.mc-table tbody td {
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
+}
+
+.mc-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.mc-lga-cell {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.mc-band {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.mc-band--below_avg { background: #d8f3dc; color: #1b4332; }
+.mc-band--near_avg  { background: #fef2c8; color: #75520e; }
+.mc-band--above_avg { background: #fde2cf; color: #842f0a; }
+.mc-band--premium   { background: #f5c8be; color: #5a1a10; }
+
+.mc-scorebar {
+  position: relative;
+  width: 100px;
+  height: 16px;
+  background: var(--surface2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mc-scorebar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  border-radius: 8px;
+  transition: width 220ms ease;
+}
+
+.mc-scorebar-fill--low  { background: #e08232; }
+.mc-scorebar-fill--mid  { background: #f0af3c; }
+.mc-scorebar-fill--high { background: #52b788; }
+
+.mc-scorebar-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  mix-blend-mode: multiply;
+}
