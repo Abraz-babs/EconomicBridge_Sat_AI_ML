@@ -23,8 +23,8 @@ import EconomicVisibilityPanel from '@/components/economic-visibility/EconomicVi
 import AidCoordinationPanel from '@/components/aid-coordination/AidCoordinationPanel';
 import ShockGuardPanel from '@/components/shockguard/ShockGuardPanel';
 import MobilityCompassPanel from '@/components/mobility/MobilityCompassPanel';
+import SkillsBridgePanel from '@/components/skills/SkillsBridgePanel';
 import AdminPanel from '@/components/admin/AdminPanel';
-import ModuleStub from '@/components/stubs/ModuleStub';
 
 function DashboardContent() {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
@@ -141,20 +141,9 @@ function DashboardContent() {
         {/* MODULE 07 — SKILLSBRIDGE */}
         {activeTab === 'skillsbridge' && (
           <div className="tab-content" key="skillsbridge">
-            <ModuleStub
-              num="07"
-              title="SkillsBridge"
-              description="Remote education access mapping for areas with geographical barriers. Satellite-verified connectivity mapping to guide digital learning infrastructure deployment."
-              dataSources={['Connectivity Mapping', 'Satellite Imagery', 'UNICEF GIGA', 'ITU Data']}
-              quarter="Q3 2026"
-              quarterLabel="Coming December 2026"
-              capabilities={[
-                'Satellite-verified internet connectivity mapping',
-                'Educational facility accessibility analysis',
-                'Digital learning infrastructure gap identification',
-                'Partnership with UNICEF GIGA connectivity initiative',
-              ]}
-            />
+            <ErrorBoundary fallbackModule="SkillsBridge">
+              <SkillsBridgePanel />
+            </ErrorBoundary>
           </div>
         )}
       </main>
