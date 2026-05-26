@@ -24,16 +24,29 @@ interface Props {
 
 export default function PovertyMap({ tenant, villages }: Props) {
   const [layers, setLayers] = useState<unknown[]>([]);
+  const [pulse, setPulse] = useState(0);
+
+  // Heartbeat — pulses critical-poverty villages (score >= 0.80) so the
+  // eye lands on the highest-need settlements first, even when the
+  // heatmap is dense.
+  const hasAttention = villages.some((v) => v.poverty_score >= 0.80);
+  useEffect(() => {
+    if (!hasAttention) return;
+    const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
+    return () => window.clearInterval(id);
+  }, [hasAttention]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [{ ScatterplotLayer }, { HeatmapLayer }] = await Promise.all([
+      const [{ ScatterplotLayer, TextLayer }, { HeatmapLayer }] = await Promise.all([
         import('@deck.gl/layers'),
         import('@deck.gl/aggregation-layers'),
       ]);
       if (cancelled) return;
 
+      const pulseRows = villages.filter((v) => v.poverty_score >= 0.80);
+      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
       const built: unknown[] = [
         new HeatmapLayer<PovertyVillage>({
           id: 'poverty-heatmap',
@@ -51,6 +64,19 @@ export default function PovertyMap({ tenant, villages }: Props) {
           ],
         }),
         new ScatterplotLayer<PovertyVillage>({
+          id: 'poverty-pulse',
+          data: pulseRows,
+          getPosition: (v: PovertyVillage) => [v.location.lon, v.location.lat],
+          getRadius: () => 30000 * pulseScale,
+          getFillColor: [255, 69, 0, 40],
+          radiusUnits: 'meters',
+          radiusMinPixels: 14,
+          radiusMaxPixels: 80,
+          stroked: false,
+          pickable: false,
+          updateTriggers: { getRadius: pulse },
+        }),
+        new ScatterplotLayer<PovertyVillage>({
           id: 'poverty-villages',
           data: villages,
           getPosition: (v: PovertyVillage) => [v.location.lon, v.location.lat],
@@ -64,11 +90,25 @@ export default function PovertyMap({ tenant, villages }: Props) {
           stroked: true,
           pickable: true,
         }),
+        new TextLayer<PovertyVillage>({
+          id: 'poverty-village-labels',
+          data: villages,
+          getPosition: (v: PovertyVillage) => [v.location.lon, v.location.lat],
+          getText: (v: PovertyVillage) => `${v.lga} · ${v.settlement_name}`,
+          getSize: 11,
+          getColor: [255, 255, 255, 240],
+          getPixelOffset: [0, -22],
+          fontFamily: 'system-ui, sans-serif',
+          fontWeight: 600,
+          background: true,
+          getBackgroundColor: [26, 23, 20, 200],
+          backgroundPadding: [4, 2, 4, 2],
+        }),
       ];
       setLayers(built);
     })();
     return () => { cancelled = true; };
-  }, [villages]);
+  }, [villages, pulse]);
 
   const sources = Array.from(new Set(villages.map((v) => v.source)));
 

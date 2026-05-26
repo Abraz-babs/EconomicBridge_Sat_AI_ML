@@ -58,15 +58,48 @@ export default function ShockEventsMap({ tenant, events }: Props) {
   );
 
   const [layers, setLayers] = useState<unknown[]>([]);
+  const [pulse, setPulse] = useState(0);
+
+  // Heartbeat — pulses critical + high severity events. Two-tier scaling so
+  // critical events read louder than high (same convention as FarmlandMap).
+  const hasAttention = positioned.some(
+    (p) => p.severity === 'critical' || p.severity === 'high',
+  );
+  useEffect(() => {
+    if (!hasAttention) return;
+    const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
+    return () => window.clearInterval(id);
+  }, [hasAttention]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [{ ScatterplotLayer }] = await Promise.all([
+      const [{ ScatterplotLayer, TextLayer }] = await Promise.all([
         import('@deck.gl/layers'),
       ]);
       if (cancelled) return;
+      const pulseRows = positioned.filter(
+        (p) => p.severity === 'critical' || p.severity === 'high',
+      );
+      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
       const built: unknown[] = [
+        new ScatterplotLayer<PositionedEvent>({
+          id: 'shock-events-pulse',
+          data: pulseRows,
+          getPosition: (p) => p.position,
+          getRadius: (p) =>
+            (p.severity === 'critical' ? 34000 : 24000) * pulseScale,
+          getFillColor: (p) => {
+            const c = colourFor(p);
+            return [c[0], c[1], c[2], 40] as [number, number, number, number];
+          },
+          radiusUnits: 'meters',
+          radiusMinPixels: 14,
+          radiusMaxPixels: 80,
+          stroked: false,
+          pickable: false,
+          updateTriggers: { getRadius: pulse },
+        }),
         new ScatterplotLayer<PositionedEvent>({
           id: 'shock-events',
           data: positioned,
@@ -82,11 +115,29 @@ export default function ShockEventsMap({ tenant, events }: Props) {
           stroked: true,
           pickable: true,
         }),
+        new TextLayer<PositionedEvent>({
+          id: 'shock-event-labels',
+          data: positioned,
+          getPosition: (p) => p.position,
+          getText: (p) => {
+            const icon = p.event_type === 'flood' ? '🌊' : '🔥';
+            const label = p.lga ?? tenant.name;
+            return `${icon} ${label} · ${p.severity}`;
+          },
+          getSize: 11,
+          getColor: [255, 255, 255, 240],
+          getPixelOffset: [0, -22],
+          fontFamily: 'system-ui, sans-serif',
+          fontWeight: 600,
+          background: true,
+          getBackgroundColor: [26, 23, 20, 200],
+          backgroundPadding: [4, 2, 4, 2],
+        }),
       ];
       setLayers(built);
     })();
     return () => { cancelled = true; };
-  }, [positioned]);
+  }, [positioned, tenant.name, pulse]);
 
   const floodCount = positioned.filter((p) => p.event_type === 'flood').length;
   const droughtCount = positioned.length - floodCount;

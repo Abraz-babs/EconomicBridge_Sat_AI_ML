@@ -56,10 +56,11 @@ const nextConfig: NextConfig = {
               "img-src 'self' data: blob: https:",
               [
                 "connect-src 'self'",
-                // Backend API (dev — uvicorn on localhost:8000). In production
-                // this becomes the deployed API origin via NEXT_PUBLIC_API_BASE_URL.
-                "http://localhost:8000",
-                "http://127.0.0.1:8000",
+                // Backend services (dev). In production these become the deployed
+                // origins via NEXT_PUBLIC_*_BASE_URL.
+                "http://localhost:8000", "http://127.0.0.1:8000",   // API
+                "http://localhost:8001", "http://127.0.0.1:8001",   // ingestion (N2YO passes + Sentinel scene catalog)
+                "http://localhost:8002", "http://127.0.0.1:8002",   // ML service
                 "https://api.mapbox.com",
                 "https://events.mapbox.com",
                 "https://*.tiles.mapbox.com",

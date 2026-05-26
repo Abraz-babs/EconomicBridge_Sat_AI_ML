@@ -25,6 +25,7 @@ if str(API_ROOT) not in sys.path:
 from sqlalchemy import text  # noqa: E402
 
 from db.engine import get_engine, get_session_factory  # noqa: E402
+from services.lga_geo import centroid_for  # noqa: E402
 from services.tenants import PILOT_TENANT_IDS, tenant_schema_name  # noqa: E402
 
 
@@ -98,10 +99,6 @@ class _Rng:
 
 
 def _villages_for(tenant_id: str) -> list[SeedVillage]:
-    # Fallback centroid for unknown tenants — (0, 0) is a deliberate
-    # sentinel so a mis-routed dashboard call lands somewhere obviously
-    # wrong rather than silently mapping to a plausible-but-incorrect ROI.
-    centroid_lon, centroid_lat = TENANT_CENTROIDS.get(tenant_id, (0.0, 0.0))
     lgas = LGA_POOL.get(
         tenant_id,
         [f"{tenant_id} Region 1", f"{tenant_id} Region 2"],
@@ -112,10 +109,20 @@ def _villages_for(tenant_id: str) -> list[SeedVillage]:
     out: list[SeedVillage] = []
     for i in range(count):
         lga = lgas[i % len(lgas)]
-        lon_jitter = (rng.next() - 0.5) * 1.6
-        lat_jitter = (rng.next() - 0.5) * 1.2
-        lon = centroid_lon + lon_jitter
-        lat = centroid_lat + lat_jitter
+        # Jitter around the LGA centroid (services/lga_geo.py) so each
+        # synthetic settlement lands near its parent LGA's HQ town instead
+        # of drifting up to ~1° away from the tenant centroid, which
+        # previously placed villages in neighbouring states. Unknown
+        # tenants (pre-pilot) fall back to (0, 0) — a deliberate sentinel
+        # so a mis-routed dashboard call lands somewhere obviously wrong.
+        try:
+            lga_lon, lga_lat = centroid_for(tenant_id, lga)
+        except KeyError:
+            lga_lon, lga_lat = 0.0, 0.0
+        lon_jitter = (rng.next() - 0.5) * 0.25
+        lat_jitter = (rng.next() - 0.5) * 0.20
+        lon = lga_lon + lon_jitter
+        lat = lga_lat + lat_jitter
         poverty = min(0.99, 0.35 + rng.next() * 0.6)
         population = 800 + int(rng.next() * 6_000)
         # Same per-row hh_unreached as the frontend: pop * (0.1..0.45) / 4

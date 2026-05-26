@@ -73,13 +73,26 @@ def test_rows_for_returns_six_lgas_for_fct():
     assert len(rows) == 6
 
 
-def test_rows_for_anchored_to_tenant_centroid():
-    """LGA points fan around the tenant centroid within ~1°."""
+def test_rows_for_use_real_lga_centroids():
+    """Each row's coords must come from services.lga_geo (not a synthetic
+    fan). Pin a known LGA to its hand-curated centroid so a regression
+    that re-introduces the fan would fail loudly."""
+    from services.lga_geo import centroid_for
     rows = _rows_for("kebbi")
-    centroid_lon, centroid_lat = (4.55, 12.00)
-    for r in rows:
-        assert abs(r.lon - centroid_lon) < 1.2
-        assert abs(r.lat - centroid_lat) < 1.2
+    argungu = next(r for r in rows if r.lga == "Argungu")
+    expected_lon, expected_lat = centroid_for("kebbi", "Argungu")
+    assert argungu.lon == expected_lon
+    assert argungu.lat == expected_lat
+
+
+def test_fct_lga_coords_stay_inside_fct_bounds():
+    """The original 8-direction fan placed FCT LGAs into southern Kaduna
+    (lat > 9.4°N). Real centroids must stay within FCT bounds."""
+    fct_min_lon, fct_max_lon = 6.7, 7.7
+    fct_min_lat, fct_max_lat = 8.4, 9.4
+    for r in _rows_for("fct"):
+        assert fct_min_lon <= r.lon <= fct_max_lon, f"{r.lga} lon={r.lon}"
+        assert fct_min_lat <= r.lat <= fct_max_lat, f"{r.lga} lat={r.lat}"
 
 
 def test_rows_for_internet_coverage_tracks_tenant_anchor():

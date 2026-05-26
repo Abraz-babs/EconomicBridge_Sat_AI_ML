@@ -27,6 +27,16 @@ interface Props {
 
 export default function MobilityMap({ tenant, indicators }: Props) {
   const [layers, setLayers] = useState<unknown[]>([]);
+  const [pulse, setPulse] = useState(0);
+
+  // Heartbeat — drives the halo expand/shrink on premium-COL LGAs.
+  // Only run the interval if there are any rows worth pulsing for.
+  const hasAttention = indicators.some((p) => p.cost_of_living_band === 'premium');
+  useEffect(() => {
+    if (!hasAttention) return;
+    const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
+    return () => window.clearInterval(id);
+  }, [hasAttention]);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,7 +45,24 @@ export default function MobilityMap({ tenant, indicators }: Props) {
         import('@deck.gl/layers'),
       ]);
       if (cancelled) return;
+      const pulseRows = indicators.filter(
+        (p) => p.cost_of_living_band === 'premium',
+      );
+      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
       const built: unknown[] = [
+        new ScatterplotLayer<MobilityIndicatorRow>({
+          id: 'mobility-lga-pulse',
+          data: pulseRows,
+          getPosition: (p) => [p.location.lon, p.location.lat],
+          getRadius: () => 28000 * pulseScale,
+          getFillColor: [192, 60, 40, 40],
+          radiusUnits: 'meters',
+          radiusMinPixels: 14,
+          radiusMaxPixels: 80,
+          stroked: false,
+          pickable: false,
+          updateTriggers: { getRadius: pulse },
+        }),
         new ScatterplotLayer<MobilityIndicatorRow>({
           id: 'mobility-lga-col',
           data: indicators,
@@ -70,7 +97,7 @@ export default function MobilityMap({ tenant, indicators }: Props) {
       setLayers(built);
     })();
     return () => { cancelled = true; };
-  }, [indicators]);
+  }, [indicators, pulse]);
 
   const premium = indicators.filter((i) => i.cost_of_living_band === 'premium').length;
   const below = indicators.filter((i) => i.cost_of_living_band === 'below_avg').length;

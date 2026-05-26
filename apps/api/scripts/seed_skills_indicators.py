@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import math
 import sys
 from dataclasses import dataclass
 from datetime import date
@@ -36,6 +35,7 @@ if str(API_ROOT) not in sys.path:
 from sqlalchemy import text  # noqa: E402
 
 from db.engine import get_engine, get_session_factory  # noqa: E402
+from services.lga_geo import centroid_for  # noqa: E402
 from services.tenants import PILOT_TENANT_IDS, tenant_schema_name  # noqa: E402
 
 
@@ -107,17 +107,15 @@ def _hash_unit(tenant_id: str, lga: str, salt: str) -> float:
 
 
 def _rows_for(tenant_id: str) -> list[SeedRow]:
-    centroid = TENANT_CENTROIDS.get(tenant_id, (0.0, 0.0))
     profile = TENANT_SKILLS_PROFILE.get(tenant_id, (25.0, 10.0, 2.5, 0.55))
     net_anchor, net_spread, density_anchor, power_anchor = profile
     lgas = LGA_POOL.get(tenant_id, [f"{tenant_id} Region 1"])
     rows: list[SeedRow] = []
-    for i, lga in enumerate(lgas):
-        # Same 8-direction fan as Modules 02 + 06 — overlays cleanly.
-        angle_rad = math.radians((i * 360 / max(len(lgas), 1)) % 360)
-        radius = 0.4 + (i % 3) * 0.18
-        lon = centroid[0] + math.cos(angle_rad) * radius
-        lat = centroid[1] + math.sin(angle_rad) * radius * 0.85
+    for lga in lgas:
+        # Real per-LGA centroid (HQ town) from services/lga_geo.py — replaces
+        # the previous 8-direction synthetic fan that could spill across
+        # state lines.
+        lon, lat = centroid_for(tenant_id, lga)
 
         net_unit = _hash_unit(tenant_id, lga, "net")
         internet_pct = max(0.5, min(98.0,

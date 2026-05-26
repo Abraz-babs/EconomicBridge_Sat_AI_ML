@@ -35,6 +35,7 @@ if str(API_ROOT) not in sys.path:
 from sqlalchemy import text  # noqa: E402
 
 from db.engine import get_engine, get_session_factory  # noqa: E402
+from services.lga_geo import centroid_for  # noqa: E402
 from services.tenants import PILOT_TENANT_IDS, tenant_schema_name  # noqa: E402
 
 
@@ -106,18 +107,14 @@ def _hash_unit(tenant_id: str, lga: str, salt: str) -> float:
 
 
 def _rows_for(tenant_id: str) -> list[SeedRow]:
-    centroid = TENANT_CENTROIDS.get(tenant_id, (0.0, 0.0))
     col_anchor, col_spread = TENANT_COL_PROFILE.get(tenant_id, (100.0, 12.0))
     lgas = LGA_POOL.get(tenant_id, [f"{tenant_id} Region 1"])
     rows: list[SeedRow] = []
-    for i, lga in enumerate(lgas):
-        # Deterministic LGA spread around tenant centroid (same 8-direction
-        # fan we used for aid_coordination so the maps overlay cleanly).
-        import math
-        angle_rad = math.radians((i * 360 / max(len(lgas), 1)) % 360)
-        radius = 0.4 + (i % 3) * 0.18
-        lon = centroid[0] + math.cos(angle_rad) * radius
-        lat = centroid[1] + math.sin(angle_rad) * radius * 0.85
+    for lga in lgas:
+        # Real per-LGA centroid (HQ town) from services/lga_geo.py — replaces
+        # the previous 8-direction synthetic fan that could spill across
+        # state lines (e.g. an FCT LGA landing in southern Kaduna).
+        lon, lat = centroid_for(tenant_id, lga)
 
         col_unit = _hash_unit(tenant_id, lga, "col")
         col_index = col_anchor + (col_unit - 0.5) * col_spread * 2

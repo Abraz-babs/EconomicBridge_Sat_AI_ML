@@ -27,6 +27,19 @@ interface Props {
 
 export default function SkillsMap({ tenant, indicators }: Props) {
   const [layers, setLayers] = useState<unknown[]>([]);
+  const [pulse, setPulse] = useState(0);
+
+  // Heartbeat — drives the halo on the worst-served LGAs (no_signal OR
+  // learning_gap_index >= 0.7). Both are the "top intervention priority"
+  // rule the dashboard exposes via the worst_gap_lga aggregate.
+  const isAttention = (p: SkillsIndicatorRow) =>
+    p.connectivity_band === 'no_signal' || p.learning_gap_index >= 0.7;
+  const hasAttention = indicators.some(isAttention);
+  useEffect(() => {
+    if (!hasAttention) return;
+    const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
+    return () => window.clearInterval(id);
+  }, [hasAttention]);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,7 +48,22 @@ export default function SkillsMap({ tenant, indicators }: Props) {
         import('@deck.gl/layers'),
       ]);
       if (cancelled) return;
+      const pulseRows = indicators.filter(isAttention);
+      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
       const built: unknown[] = [
+        new ScatterplotLayer<SkillsIndicatorRow>({
+          id: 'skills-lga-pulse',
+          data: pulseRows,
+          getPosition: (p) => [p.location.lon, p.location.lat],
+          getRadius: () => 26000 * pulseScale,
+          getFillColor: [192, 60, 40, 40],
+          radiusUnits: 'meters',
+          radiusMinPixels: 14,
+          radiusMaxPixels: 80,
+          stroked: false,
+          pickable: false,
+          updateTriggers: { getRadius: pulse },
+        }),
         new ScatterplotLayer<SkillsIndicatorRow>({
           id: 'skills-lga-connectivity',
           data: indicators,
@@ -71,7 +99,7 @@ export default function SkillsMap({ tenant, indicators }: Props) {
       setLayers(built);
     })();
     return () => { cancelled = true; };
-  }, [indicators]);
+  }, [indicators, pulse]);
 
   const noSignal = indicators.filter((i) => i.connectivity_band === 'no_signal').length;
   const broadband = indicators.filter((i) => i.connectivity_band === 'broadband').length;
