@@ -15,6 +15,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session, is_valid_tenant_id
+from tasks.conflict_pipeline import (
+    DEFAULT_LOOKBACK_DAYS,
+    TenantConflictResult,
+    run_for_tenant as run_conflict_for_tenant,
+)
 from tasks.firms_ingest import IngestResult, ingest_firms_for_tenant
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -122,3 +127,91 @@ async def trigger_firms(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return _to_response(result)
+
+
+# ─── POST /api/v1/ingest/conflict — Slice 10 manual conflict pipeline ────
+
+
+class ConflictTriggerRequest(BaseModel):
+    """Body for POST /api/v1/ingest/conflict.
+
+    `lookback_days` is the headline knob — it bounds how far back in
+    `heat_signatures` the cluster builder reaches. The scheduled job
+    uses the default (7 days, matching the daily FIRMS cadence). A
+    manual sweep can ask for up to 90 days for demos / backfills /
+    catching up after a pipeline outage.
+    """
+    tenant_id: str = Field(min_length=1, max_length=50)
+    lookback_days: int = Field(
+        default=DEFAULT_LOOKBACK_DAYS,
+        ge=1, le=90,
+        description=(
+            "How many days of heat_signatures to feed the cluster "
+            "builder. Default 7 matches the daily scheduler cadence."
+        ),
+    )
+
+
+class ConflictTriggerResponse(BaseModel):
+    """Mirrors `TenantConflictResult` over the wire."""
+    tenant_id: str
+    clusters_built: int
+    predictions_made: int
+    alerts_written: int
+    skipped_below_threshold: int
+    skipped_capped: int
+    skipped_duplicates: int
+    error: str | None = None
+
+
+def _conflict_to_response(r: TenantConflictResult) -> ConflictTriggerResponse:
+    return ConflictTriggerResponse(
+        tenant_id=r.tenant_id,
+        clusters_built=r.clusters_built,
+        predictions_made=r.predictions_made,
+        alerts_written=r.alerts_written,
+        skipped_below_threshold=r.skipped_below_threshold,
+        skipped_capped=r.skipped_capped,
+        skipped_duplicates=r.skipped_duplicates,
+        error=r.error,
+    )
+
+
+@router.post(
+    "/conflict",
+    response_model=ConflictTriggerResponse,
+    summary="Manually trigger the conflict_pipeline for one tenant",
+    description=(
+        "Reads recent heat_signatures, clusters them, calls the ML "
+        "service for each cluster, and writes the highest-confidence "
+        "predictions to tenant_<id>.alert_events as alert_type='conflict'. "
+        "Mirrors the daily 06:30 UTC scheduled job — useful when the "
+        "scheduler has been down or for demoing against older data via "
+        "`lookback_days`."
+    ),
+)
+async def trigger_conflict(
+    request: Request,
+    body: ConflictTriggerRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ConflictTriggerResponse:
+    tenant_id = body.tenant_id.strip().lower()
+    if not is_valid_tenant_id(tenant_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unknown tenant: {tenant_id!r}",
+        )
+
+    trace_id: UUID = getattr(request.state, "trace_id", uuid4())
+
+    try:
+        result = await run_conflict_for_tenant(
+            session,
+            tenant_id=tenant_id,
+            lookback_days=body.lookback_days,
+            trace_id=trace_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return _conflict_to_response(result)
