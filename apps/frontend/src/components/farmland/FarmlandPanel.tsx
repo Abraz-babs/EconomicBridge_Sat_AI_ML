@@ -233,16 +233,53 @@ function fmtNgn(value: number, isEcowas: boolean): string {
   return `₦${value.toLocaleString()}`;
 }
 
+// Provenance buckets — derived from alert_events.model_name. Live rows
+// come from real pipeline runs (conflict_predictor, ndvi_anomaly_detector,
+// flood_detector, …); seed rows come from `scripts/seed_farmland_alerts.py`
+// and tag themselves model_name='seed'. `null` is treated as seed too —
+// older pre-pipeline rows that never got a model attribution.
+type Provenance = 'all' | 'live' | 'seed';
+
+function isSeedAlert(model_name: string | null): boolean {
+  return model_name === null || model_name === 'seed';
+}
+
+function provenanceLabel(model_name: string | null): { text: string; cls: string } {
+  return isSeedAlert(model_name)
+    ? { text: 'SEED', cls: 'fp-prov fp-prov--seed' }
+    : { text: 'LIVE', cls: 'fp-prov fp-prov--live' };
+}
+
 // ─── Component ────────────────────────────────────────────────────────────
 
 export default function FarmlandPanel() {
   // Default to SAR — the radar backscatter is what the conflict / encroachment
   // model actually consumes. Heat is a secondary feeder signal (CLAUDE.md §2).
   const [activeMapLayer, setActiveMapLayer] = useState<MapLayerKey>('sar');
+  // Default 'all' so the panel matches Slice 10's behaviour on first paint;
+  // user opts into 'live' to see only pipeline-produced rows.
+  const [provenance, setProvenance] = useState<Provenance>('all');
   const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
 
   const query = useFarmlandAlerts({ tenantId: activeTenantId, perPage: 50 });
-  const alerts = query.data?.alerts ?? [];
+  // Stabilise the alerts reference so downstream useMemo deps don't
+  // re-fire every render (the `?? []` fallback would otherwise create
+  // a fresh array each call).
+  const allAlerts = useMemo(() => query.data?.alerts ?? [], [query.data]);
+  // Filtered view used by the list + the map. Stats below intentionally
+  // keep the unfiltered view so "Active Alerts: N" stays an honest tenant
+  // total — the filter chips signal what the *user* is looking at, not
+  // what the dashboard owns.
+  const alerts = useMemo(() => {
+    if (provenance === 'all') return allAlerts;
+    if (provenance === 'live') return allAlerts.filter((a) => !isSeedAlert(a.model_name));
+    return allAlerts.filter((a) => isSeedAlert(a.model_name));
+  }, [allAlerts, provenance]);
+  const liveCount = useMemo(
+    () => allAlerts.filter((a) => !isSeedAlert(a.model_name)).length,
+    [allAlerts],
+  );
+  const seedCount = allAlerts.length - liveCount;
   const resolveMutation = useResolveAlert(activeTenantId);
 
   // Map: only pins that have lat/lon. Map state changes when alerts change.
@@ -320,7 +357,14 @@ export default function FarmlandPanel() {
             ? 'LOADING'
             : query.isError
             ? 'API UNREACHABLE'
-            : `LIVE — ${stateLabel} · ${alerts.length} alerts`}
+            : (
+                <>
+                  LIVE — {stateLabel} · {allAlerts.length} alerts ·{' '}
+                  <span className="fp-live-split">
+                    {liveCount} live, {seedCount} seed
+                  </span>
+                </>
+              )}
         </div>
       </div>
 
@@ -349,6 +393,33 @@ export default function FarmlandPanel() {
         >
           {query.isFetching ? 'Refreshing…' : 'Refresh'}
         </button>
+
+        {/* Provenance filter — show all rows, only live pipeline rows, or
+           only seed/baseline rows. Client-side: model_name is already on
+           each row, so no extra fetch needed. */}
+        <div
+          className="fp-prov-chips"
+          role="group"
+          aria-label="Filter alerts by data source"
+        >
+          {(['all', 'live', 'seed'] as Provenance[]).map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`fp-prov-chip ${provenance === p ? 'is-active' : ''}`}
+              onClick={() => setProvenance(p)}
+              title={
+                p === 'live'
+                  ? 'Pipeline-produced alerts (FIRMS → conflict_predictor, NDVI anomaly, flood detector, …)'
+                  : p === 'seed'
+                  ? 'Baseline rows seeded by scripts/seed_farmland_alerts.py'
+                  : 'Show all alerts regardless of source'
+              }
+            >
+              {p === 'all' ? 'All' : p === 'live' ? `Live (${liveCount})` : `Seed (${seedCount})`}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* STATS (live) */}
@@ -432,15 +503,35 @@ export default function FarmlandPanel() {
               <code>apps/api/</code> to populate sample data.
             </div>
           )}
+          {alerts.length === 0 && !query.isLoading && !query.isError && allAlerts.length > 0 && (
+            <div className="fp-alert-empty">
+              No {provenance} alerts in {stateLabel} right now.
+              {provenance === 'live' && allAlerts.length > 0 && (
+                <>
+                  {' '}Try clicking <strong>All</strong> above to see seed/baseline rows,
+                  or run a fresh pipeline sweep:{' '}
+                  <code>POST /api/v1/ingest/conflict</code> with{' '}
+                  <code>tenant_id=&quot;{activeTenantId}&quot;</code>.
+                </>
+              )}
+            </div>
+          )}
           {alerts.map((a) => {
             const sev = SEV_DISPLAY[a.severity];
             const showResolved = a.status === 'resolved';
             const pendingResolve =
               resolveMutation.isPending && resolveMutation.variables?.alertId === a.id;
+            const prov = provenanceLabel(a.model_name);
             return (
               <div key={a.id} className="fp-alert-item">
                 <div className="fp-alert-top">
                   <span className="fp-alert-location">{altLocation(a)}</span>
+                  <span
+                    className={prov.cls}
+                    title={a.model_name ? `Source: ${a.model_name}` : 'Seed / baseline row'}
+                  >
+                    {prov.text}
+                  </span>
                   <span
                     className={`fp-sev ${showResolved ? 'fp-sev-med' : sev.cls}`}
                   >

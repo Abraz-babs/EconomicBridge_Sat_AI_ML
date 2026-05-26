@@ -720,6 +720,64 @@ footer.app-footer {
 .fp-refresh-btn:hover:not(:disabled) { background: var(--ink2); }
 .fp-refresh-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* Provenance filter chips (Slice 11) — segmented control next to the
+   refresh button. `is-active` is the currently selected chip. */
+.fp-prov-chips {
+  display: inline-flex;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.fp-prov-chip {
+  padding: 6px 12px;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  background: var(--surface);
+  color: var(--ink2);
+  border: none;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.fp-prov-chip:last-child { border-right: none; }
+.fp-prov-chip:hover:not(.is-active) { background: var(--surface2); }
+.fp-prov-chip.is-active {
+  background: var(--ink);
+  color: #fff;
+}
+
+/* Per-alert source badge (LIVE / SEED) — sits in the alert top row
+   between the location text and the severity pill. */
+.fp-prov {
+  display: inline-block;
+  padding: 2px 7px;
+  margin-right: 6px;
+  border-radius: 10px;
+  font-family: 'DM Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.fp-prov--live {
+  background: #d8f3dc;
+  color: #1b4332;
+}
+.fp-prov--seed {
+  background: var(--surface2);
+  color: var(--muted);
+}
+
+/* "12 live, 6 seed" split inside the live badge — slightly dimmer to
+   read as supporting text. */
+.fp-live-split {
+  opacity: 0.75;
+  font-weight: 500;
+}
+
 .fp-alert-empty,
 .fp-alert-error {
   padding: 18px 16px;
