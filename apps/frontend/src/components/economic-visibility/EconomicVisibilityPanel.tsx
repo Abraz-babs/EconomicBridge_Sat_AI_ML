@@ -125,6 +125,23 @@ export default function EconomicVisibilityPanel() {
         </div>
       </div>
 
+      {/* Phase B (Slice 09) — real WorldPop COG pixel reads. Banner sits
+         between the stat grid and the map so it reads as a provenance
+         note rather than a 5th stat tile that would overflow fp-grid. */}
+      {stats && stats.villages_identified > 0 && (
+        <div className="ev-raster-banner">
+          <span className="ev-raster-banner__chip">
+            Phase B · WorldPop COG sampling
+          </span>
+          <span>
+            <strong>
+              {stats.raster_sampled_villages} / {stats.villages_identified}
+            </strong>{' '}
+            villages enriched with real WorldPop pixel reads
+          </span>
+        </div>
+      )}
+
       {/* MAP + RANKING */}
       <div className="fp-main-row">
         <div className="fp-map">
@@ -246,9 +263,16 @@ function VillageRow({ village, rank }: { village: PovertyVillage; rank: number }
         <span>Nightlight dimness: {(village.nightlight_dimness * 100).toFixed(0)}%</span>
         <span>Poverty score: {village.poverty_score.toFixed(2)}</span>
         <span>Source: {village.source}</span>
+        {village.latest_worldpop_sample !== null && (
+          <span title="Real per-pixel WorldPop 2020 sample from the COG sweep">
+            WorldPop pixel: {fmtNum(Math.round(village.latest_worldpop_sample))}
+          </span>
+        )}
       </div>
       <div className="fp-alert-coords">
         📍 {village.location.lat.toFixed(4)}°N, {village.location.lon.toFixed(4)}°E
+        {' · '}
+        {village.lga} LGA
       </div>
     </div>
   );

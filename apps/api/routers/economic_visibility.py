@@ -63,17 +63,32 @@ async def list_villages(
 ) -> SuccessResponse[PovertyStatsData]:
     tenant_id = _require_tenant(request)
 
+    # LEFT JOIN raster_samples for the latest WorldPop sample per village.
+    # Matches on (settlement_name, source) — the sampler writes
+    # linked_settlement_name=settlement_name so the join is cheap and
+    # doesn't require recomputing ST_DWithin on every dashboard hit.
     result = await session.execute(
         text(
             """
-            SELECT id, tenant_id, settlement_name, lga,
-                   ST_X(location) AS lon, ST_Y(location) AS lat,
-                   poverty_score, population, households_unreached,
-                   nightlight_dimness, has_dhs_data,
-                   viirs_pixel_radiance, worldpop_estimate,
-                   source, created_at, updated_at
-              FROM poverty_villages
-             ORDER BY poverty_score DESC
+            SELECT v.id, v.tenant_id, v.settlement_name, v.lga,
+                   ST_X(v.location) AS lon, ST_Y(v.location) AS lat,
+                   v.poverty_score, v.population, v.households_unreached,
+                   v.nightlight_dimness, v.has_dhs_data,
+                   v.viirs_pixel_radiance, v.worldpop_estimate,
+                   v.source, v.created_at, v.updated_at,
+                   wp.value       AS latest_worldpop_sample,
+                   wp.captured_at AS worldpop_sampled_at
+              FROM poverty_villages v
+              LEFT JOIN LATERAL (
+                  SELECT value, captured_at
+                    FROM raster_samples r
+                   WHERE r.linked_settlement_name = v.settlement_name
+                     AND r.source = 'worldpop_ppp_v1'
+                     AND r.valid = TRUE
+                   ORDER BY r.captured_at DESC
+                   LIMIT 1
+              ) wp ON TRUE
+             ORDER BY v.poverty_score DESC
              LIMIT :limit
             """
         ),
@@ -101,6 +116,11 @@ async def list_villages(
                 float(r["worldpop_estimate"])
                 if r.get("worldpop_estimate") is not None else None
             ),
+            latest_worldpop_sample=(
+                float(r["latest_worldpop_sample"])
+                if r.get("latest_worldpop_sample") is not None else None
+            ),
+            worldpop_sampled_at=r.get("worldpop_sampled_at"),
             source=r["source"],
             created_at=r["created_at"],
             updated_at=r["updated_at"],
@@ -119,6 +139,10 @@ async def list_villages(
     )
     sources = sorted({v.source for v in villages})
 
+    raster_sampled = sum(
+        1 for v in villages if v.latest_worldpop_sample is not None
+    )
+
     return SuccessResponse(
         data=PovertyStatsData(
             tenant_id=tenant_id,
@@ -127,6 +151,7 @@ async def list_villages(
             households_unreached=total_unreached,
             coverage_pct=coverage * 100,
             verification_pct=verified * 100,
+            raster_sampled_villages=raster_sampled,
             villages=villages,
             sources=sources,
         ),

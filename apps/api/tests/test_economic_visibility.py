@@ -29,6 +29,24 @@ def test_villages_without_tenant_header_returns_400():
     assert "X-Tenant-Id" in r.text
 
 
+def test_poverty_village_schema_exposes_phase_b_worldpop_fields():
+    """Slice 09: per-village rows must carry the latest WorldPop raster
+    sample so the dashboard can show real per-pixel reads next to the
+    seed-time estimate. Lock the field names so a silent rename breaks
+    the frontend loudly via tsc instead of quietly via a missing prop."""
+    spec = client.get("/api/openapi.json").json()
+    village = spec["components"]["schemas"]["PovertyVillage"]["properties"]
+    assert "latest_worldpop_sample" in village
+    assert "worldpop_sampled_at" in village
+
+
+def test_poverty_stats_data_exposes_raster_sampled_count():
+    """Aggregate count for the 'X of Y villages have real WorldPop' banner."""
+    spec = client.get("/api/openapi.json").json()
+    stats = spec["components"]["schemas"]["PovertyStatsData"]["properties"]
+    assert "raster_sampled_villages" in stats
+
+
 def test_villages_with_unknown_tenant_returns_404():
     r = client.get(
         "/api/v1/economic_visibility/villages",

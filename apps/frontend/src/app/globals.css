@@ -2013,6 +2013,42 @@ nav::-webkit-scrollbar {
   color: var(--muted);
 }
 
+/* Phase B (Slice 09) — WorldPop raster sweep provenance banner. Sits
+   between the stat grid and the map; signals to the user that the
+   numbers below carry real per-pixel reads, not just seed estimates. */
+.ev-raster-banner {
+  margin: 6px 0 16px 0;
+  padding: 10px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--ngo);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--ink2);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ev-raster-banner__chip {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--ngo);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.ev-raster-banner strong {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  color: var(--ink);
+  font-size: 13px;
+}
+
 /* ─── CropGuard market panel (Slice 04.b) ─── */
 
 .cg-market {

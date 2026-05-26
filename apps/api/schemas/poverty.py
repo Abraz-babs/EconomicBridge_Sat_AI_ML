@@ -32,6 +32,12 @@ class PovertyVillage(BaseModel):
     viirs_pixel_radiance: float | None = None
     worldpop_estimate: float | None = None
 
+    # Phase B raster samples (Slice 09): the latest per-pixel read of
+    # the WorldPop population GeoTIFF at this village's coords. Null
+    # when no sweep has covered this row yet.
+    latest_worldpop_sample: float | None = None
+    worldpop_sampled_at: datetime | None = None
+
     source: str
     created_at: datetime
     updated_at: datetime
@@ -46,5 +52,9 @@ class PovertyStatsData(BaseModel):
     households_unreached: int
     coverage_pct: float
     verification_pct: float
+    # Phase B (Slice 09): how many villages have been enriched with a
+    # real WorldPop raster sample. Lets the dashboard show "12 of 92
+    # villages have real WorldPop pixel data".
+    raster_sampled_villages: int = 0
     villages: list[PovertyVillage] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)

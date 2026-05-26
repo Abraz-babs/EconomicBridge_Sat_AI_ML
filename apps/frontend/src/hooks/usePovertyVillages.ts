@@ -20,6 +20,10 @@ export interface PovertyVillage {
   has_dhs_data: boolean;
   viirs_pixel_radiance: number | null;
   worldpop_estimate: number | null;
+  // Phase B (Slice 09): latest WorldPop COG pixel sample at this village's
+  // coords. Null until the worldpop_raster_sample task has covered the row.
+  latest_worldpop_sample: number | null;
+  worldpop_sampled_at: string | null;
   source: string;
   created_at: string;
   updated_at: string;
@@ -33,6 +37,7 @@ export interface PovertyStatsData {
   households_unreached: number;
   coverage_pct: number;
   verification_pct: number;
+  raster_sampled_villages: number;
   villages: PovertyVillage[];
   sources: string[];
 }

@@ -30,6 +30,7 @@ from db import PILOT_TENANT_IDS, get_session_factory
 from tasks.conflict_pipeline import run_daily_conflict_pipeline
 from tasks.firms_ingest import ingest_firms_for_tenant
 from tasks.pass_imagery_sweep import run_pass_imagery_sweep
+from tasks.worldpop_raster_sample import sweep_tenant as worldpop_sweep_tenant
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ log = logging.getLogger(__name__)
 JOB_ID_FIRMS_DAILY = "firms_daily_06utc"
 JOB_ID_CONFLICT_DAILY = "conflict_daily_0630utc"
 JOB_ID_PASS_IMAGERY_SWEEP = "pass_imagery_sweep_15min"
+JOB_ID_WORLDPOP_WEEKLY = "worldpop_weekly_sun_07utc"
 
 
 def setup_scheduler() -> AsyncIOScheduler:
@@ -82,6 +84,19 @@ def setup_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=300,
     )
 
+    scheduler.add_job(
+        run_weekly_worldpop_sweep,
+        # WorldPop publishes annual rasters; weekly is plenty. Sunday
+        # 07:00 UTC lands after Saturday-night FIRMS + conflict pipeline.
+        trigger=CronTrigger(day_of_week="sun", hour=7, minute=0, timezone="UTC"),
+        id=JOB_ID_WORLDPOP_WEEKLY,
+        name="WorldPop COG sweep (all pilot tenants, weekly)",
+        replace_existing=True,
+        max_instances=1,
+        # 6h grace covers a Sunday-morning pod restart.
+        misfire_grace_time=21600,
+    )
+
     return scheduler
 
 
@@ -123,4 +138,41 @@ async def run_daily_firms_ingest(
                 )
 
     log.info("scheduled.firms summary: %s", results)
+    return results
+
+
+async def run_weekly_worldpop_sweep(
+    tenants: Iterable[str] | None = None,
+) -> dict[str, str]:
+    """Sample WorldPop COGs at every poverty_villages row for every tenant.
+
+    Sequential per-tenant — never hammer WorldPop's CDN with parallel
+    requests. Failures for one tenant do not abort the rest.
+    """
+    target = list(tenants) if tenants is not None else sorted(PILOT_TENANT_IDS)
+    factory = get_session_factory()
+    results: dict[str, str] = {}
+
+    for tenant_id in target:
+        async with factory() as session:
+            try:
+                outcome = await worldpop_sweep_tenant(session, tenant_id)
+                if outcome.failed:
+                    results[tenant_id] = f"failed: {outcome.error}"
+                else:
+                    results[tenant_id] = (
+                        f"{outcome.valid}/{outcome.requested} valid, "
+                        f"{outcome.nodata} nodata"
+                    )
+                log.info(
+                    "scheduled.worldpop tenant=%s outcome=%s",
+                    tenant_id, results[tenant_id],
+                )
+            except Exception as exc:  # noqa: BLE001
+                results[tenant_id] = f"failed: {exc!s}"
+                log.exception(
+                    "scheduled.worldpop FAILED tenant=%s: %s", tenant_id, exc
+                )
+
+    log.info("scheduled.worldpop summary: %s", results)
     return results
