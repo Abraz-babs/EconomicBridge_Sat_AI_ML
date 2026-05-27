@@ -573,6 +573,148 @@ main {
 /* ─── ADMIN STACK (multiple panels in the admin tab) ─── */
 .admin-stack { display: flex; flex-direction: column; gap: 14px; padding: 14px 0; }
 
+/* ─── Scheduler observability panel (Slice 13) ─── */
+.sch-panel { padding: 0; }
+.sch-section {
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+}
+.sch-section:first-of-type { border-top: none; }
+.sch-section-title {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sch-jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sch-job-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.sch-job-title {
+  font-size: 12px;
+  color: var(--ink);
+  font-weight: 600;
+}
+.sch-job-meta {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.sch-job-meta code {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--ink2);
+  background: transparent;
+  padding: 0;
+}
+.sch-job-next {
+  font-size: 11px;
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sch-run-btn {
+  padding: 6px 12px !important;
+  font-size: 10px !important;
+}
+
+/* Trigger form (manual conflict pipeline) */
+.sch-trigger-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.sch-lookback-input {
+  width: 76px;
+  padding: 6px 10px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: 'DM Mono', monospace;
+}
+.sch-trigger-ok {
+  margin-top: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: #1b4332;
+  background: #d8f3dc;
+  border-radius: 3px;
+}
+
+/* Recent runs table */
+.sch-refresh-link {
+  background: none;
+  border: none;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--ngo-accent);
+  cursor: pointer;
+  padding: 0;
+}
+.sch-refresh-link:disabled { opacity: 0.45; cursor: not-allowed; }
+.sch-runs-scroll { overflow-x: auto; }
+.sch-runs {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.sch-runs thead th {
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  font-weight: 600;
+}
+.sch-runs tbody td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
+}
+.sch-runs tbody tr:last-child td { border-bottom: none; }
+.sch-num { text-align: right; }
+.sch-trigger-cell { font-family: 'DM Mono', monospace; font-size: 10px; }
+
+.sch-status {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-family: 'DM Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+  background: var(--surface2);
+  color: var(--muted);
+}
+.sch-status--ok  { background: #d8f3dc; color: #1b4332; }
+.sch-status--bad { background: #f5c8be; color: #5a1a10; }
+
 /* ─── BULK UPLOAD CARDS ─── */
 .upload-body { padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; }
 .upload-desc {

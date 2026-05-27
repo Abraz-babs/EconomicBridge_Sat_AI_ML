@@ -2,6 +2,7 @@
 
 import AidCoverageUploadCard from './AidCoverageUploadCard';
 import CropPriceUploadCard from './CropPriceUploadCard';
+import SchedulerPanel from './SchedulerPanel';
 
 
 const orgs = [
@@ -52,6 +53,7 @@ const orgs = [
 export default function AdminPanel() {
   return (
     <div className="admin-stack">
+      <SchedulerPanel />
       <AidCoverageUploadCard />
       <CropPriceUploadCard />
 
