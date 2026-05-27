@@ -28,7 +28,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [api, ingestion, ml, notifications]
+        # Per-service coverage floor (Slice 18). Each is the post-Slice-17
+        # baseline minus a 2pp safety margin so a minor refactor doesn't
+        # break CI. Path to CLAUDE.md's 85% target is documented in
+        # docs/PROGRESS.md — raise these floors as test coverage climbs.
+        include:
+          - service: api
+            cov_floor: 68     # baseline 70.8% — 222 tests pass
+          - service: ingestion
+            cov_floor: 72     # baseline 74.5% — 231 tests pass
+          - service: ml
+            cov_floor: 67     # baseline 69.0% — 95 tests pass
+          - service: notifications
+            cov_floor: 71     # baseline 73.3% — 41 tests pass
     steps:
       - uses: actions/checkout@v4
 
@@ -67,17 +79,17 @@ jobs:
           TWILIO_AUTH_TOKEN: ""
         run: |
           cd apps/${{ matrix.service }}
-          # Slice 15 coverage — .coveragerc at repo root pins the omit list
-          # (tests, migrations, scripts, __pycache__, .venv, main.py). XML
-          # report uploaded as artifact for visibility; no --cov-fail-under
-          # threshold yet (current baselines: api 77 / ingestion 84 / ml 73
-          # / notifications 80 — gate enforcement queued for a follow-up
-          # slice that lifts coverage toward CLAUDE.md's 85% target).
+          # Slice 15 added the tooling; Slice 18 turns on enforcement.
+          # --cov-fail-under is per-service (see matrix.cov_floor above).
+          # .coveragerc at repo root pins the omit list (tests, migrations,
+          # scripts, __pycache__, .venv, main.py). XML report uploaded as
+          # artifact for visibility + future drift tracking.
           pytest -x --tb=short -q \
             --cov=. \
             --cov-config=../../.coveragerc \
             --cov-report=term \
-            --cov-report=xml:coverage.xml
+            --cov-report=xml:coverage.xml \
+            --cov-fail-under=${{ matrix.cov_floor }}
 
       - name: Upload coverage report
         if: always()
