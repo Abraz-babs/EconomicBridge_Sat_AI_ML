@@ -87,21 +87,45 @@ def test_dsr_patch_inherits_the_same_gate():
 def test_dsr_post_is_not_gated():
     """Submitting a DSR is the data subject's right — anyone can do it.
     Slice 14 intentionally does NOT gate POST so subjects with no
-    organisational affiliation can still file requests."""
-    r = client.post(
-        "/api/v1/dpa/data-subject-requests",
-        json={
-            "tenant_id": "kebbi",
-            "request_type": "access",
-            "subject_phone_e164": "+2348012345678",
-        },
+    organisational affiliation can still file requests.
+
+    Inspect FastAPI's route dependency tree directly rather than firing
+    an HTTP request: the POST endpoint has its own
+    `Depends(get_session)` which would try to connect to Postgres in
+    CI (no DB → OSError before any response is built). Walking the
+    dependant tree gives the same assertion without the network.
+    """
+    from dependencies import require_signed_dpa
+
+    def has_dep(dependant, target) -> bool:
+        if dependant.call is target:
+            return True
+        return any(has_dep(sub, target) for sub in dependant.dependencies)
+
+    routes = {
+        (r.path, m): r
+        for r in app.routes
+        if hasattr(r, "methods")
+        for m in r.methods
+    }
+
+    post_route = routes[("/api/v1/dpa/data-subject-requests", "POST")]
+    get_route = routes[("/api/v1/dpa/data-subject-requests", "GET")]
+    patch_route = routes[("/api/v1/dpa/data-subject-requests/{dsr_id}", "PATCH")]
+
+    # Positive controls — confirm we're testing what we think we are.
+    assert has_dep(get_route.dependant, require_signed_dpa), (
+        "GET DSR should be gated by require_signed_dpa (Slice 14)"
     )
-    # Without DB the create endpoint will likely 500 or succeed (depending
-    # on whether the test runs against a live DB). The important assertion
-    # is that it does NOT come back 403 DPA_REQUIRED.
-    if r.status_code == 403:
-        body = r.json()
-        assert body.get("detail", {}).get("code") != "DPA_REQUIRED"
+    assert has_dep(patch_route.dependant, require_signed_dpa), (
+        "PATCH DSR should be gated by require_signed_dpa (Slice 14)"
+    )
+
+    # The actual assertion.
+    assert not has_dep(post_route.dependant, require_signed_dpa), (
+        "POST DSR must NOT carry require_signed_dpa — data subjects "
+        "with no organisational affiliation must be able to file requests."
+    )
 
 
 def test_dsr_list_openapi_advertises_the_dpa_gate():
