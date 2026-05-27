@@ -46,15 +46,16 @@ jobs:
           if [ -f apps/${{ matrix.service }}/requirements-dev.txt ]; then
             pip install -r apps/${{ matrix.service }}/requirements-dev.txt
           fi
-          # httpx is required by fastapi.testclient.TestClient — used by
-          # every service's test_health.py but only listed in apps/api's
-          # requirements-dev.txt. Install unconditionally for the matrix.
-          pip install ruff pytest pytest-asyncio httpx
+          # httpx + pytest-cov are required by fastapi.testclient.TestClient
+          # and by the Slice 15 coverage reporting respectively. Install
+          # unconditionally for the matrix in case a service's dev file
+          # omits them.
+          pip install ruff pytest pytest-asyncio pytest-cov httpx
 
       - name: Ruff (lint)
         run: ruff check apps/${{ matrix.service }}
 
-      - name: Pytest
+      - name: Pytest with coverage
         env:
           # Tests should never call real external APIs — mocks only.
           # These env vars exist to satisfy pydantic-settings at import time.
@@ -66,7 +67,26 @@ jobs:
           TWILIO_AUTH_TOKEN: ""
         run: |
           cd apps/${{ matrix.service }}
-          pytest -x --tb=short -q
+          # Slice 15 coverage — .coveragerc at repo root pins the omit list
+          # (tests, migrations, scripts, __pycache__, .venv, main.py). XML
+          # report uploaded as artifact for visibility; no --cov-fail-under
+          # threshold yet (current baselines: api 77 / ingestion 84 / ml 73
+          # / notifications 80 — gate enforcement queued for a follow-up
+          # slice that lifts coverage toward CLAUDE.md's 85% target).
+          pytest -x --tb=short -q \
+            --cov=. \
+            --cov-config=../../.coveragerc \
+            --cov-report=term \
+            --cov-report=xml:coverage.xml
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.service }}
+          path: apps/${{ matrix.service }}/coverage.xml
+          if-no-files-found: ignore
+          retention-days: 14
 
   # ───────── Frontend ─────────────────────────────────────────────────
   frontend:

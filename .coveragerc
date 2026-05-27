@@ -1,0 +1,28 @@
+# Shared coverage configuration (Slice 15).
+#
+# pytest-cov reads this when invoked as `pytest --cov=.`. Living at the
+# repo root rather than per-service so the omit list stays consistent
+# across api / ingestion / ml / notifications.
+
+[run]
+branch = True
+omit =
+    */tests/*
+    */migrations/*
+    */__pycache__/*
+    */.venv/*
+    */node_modules/*
+    */conftest.py
+    */main.py             ; uvicorn entrypoint — exercised by TestClient health checks but the if __name__ == "__main__" guard isn't
+    apps/*/scripts/*      ; seed + CLI scripts run end-to-end manually, not unit-tested
+
+[report]
+# Skip files where coverage would be misleading (empty __init__.py etc).
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+show_missing = True
+skip_covered = False
+precision = 1
