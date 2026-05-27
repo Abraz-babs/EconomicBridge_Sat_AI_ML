@@ -8,14 +8,12 @@ Per CLAUDE.md §4.1 and §4.2:
 """
 from __future__ import annotations
 
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import HTTPException, Request, status
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.engine import get_session
+from db.engine import get_session_factory
 
 
 async def require_authenticated_user() -> None:
@@ -43,10 +41,7 @@ class DPAGateError(HTTPException):
         )
 
 
-async def require_signed_dpa(
-    request: Request,
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> UUID:
+async def require_signed_dpa(request: Request) -> UUID:
     """Block the request unless a signed, unexpired DPA covers the
     (organisation, tenant) pair.
 
@@ -68,6 +63,16 @@ async def require_signed_dpa(
     Returns the organisation_id for the route handler to use (e.g. for
     audit-log enrichment). Also stamps it onto request.state so the
     AuditLogMiddleware can pick it up without re-parsing the header.
+
+    Why this does NOT take `session: Annotated[AsyncSession, Depends(get_session)]`:
+    FastAPI resolves dependencies at request-bind time, BEFORE the
+    function body runs. If the session were a top-level dependency
+    asyncpg would try to connect to Postgres for every gate call —
+    even for the short-circuit paths (no org header, bad UUID) that
+    will never query the DB. That breaks CI (no Postgres) and pays a
+    pool-checkout for nothing on every reject path. Instead we acquire
+    a session lazily, inside the function, only when the cheap header
+    checks have passed and we actually need to read the DPA table.
 
     Why a dependency rather than a middleware:
       * The set of "PII routes" is tiny relative to the API surface.
@@ -100,30 +105,32 @@ async def require_signed_dpa(
             f"{ORG_HEADER} must be a UUID.",
         ) from exc
 
-    # Look up an active DPA. SQL not ORM because the dependency runs
-    # before the route's session is committed for anything else, and
-    # asyncpg encodes the UUID directly.
-    result = await session.execute(
-        text(
-            """
-            SELECT 1
-              FROM public.data_processing_agreements
-             WHERE organisation_id = :org_id
-               AND tenant_id = :tenant_id
-               AND status = 'signed'
-               AND (expires_at IS NULL OR expires_at > NOW())
-             LIMIT 1
-            """
-        ),
-        {"org_id": org_id, "tenant_id": tenant_id},
-    )
-    if result.first() is None:
-        raise DPAGateError(
-            "DPA_REQUIRED",
-            f"No signed Data Processing Agreement found for organisation "
-            f"{org_id} on tenant '{tenant_id}'. Request access via the "
-            f"compliance team.",
+    # Only now we need DB access — open a short-lived session for the
+    # one-row DPA lookup. Using `public.` prefix on the table so it
+    # doesn't depend on the request session's tenant search_path.
+    factory = get_session_factory()
+    async with factory() as session:
+        result = await session.execute(
+            text(
+                """
+                SELECT 1
+                  FROM public.data_processing_agreements
+                 WHERE organisation_id = :org_id
+                   AND tenant_id = :tenant_id
+                   AND status = 'signed'
+                   AND (expires_at IS NULL OR expires_at > NOW())
+                 LIMIT 1
+                """
+            ),
+            {"org_id": org_id, "tenant_id": tenant_id},
         )
+        if result.first() is None:
+            raise DPAGateError(
+                "DPA_REQUIRED",
+                f"No signed Data Processing Agreement found for organisation "
+                f"{org_id} on tenant '{tenant_id}'. Request access via the "
+                f"compliance team.",
+            )
 
     request.state.organisation_id = org_id
     return org_id
