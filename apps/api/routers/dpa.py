@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.engine import get_session
+from dependencies import require_signed_dpa
 from models.dpa import DataProcessingAgreement, DataSubjectRequest
 from schemas.dpa import (
     AgreementStatus,
@@ -234,6 +235,13 @@ async def create_dsr(
     "/data-subject-requests",
     response_model=SuccessResponse[DsrListData],
     summary="List data-subject requests",
+    description=(
+        "**PII gate (Slice 14):** requires `X-Tenant-Id` and "
+        "`X-Organisation-Id` headers. The calling organisation must hold "
+        "a signed, unexpired Data Processing Agreement for the tenant. "
+        "Returns 403 `DPA_REQUIRED` otherwise."
+    ),
+    dependencies=[Depends(require_signed_dpa)],
 )
 async def list_dsr(
     request: Request,
@@ -280,6 +288,12 @@ async def list_dsr(
     "/data-subject-requests/{dsr_id}",
     response_model=SuccessResponse[DsrResponse],
     summary="Update a DSR's handler status / notes",
+    description=(
+        "**PII gate (Slice 14):** requires `X-Tenant-Id` and "
+        "`X-Organisation-Id` matching a signed DPA. Same enforcement as "
+        "the list endpoint."
+    ),
+    dependencies=[Depends(require_signed_dpa)],
 )
 async def patch_dsr(
     request: Request,
