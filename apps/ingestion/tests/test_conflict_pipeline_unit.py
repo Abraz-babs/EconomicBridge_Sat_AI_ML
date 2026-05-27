@@ -94,3 +94,28 @@ def test_tenant_risk_map_uses_canonical_tiers():
     assert set(_TENANT_CONFLICT_RISK.values()) <= {
         "critical", "high", "medium", "low",
     }
+
+
+# ─── Slice 16: ingestion_runs tracking ────────────────────────────────────
+
+
+def test_run_source_label_matches_dashboard_filter():
+    """The Admin scheduler panel filters `/scheduler/runs/recent` by
+    source=conflict_pipeline_v1 to pull conflict runs out from the
+    FIRMS rows. Lock the label here so a refactor renaming it to,
+    say, 'conflict_pipeline' or 'conflict_v2' fails this guard before
+    the dashboard goes silently empty."""
+    from tasks.conflict_pipeline import RUN_SOURCE
+    assert RUN_SOURCE == "conflict_pipeline_v1"
+
+
+def test_run_for_tenant_default_trigger_is_manual():
+    """Direct calls via POST /ingest/conflict (Slice 10 manual trigger)
+    must end up tagged trigger='manual' in ingestion_runs. The
+    scheduled cron explicitly passes trigger='scheduled'; everything
+    else defaults to 'manual' so the dashboard's Trigger column
+    distinguishes 'someone clicked Run now' from 'overnight job fired'."""
+    import inspect
+    from tasks.conflict_pipeline import run_for_tenant
+    sig = inspect.signature(run_for_tenant)
+    assert sig.parameters["trigger"].default == "manual"

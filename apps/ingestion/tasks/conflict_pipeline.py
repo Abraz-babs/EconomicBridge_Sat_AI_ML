@@ -291,6 +291,77 @@ async def _insert_conflict_alert(
 # ─── Top-level entry point ────────────────────────────────────────────────
 
 
+# Source label written to public.ingestion_runs.source so the Slice 13
+# /scheduler/runs/recent endpoint can group conflict-pipeline runs
+# alongside the daily FIRMS pulls.
+RUN_SOURCE = "conflict_pipeline_v1"
+
+
+async def _insert_conflict_run(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    tenant_id: str,
+    trigger: str,
+    started_at: datetime,
+    trace_id: UUID,
+) -> None:
+    """Mirror tasks.firms_ingest._initiate_run for the conflict pipeline."""
+    await session.execute(
+        text(
+            """
+            INSERT INTO public.ingestion_runs (
+                id, source, tenant_id, trigger,
+                started_at, status, dry_run, trace_id
+            ) VALUES (
+                :id, :source, :tenant_id, :trigger,
+                :started_at, 'running', FALSE, :trace_id
+            )
+            """
+        ),
+        {
+            "id": run_id,
+            "source": RUN_SOURCE,
+            "tenant_id": tenant_id,
+            "trigger": trigger,
+            "started_at": started_at,
+            "trace_id": trace_id,
+        },
+    )
+
+
+async def _finalise_conflict_run(
+    session: AsyncSession,
+    *,
+    run_id: UUID,
+    status: str,
+    records: int,
+    duration_ms: int,
+    error_message: str | None = None,
+) -> None:
+    """Mirror tasks.firms_ingest._finalise_run."""
+    await session.execute(
+        text(
+            """
+            UPDATE public.ingestion_runs
+            SET status = :status,
+                records_ingested = :records,
+                duration_ms = :duration_ms,
+                finished_at = NOW(),
+                error_message = :error_message
+            WHERE id = :id
+            """
+        ),
+        {
+            "id": run_id,
+            "status": status,
+            "records": records,
+            "duration_ms": duration_ms,
+            "error_message": error_message,
+        },
+    )
+
+
 async def run_for_tenant(
     session: AsyncSession,
     *,
@@ -298,14 +369,77 @@ async def run_for_tenant(
     lookback_days: int = DEFAULT_LOOKBACK_DAYS,
     trace_id: UUID | None = None,
     now: datetime | None = None,
+    trigger: str = "manual",
 ) -> TenantConflictResult:
-    """One full pass for a tenant. Caller owns the session."""
+    """One full pass for a tenant. Caller owns the session.
+
+    Writes an `ingestion_runs` row (source='conflict_pipeline_v1') at
+    start with status='running', and updates it on completion to
+    status='succeeded' / 'failed' so the Slice 13 scheduler dashboard
+    shows conflict-pipeline runs alongside FIRMS pulls.
+    """
     if not is_valid_tenant_id(tenant_id):
         raise ValueError(f"Unknown tenant_id: {tenant_id!r}")
 
     settings = get_settings()
     trace = trace_id or uuid4()
     today = (now or datetime.now(timezone.utc)).date().isoformat()
+
+    run_id = uuid4()
+    started_at = datetime.now(timezone.utc)
+    started_perf = time.monotonic()
+    await _insert_conflict_run(
+        session, run_id=run_id, tenant_id=tenant_id,
+        trigger=trigger, started_at=started_at, trace_id=trace,
+    )
+    await session.commit()
+
+    try:
+        result = await _run_inner(
+            session,
+            tenant_id=tenant_id,
+            lookback_days=lookback_days,
+            settings=settings,
+            trace=trace,
+            today=today,
+        )
+    except Exception as exc:  # noqa: BLE001 — record everything for audit
+        duration_ms = int((time.monotonic() - started_perf) * 1000)
+        try:
+            await _finalise_conflict_run(
+                session, run_id=run_id, status="failed",
+                records=0, duration_ms=duration_ms,
+                error_message=str(exc)[:500],
+            )
+            await session.commit()
+        except Exception:
+            log.exception(
+                "failed to record conflict_pipeline run failure for %s",
+                tenant_id,
+            )
+        raise
+
+    duration_ms = int((time.monotonic() - started_perf) * 1000)
+    await _finalise_conflict_run(
+        session, run_id=run_id, status="succeeded",
+        records=result.alerts_written, duration_ms=duration_ms,
+    )
+    await session.commit()
+    return result
+
+
+async def _run_inner(
+    session: AsyncSession,
+    *,
+    tenant_id: str,
+    lookback_days: int,
+    settings,
+    trace: UUID,
+    today: str,
+) -> TenantConflictResult:
+    """The actual cluster → ML → alert_events pipeline body. Split out
+    from run_for_tenant so the outer wrapper can record success/failure
+    in `ingestion_runs` without sprinkling UPDATE calls at every return."""
 
     detections = await _recent_heat_detections(
         session, tenant_id=tenant_id, lookback_days=lookback_days
@@ -441,6 +575,7 @@ async def run_daily_conflict_pipeline(
                     session,
                     tenant_id=tenant_id,
                     lookback_days=lookback_days,
+                    trigger="scheduled",
                 )
                 summary[tenant_id] = {
                     "clusters": result.clusters_built,
