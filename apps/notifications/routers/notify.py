@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session, is_valid_tenant_id
+from dependencies import TENANT_HEADER, require_signed_dpa
 from schemas.envelope import ResponseMeta, SuccessResponse
 from schemas.notify import (
     DispatchSummary,
@@ -34,6 +35,14 @@ def _trace_id(request: Request) -> UUID:
     "/conflict",
     response_model=SuccessResponse[NotifyConflictData],
     summary="Dispatch SMS alerts to subscribers for a conflict prediction or alert",
+    description=(
+        "**PII gate (Slice 17):** requires `X-Tenant-Id` + "
+        "`X-Organisation-Id` matching a signed Data Processing "
+        "Agreement. The endpoint dispatches real SMS to subscriber "
+        "phone numbers — the highest-PII operation in the platform. "
+        "The header `X-Tenant-Id` must match `body.tenant_id`."
+    ),
+    dependencies=[Depends(require_signed_dpa)],
 )
 async def notify_conflict(
     body: NotifyConflictRequest,
@@ -45,6 +54,20 @@ async def notify_conflict(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Unknown tenant: {tenant_id!r}",
+        )
+
+    # The DPA gate validated X-Tenant-Id against a signed DPA. Require
+    # body.tenant_id to match so a caller can't acquire a DPA for one
+    # tenant then trigger an SMS blast against another via the body.
+    header_tenant = (request.headers.get(TENANT_HEADER) or "").strip().lower()
+    if header_tenant != tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"X-Tenant-Id header ({header_tenant!r}) does not match "
+                f"body.tenant_id ({tenant_id!r}). Both must refer to the "
+                f"same pilot tenant."
+            ),
         )
 
     trace = _trace_id(request)

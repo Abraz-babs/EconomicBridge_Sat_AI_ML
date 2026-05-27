@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session, is_valid_tenant_id, set_tenant_schema
+from dependencies import require_signed_dpa
 from schemas.envelope import ResponseMeta, SuccessResponse
 from schemas.notify import (
     SubscriberCreate,
@@ -40,7 +41,17 @@ def _require_tenant(request: Request) -> str:
     return tenant
 
 
-@router.get("", response_model=SuccessResponse[SubscriberListData])
+@router.get(
+    "",
+    response_model=SuccessResponse[SubscriberListData],
+    description=(
+        "**PII gate (Slice 17):** requires `X-Tenant-Id` + "
+        "`X-Organisation-Id` matching a signed Data Processing "
+        "Agreement. Returns 403 `DPA_REQUIRED` otherwise — subscriber "
+        "rosters include personal phone numbers in E.164."
+    ),
+    dependencies=[Depends(require_signed_dpa)],
+)
 async def list_subscribers(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],

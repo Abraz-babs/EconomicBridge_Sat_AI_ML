@@ -28,29 +28,45 @@ def _payload(**overrides) -> dict:
     return body
 
 
-def test_notify_unknown_tenant_returns_404() -> None:
+# NOTE (Slice 17): /notify/conflict and GET /subscribers are now DPA-gated.
+# The dependency runs BEFORE Pydantic body validation + the route's own
+# tenant lookup, so the old expectations (404 / 422 / 400) no longer fire
+# for unauthenticated callers. Coverage for the gate itself lives in
+# tests/test_dpa_enforcement.py.
+
+
+def test_notify_unknown_tenant_returns_403_via_gate() -> None:
+    """Body tenant_id='atlantis' would have 404'd pre-Slice-17. Now the
+    gate fires first (missing X-Tenant-Id → TENANT_REQUIRED)."""
     response = client.post("/api/v1/notify/conflict", json=_payload(tenant_id="atlantis"))
-    assert response.status_code == 404
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "TENANT_REQUIRED"
 
 
-def test_notify_invalid_severity_returns_422() -> None:
+def test_notify_invalid_severity_blocked_by_gate_before_pydantic() -> None:
+    """Pydantic body validation only runs after the gate clears. With
+    no DPA headers we never reach the severity check — gate 403s first."""
     response = client.post("/api/v1/notify/conflict", json=_payload(severity="catastrophic"))
-    assert response.status_code == 422
+    assert response.status_code == 403
 
 
-def test_notify_invalid_alert_type_returns_422() -> None:
+def test_notify_invalid_alert_type_blocked_by_gate_before_pydantic() -> None:
     response = client.post("/api/v1/notify/conflict", json=_payload(alert_type="zombie"))
-    assert response.status_code == 422
+    assert response.status_code == 403
 
 
-def test_subscribers_missing_tenant_header_returns_400() -> None:
+def test_subscribers_missing_tenant_header_returns_403_via_gate() -> None:
+    """GET /subscribers used to 400 on missing X-Tenant-Id. Now the DPA
+    gate raises TENANT_REQUIRED with the same intent (no tenant context)."""
     response = client.get("/api/v1/subscribers")
-    assert response.status_code == 400
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "TENANT_REQUIRED"
 
 
-def test_subscribers_unknown_tenant_header_returns_404() -> None:
+def test_subscribers_unknown_tenant_header_returns_403_via_gate() -> None:
     response = client.get("/api/v1/subscribers", headers={"X-Tenant-Id": "atlantis"})
-    assert response.status_code == 404
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "TENANT_REQUIRED"
 
 
 def test_create_subscriber_rejects_invalid_e164() -> None:
