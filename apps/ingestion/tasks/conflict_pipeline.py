@@ -352,11 +352,14 @@ async def run_for_tenant(
                     f"Heat cluster · {cluster.detection_count} detections "
                     f"near {cluster.centroid_lat:.3f},{cluster.centroid_lon:.3f}"
                 ),
-                # ML's persist=True path has a bug when lga is NULL — asyncpg
-                # can't infer the param type for NULL VARCHAR. Audit goes
-                # through alert_events for now; conflict_predictions backfill
-                # is a follow-up (fix CASTs in apps/ml/routers/predict.py).
-                persist=False,
+                # Slice 12: ML service now CASTs nullable VARCHAR/UUID
+                # params so persist=True works even when lga is None.
+                # Every cluster prediction lands in
+                # tenant_<id>.conflict_predictions as a full audit row
+                # (model_version, features JSONB, SHAP, requires_human_review)
+                # alongside the lighter alert_events row written by
+                # _insert_conflict_alert below.
+                persist=True,
             )
             predictions_made += 1
             scored.append((cluster, pred))

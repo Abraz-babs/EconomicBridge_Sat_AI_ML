@@ -107,3 +107,67 @@ def test_predict_persists_row_to_conflict_predictions() -> None:
             )
     finally:
         engine.dispose()
+
+
+@pytest.mark.integration
+def test_predict_persists_row_when_all_nullable_fields_are_none() -> None:
+    """Regression for Slice 12 — the asyncpg "could not determine data
+    type of parameter" failure that hit when conflict_pipeline called
+    predict.py with `persist=True` and no lat/lon/lga/zone_name. The fix
+    added explicit CAST() hints in the INSERT for every nullable param
+    so Postgres can parse the statement with NULL values."""
+    from sqlalchemy import create_engine, text
+    from config import get_settings
+
+    # Same high-risk features as above, but every location field omitted.
+    # The conflict_pipeline calls predict.py exactly this way (it has no
+    # lga for raw heat clusters; lat/lon optional when only running a
+    # one-off feature vector).
+    body = {
+        "tenant_id": "kebbi",
+        "heat_signature_intensity": 0.95,
+        "boundary_distance_km": 0.4,
+        "ndvi_delta": -0.8,
+        "herder_density": 0.9,
+        "historical_incidents": 30,
+        "rainfall_anomaly": -0.7,
+        "is_new_geography": False,
+        "persist": True,
+        # lat / lon / lga / zone_name / related_alert_id intentionally absent
+    }
+    response = client.post("/api/v1/predict/conflict", json=body)
+    assert response.status_code == 200, response.text
+    payload = response.json()["data"]
+    assert payload["persisted"] is True
+    prediction_id = payload["prediction_id"]
+    assert prediction_id
+
+    sync_url = get_settings().database_url.replace(
+        "postgresql+asyncpg", "postgresql+psycopg2"
+    )
+    engine = create_engine(sync_url, future=True)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("SET search_path TO tenant_kebbi, public"))
+            row = conn.execute(
+                text(
+                    "SELECT lga, zone_name, related_alert_id, "
+                    "location IS NULL AS location_is_null "
+                    "FROM conflict_predictions WHERE id = :id"
+                ),
+                {"id": prediction_id},
+            ).one()
+            # The whole point of the fix: NULL values survived the
+            # round-trip rather than failing at INSERT.
+            assert row.lga is None
+            assert row.zone_name is None
+            assert row.related_alert_id is None
+            assert row.location_is_null is True
+        with engine.begin() as conn:
+            conn.execute(text("SET search_path TO tenant_kebbi, public"))
+            conn.execute(
+                text("DELETE FROM conflict_predictions WHERE id = :id"),
+                {"id": prediction_id},
+            )
+    finally:
+        engine.dispose()

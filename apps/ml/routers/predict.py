@@ -135,11 +135,22 @@ async def _persist_prediction(
                 :model_name, :model_version, :input_hash,
                 :prediction, :confidence, :confidence_band, :requires_human_review,
                 CAST(:features AS JSONB), CAST(:shap_values AS JSONB), :shap_base_value,
-                CASE WHEN :lon IS NULL OR :lat IS NULL THEN NULL
-                     ELSE ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
+                -- Explicit CASTs on every nullable param so asyncpg /
+                -- Postgres can parse the statement when one of these
+                -- arrives as NULL. Without the casts asyncpg raises
+                -- "could not determine data type of parameter" — Slice 10
+                -- worked around by setting persist=False on every call
+                -- from the conflict_pipeline; Slice 12 closes the gap.
+                CASE WHEN CAST(:lon AS DOUBLE PRECISION) IS NULL
+                       OR CAST(:lat AS DOUBLE PRECISION) IS NULL THEN NULL
+                     ELSE ST_SetSRID(
+                       ST_MakePoint(
+                         CAST(:lon AS DOUBLE PRECISION),
+                         CAST(:lat AS DOUBLE PRECISION)
+                       ), 4326)
                 END,
-                :lga, :zone_name,
-                :related_alert_id,
+                CAST(:lga AS TEXT), CAST(:zone_name AS TEXT),
+                CAST(:related_alert_id AS UUID),
                 :inference_time_ms, :trace_id, :created_at
             )
             """
