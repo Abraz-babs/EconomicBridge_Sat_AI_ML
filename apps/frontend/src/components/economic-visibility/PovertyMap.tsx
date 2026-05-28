@@ -16,6 +16,23 @@ function colourFor(score: number): [number, number, number, number] {
 }
 
 
+/** Hover-card text for a village marker (Slice 25). */
+function tooltipFor(obj: unknown): string | null {
+  const v = obj as PovertyVillage;
+  if (!v?.settlement_name) return null;
+  const lines = [
+    `${v.lga} · ${v.settlement_name}`,
+    `Poverty score: ${v.poverty_score.toFixed(2)}`,
+    `Population: ${v.population.toLocaleString()}`,
+  ];
+  if (v.households_unreached > 0) {
+    lines.push(`${v.households_unreached.toLocaleString()} households unreached`);
+  }
+  lines.push(`Source: ${v.source}`);
+  return lines.join('\n');
+}
+
+
 interface Props {
   tenant: Tenant;
   villages: PovertyVillage[];
@@ -116,6 +133,7 @@ export default function PovertyMap({ tenant, villages }: Props) {
     <EBMap
       tenant={tenant}
       layers={layers}
+      getTooltip={tooltipFor}
       ariaLabel={`Poverty intensity map — ${tenant.name}`}
       legend={
         <>

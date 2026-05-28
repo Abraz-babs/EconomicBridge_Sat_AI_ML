@@ -42,6 +42,21 @@ function colourFor(ev: ShockEventRow): [number, number, number, number] {
 }
 
 
+/** Hover-card text for an event marker (Slice 25). */
+function tooltipFor(obj: unknown): string | null {
+  const e = obj as PositionedEvent;
+  if (!e?.event_type) return null;
+  const icon = e.event_type === 'flood' ? '🌊' : '🔥';
+  return [
+    `${icon} ${e.event_type.toUpperCase()} · ${e.severity}`,
+    `Location: ${e.lga ?? '—'}`,
+    `~${Math.round(e.population_at_risk).toLocaleString()} at risk · ${e.affected_area_km2.toFixed(0)} km²`,
+    `Onset in ${e.projected_onset_hours}h · ${e.confidence_band}`,
+    `${e.detector_name} ${e.detector_version}`,
+  ].join('\n');
+}
+
+
 interface Props {
   tenant: Tenant;
   events: ShockEventRow[];
@@ -87,8 +102,9 @@ export default function ShockEventsMap({ tenant, events }: Props) {
           id: 'shock-events-pulse',
           data: pulseRows,
           getPosition: (p) => p.position,
-          getRadius: (p) =>
-            (p.severity === 'critical' ? 34000 : 24000) * pulseScale,
+          // Uniform halo (Slice 25): 30000m / 80px, matches Poverty.
+          // Severity is conveyed by colour, not size.
+          getRadius: () => 30000 * pulseScale,
           getFillColor: (p) => {
             const c = colourFor(p);
             return [c[0], c[1], c[2], 40] as [number, number, number, number];
@@ -110,8 +126,9 @@ export default function ShockEventsMap({ tenant, events }: Props) {
           getLineColor: [255, 255, 255, 220],
           lineWidthMinPixels: 1.5,
           radiusUnits: 'meters',
-          radiusMinPixels: 10,
-          radiusMaxPixels: 40,
+          radiusMinPixels: 6,
+          // Uniform base-dot cap (Slice 25): 24px, matches Poverty.
+          radiusMaxPixels: 24,
           stroked: true,
           pickable: true,
         }),
@@ -146,6 +163,7 @@ export default function ShockEventsMap({ tenant, events }: Props) {
     <EBMap
       tenant={tenant}
       layers={layers}
+      getTooltip={tooltipFor}
       ariaLabel={`Shock events map — ${tenant.name}`}
       legend={
         <>

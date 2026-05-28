@@ -19,6 +19,20 @@ function colourFor(row: MobilityIndicatorRow): [number, number, number, number] 
 }
 
 
+/** Hover-card text for an LGA marker (Slice 25). */
+function tooltipFor(obj: unknown): string | null {
+  const r = obj as MobilityIndicatorRow;
+  if (!r?.lga) return null;
+  return [
+    r.lga,
+    `Cost-of-living index: ${r.cost_of_living_index.toFixed(1)} (${r.cost_of_living_band.replace('_', ' ')})`,
+    `Avg household income: ₦${r.avg_household_income_ngn.toLocaleString()}/mo`,
+    `Opportunity: ${(r.income_opportunity_score * 100).toFixed(0)}% · Capacity: ${(r.displacement_capacity_index * 100).toFixed(0)}%`,
+    `Source: ${r.source}`,
+  ].join('\n');
+}
+
+
 interface Props {
   tenant: Tenant;
   indicators: MobilityIndicatorRow[];
@@ -54,7 +68,8 @@ export default function MobilityMap({ tenant, indicators }: Props) {
           id: 'mobility-lga-pulse',
           data: pulseRows,
           getPosition: (p) => [p.location.lon, p.location.lat],
-          getRadius: () => 28000 * pulseScale,
+          // Uniform halo (Slice 25): 30000m / 80px max, matches Poverty.
+          getRadius: () => 30000 * pulseScale,
           getFillColor: [192, 60, 40, 40],
           radiusUnits: 'meters',
           radiusMinPixels: 14,
@@ -73,8 +88,9 @@ export default function MobilityMap({ tenant, indicators }: Props) {
           getLineColor: [255, 255, 255, 220],
           lineWidthMinPixels: 1.5,
           radiusUnits: 'meters',
-          radiusMinPixels: 10,
-          radiusMaxPixels: 40,
+          radiusMinPixels: 6,
+          // Uniform base-dot cap (Slice 25): 24px, matches Poverty.
+          radiusMaxPixels: 24,
           stroked: true,
           pickable: true,
         }),
@@ -106,6 +122,7 @@ export default function MobilityMap({ tenant, indicators }: Props) {
     <EBMap
       tenant={tenant}
       layers={layers}
+      getTooltip={tooltipFor}
       ariaLabel={`Economic mobility map — ${tenant.name}`}
       legend={
         <>

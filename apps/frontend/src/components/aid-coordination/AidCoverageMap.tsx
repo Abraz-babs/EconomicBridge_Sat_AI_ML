@@ -15,6 +15,23 @@ function colourFor(point: LgaPoint): [number, number, number, number] {
 }
 
 
+/** Hover-card text for an LGA coverage marker (Slice 25). */
+function tooltipFor(obj: unknown): string | null {
+  const p = obj as LgaPoint;
+  if (!p?.lga) return null;
+  const label =
+    p.status === 'gap' ? 'Coverage gap — no agency'
+    : p.status === 'duplicated' ? 'Multiple agencies'
+    : 'Single agency';
+  const lines = [
+    `${p.lga} · ${label}`,
+    `${p.agency_count} agenc${p.agency_count === 1 ? 'y' : 'ies'}`,
+  ];
+  if (p.agency_slugs.length > 0) lines.push(p.agency_slugs.join(', '));
+  return lines.join('\n');
+}
+
+
 interface Props {
   tenant: Tenant;
   lgaPoints: LgaPoint[];
@@ -23,6 +40,16 @@ interface Props {
 
 export default function AidCoverageMap({ tenant, lgaPoints }: Props) {
   const [layers, setLayers] = useState<unknown[]>([]);
+  const [pulse, setPulse] = useState(0);
+
+  // Heartbeat — pulses coverage gaps (LGAs with no agency), the rows
+  // this module exists to surface. Uniform cadence/size (Slice 25).
+  const hasAttention = lgaPoints.some((p) => p.status === 'gap');
+  useEffect(() => {
+    if (!hasAttention) return;
+    const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
+    return () => window.clearInterval(id);
+  }, [hasAttention]);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,7 +59,23 @@ export default function AidCoverageMap({ tenant, lgaPoints }: Props) {
       ]);
       if (cancelled) return;
 
+      const pulseRows = lgaPoints.filter((p) => p.status === 'gap');
+      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
       const built: unknown[] = [
+        // Pulse halo on coverage gaps.
+        new ScatterplotLayer<LgaPoint>({
+          id: 'aid-lga-pulse',
+          data: pulseRows,
+          getPosition: (p: LgaPoint) => [p.lon, p.lat],
+          getRadius: () => 30000 * pulseScale,
+          getFillColor: [224, 90, 43, 40],
+          radiusUnits: 'meters',
+          radiusMinPixels: 14,
+          radiusMaxPixels: 80,
+          stroked: false,
+          pickable: false,
+          updateTriggers: { getRadius: pulse },
+        }),
         // Coverage status circles.
         new ScatterplotLayer<LgaPoint>({
           id: 'aid-lga-coverage',
@@ -44,8 +87,9 @@ export default function AidCoverageMap({ tenant, lgaPoints }: Props) {
           getLineColor: [255, 255, 255, 220],
           lineWidthMinPixels: 1.5,
           radiusUnits: 'meters',
-          radiusMinPixels: 10,
-          radiusMaxPixels: 38,
+          radiusMinPixels: 6,
+          // Uniform base-dot cap (Slice 25): 24px, matches Poverty.
+          radiusMaxPixels: 24,
           stroked: true,
           pickable: true,
         }),
@@ -69,7 +113,7 @@ export default function AidCoverageMap({ tenant, lgaPoints }: Props) {
       setLayers(built);
     })();
     return () => { cancelled = true; };
-  }, [lgaPoints]);
+  }, [lgaPoints, pulse]);
 
   const gapCount = lgaPoints.filter(p => p.status === 'gap').length;
   const dupCount = lgaPoints.filter(p => p.status === 'duplicated').length;
@@ -78,6 +122,7 @@ export default function AidCoverageMap({ tenant, lgaPoints }: Props) {
     <EBMap
       tenant={tenant}
       layers={layers}
+      getTooltip={tooltipFor}
       ariaLabel={`Aid agency coverage map — ${tenant.name}`}
       legend={
         <>

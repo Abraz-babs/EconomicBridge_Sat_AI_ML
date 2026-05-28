@@ -19,6 +19,20 @@ function colourFor(row: SkillsIndicatorRow): [number, number, number, number] {
 }
 
 
+/** Hover-card text for an LGA marker (Slice 25). */
+function tooltipFor(obj: unknown): string | null {
+  const r = obj as SkillsIndicatorRow;
+  if (!r?.lga) return null;
+  return [
+    `${r.lga} · ${r.connectivity_band.replace('_', ' ')}`,
+    `Internet: ${r.internet_coverage_pct.toFixed(0)}% · Mobile: ${r.mobile_coverage_pct.toFixed(0)}%`,
+    `Schools: ${r.school_count} (${r.school_density_per_10k.toFixed(1)}/10k youth)`,
+    `Learning-gap index: ${r.learning_gap_index.toFixed(2)}`,
+    `Source: ${r.source}`,
+  ].join('\n');
+}
+
+
 interface Props {
   tenant: Tenant;
   indicators: SkillsIndicatorRow[];
@@ -55,7 +69,8 @@ export default function SkillsMap({ tenant, indicators }: Props) {
           id: 'skills-lga-pulse',
           data: pulseRows,
           getPosition: (p) => [p.location.lon, p.location.lat],
-          getRadius: () => 26000 * pulseScale,
+          // Uniform halo (Slice 25): 30000m / 80px max, matches Poverty.
+          getRadius: () => 30000 * pulseScale,
           getFillColor: [192, 60, 40, 40],
           radiusUnits: 'meters',
           radiusMinPixels: 14,
@@ -75,8 +90,9 @@ export default function SkillsMap({ tenant, indicators }: Props) {
           getLineColor: [255, 255, 255, 220],
           lineWidthMinPixels: 1.5,
           radiusUnits: 'meters',
-          radiusMinPixels: 10,
-          radiusMaxPixels: 40,
+          radiusMinPixels: 6,
+          // Uniform base-dot cap (Slice 25): 24px, matches Poverty.
+          radiusMaxPixels: 24,
           stroked: true,
           pickable: true,
         }),
@@ -108,6 +124,7 @@ export default function SkillsMap({ tenant, indicators }: Props) {
     <EBMap
       tenant={tenant}
       layers={layers}
+      getTooltip={tooltipFor}
       ariaLabel={`SkillsBridge connectivity map — ${tenant.name}`}
       legend={
         <>

@@ -52,6 +52,25 @@ export interface PositionedPrediction extends CropPredictionRow {
 }
 
 
+/** Hover-card text for a prediction marker (Slice 25). */
+function tooltipFor(obj: unknown): string | null {
+  const p = obj as PositionedPrediction;
+  if (!p?.predicted_class) return null;
+  const lines = [
+    p.predicted_class.replace(/_/g, ' '),
+    `Disease prob: ${(p.prediction * 100).toFixed(0)}% · Confidence: ${(p.confidence * 100).toFixed(0)}%`,
+  ];
+  if (p.requires_human_review) lines.push('Flagged for human review');
+  if (p.synthetic_location) lines.push('⚠ synthesised position');
+  return lines.join('\n');
+}
+
+/** True for a disease prediction the analyst should look at first. */
+function isHighSeverity(p: PositionedPrediction): boolean {
+  return !p.predicted_class.endsWith('_healthy') && p.prediction >= 0.80;
+}
+
+
 interface Props {
   tenant: Tenant;
   predictions: CropPredictionRow[];
@@ -81,6 +100,17 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
   );
 
   const [layers, setLayers] = useState<unknown[]>([]);
+  const [pulse, setPulse] = useState(0);
+
+  // Heartbeat — pulses high-severity disease detections (prob >= 0.80),
+  // the rows an extension officer should act on first. Uniform
+  // cadence/size (Slice 25).
+  const hasAttention = positioned.some(isHighSeverity);
+  useEffect(() => {
+    if (!hasAttention) return;
+    const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
+    return () => window.clearInterval(id);
+  }, [hasAttention]);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,6 +124,8 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
       const diseasePoints = positioned.filter(
         (p) => !p.predicted_class.endsWith('_healthy'),
       );
+      const pulseRows = positioned.filter(isHighSeverity);
+      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
 
       const built: unknown[] = [
         // Disease-density heatmap.
@@ -112,6 +144,20 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
             [255, 69, 0],
           ],
         }),
+        // Pulse halo on high-severity disease.
+        new ScatterplotLayer<PositionedPrediction>({
+          id: 'cropguard-pulse',
+          data: pulseRows,
+          getPosition: (p) => p.position,
+          getRadius: () => 30000 * pulseScale,
+          getFillColor: [255, 69, 0, 40],
+          radiusUnits: 'meters',
+          radiusMinPixels: 14,
+          radiusMaxPixels: 80,
+          stroked: false,
+          pickable: false,
+          updateTriggers: { getRadius: pulse },
+        }),
         // Per-prediction pin.
         new ScatterplotLayer<PositionedPrediction>({
           id: 'cropguard-predictions',
@@ -123,8 +169,9 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
             p.synthetic_location ? [180, 180, 180, 220] : [255, 255, 255, 220],
           lineWidthMinPixels: 1.5,
           radiusUnits: 'meters',
-          radiusMinPixels: 7,
-          radiusMaxPixels: 22,
+          radiusMinPixels: 6,
+          // Uniform base-dot cap (Slice 25): 24px, matches Poverty.
+          radiusMaxPixels: 24,
           stroked: true,
           pickable: true,
         }),
@@ -132,7 +179,7 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
       setLayers(built);
     })();
     return () => { cancelled = true; };
-  }, [positioned]);
+  }, [positioned, pulse]);
 
   const realCount = positioned.filter((p) => !p.synthetic_location).length;
   const syntheticCount = positioned.length - realCount;
@@ -144,6 +191,7 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
     <EBMap
       tenant={tenant}
       layers={layers}
+      getTooltip={tooltipFor}
       ariaLabel={`CropGuard predictions map — ${tenant.name}`}
       legend={
         <>

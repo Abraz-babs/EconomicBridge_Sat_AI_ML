@@ -37,6 +37,15 @@ export interface EBMapProps {
    * "Mapbox failed to load" copy; callers can override for module-
    * specific hints. */
   errorOverlay?: ReactNode;
+  /**
+   * Hover-tooltip formatter (Slice 25). Given the picked layer object,
+   * return the tooltip text (newline-separated lines) or null for no
+   * tooltip. Wired into the Deck.gl overlay's `getTooltip` so every
+   * module gets a hover card from one place. Text is rendered via
+   * deck.gl's `{text}` return (no innerHTML) so there's no XSS surface
+   * even though the values come from the DB.
+   */
+  getTooltip?: (object: unknown) => string | null;
 }
 
 
@@ -63,12 +72,19 @@ export default function EBMap(props: EBMapProps) {
     height = '420px',
     zoom = 6,
     ariaLabel = `Satellite intelligence map — ${tenant.name}`,
-    overlay, legend, errorOverlay,
+    overlay, legend, errorOverlay, getTooltip,
   } = props;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<unknown>(null);
   const overlayRef = useRef<unknown>(null);
+  // Keep the latest formatter in a ref so the overlay's getTooltip
+  // closure (built once at init) always calls the current one without
+  // recreating the overlay when the prop identity changes per render.
+  const tooltipRef = useRef<EBMapProps['getTooltip']>(getTooltip);
+  useEffect(() => {
+    tooltipRef.current = getTooltip;
+  }, [getTooltip]);
   const [status, setStatus] = useState<MapStatus>(
     MAPBOX_TOKEN ? 'loading' : 'no-token',
   );
@@ -105,7 +121,33 @@ export default function EBMap(props: EBMapProps) {
 
         map.on('load', () => {
           if (cancelled) return;
-          const overlay = new MapboxOverlay({ interleaved: false, layers: [] });
+          const overlay = new MapboxOverlay({
+            interleaved: false,
+            layers: [],
+            // Hover card — reads the current module formatter via ref.
+            // Returns deck.gl's {text} shape (no innerHTML → no XSS).
+            getTooltip: (info: { object?: unknown }) => {
+              const obj = info?.object;
+              if (!obj) return null;
+              const text = tooltipRef.current?.(obj);
+              if (!text) return null;
+              return {
+                text,
+                style: {
+                  backgroundColor: 'rgba(26, 23, 20, 0.95)',
+                  color: '#f5f2ee',
+                  fontSize: '11px',
+                  fontFamily: 'system-ui, sans-serif',
+                  lineHeight: '1.5',
+                  padding: '8px 10px',
+                  borderRadius: '4px',
+                  maxWidth: '240px',
+                  whiteSpace: 'pre-line',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.4)',
+                },
+              };
+            },
+          });
           map.addControl(overlay);
           overlayRef.current = overlay;
           setStatus('ready');
