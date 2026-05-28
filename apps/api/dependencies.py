@@ -8,9 +8,11 @@ Per CLAUDE.md §4.1 and §4.2:
 """
 from __future__ import annotations
 
-from uuid import UUID
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from db.engine import get_session_factory
@@ -39,6 +41,43 @@ class DPAGateError(HTTPException):
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": code, "message": message},
         )
+
+
+async def dpa_gate_exception_handler(
+    request: Request, exc: DPAGateError,
+) -> JSONResponse:
+    """Render DPAGateError in the standard response envelope (CLAUDE.md §7)
+    instead of FastAPI's default `{"detail": ...}` shape.
+
+    Why this matters: the frontend's `apiFetch` (lib/api.ts) reads
+    `error.code` / `error.message` off the envelope to decide whether to
+    show a "request DPA access" CTA. The default HTTPException shape puts
+    the code under `detail.code`, which apiFetch never inspects — so a
+    403 from the gate would surface as a generic failure. This handler
+    lifts the gate's {code, message} into `error` and stamps the
+    request's trace_id so the response matches every other API error.
+    """
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    trace = getattr(request.state, "trace_id", None)
+    trace_str = str(trace) if trace else str(uuid4())
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "data": None,
+            "error": {
+                "code": detail.get("code", "DPA_REQUIRED"),
+                "message": detail.get("message", "Access denied."),
+                "trace_id": trace_str,
+            },
+            "meta": {
+                "tenant_id": None,
+                "trace_id": trace_str,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "pagination": None,
+            },
+        },
+    )
 
 
 async def require_signed_dpa(request: Request) -> UUID:

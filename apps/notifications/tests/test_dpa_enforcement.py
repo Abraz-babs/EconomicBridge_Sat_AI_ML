@@ -25,7 +25,7 @@ client = TestClient(app)
 def test_subscribers_list_without_any_headers_returns_403_tenant_required():
     r = client.get("/api/v1/subscribers")
     assert r.status_code == 403, r.text
-    assert r.json()["detail"]["code"] == "TENANT_REQUIRED"
+    assert r.json()["error"]["code"] == "TENANT_REQUIRED"
 
 
 def test_subscribers_list_with_tenant_but_no_org_returns_403_dpa_required():
@@ -34,7 +34,7 @@ def test_subscribers_list_with_tenant_but_no_org_returns_403_dpa_required():
         headers={"X-Tenant-Id": "kebbi"},
     )
     assert r.status_code == 403
-    assert r.json()["detail"]["code"] == "DPA_REQUIRED"
+    assert r.json()["error"]["code"] == "DPA_REQUIRED"
 
 
 def test_subscribers_list_with_invalid_org_uuid_returns_403_dpa_required():
@@ -46,8 +46,8 @@ def test_subscribers_list_with_invalid_org_uuid_returns_403_dpa_required():
         },
     )
     assert r.status_code == 403
-    assert r.json()["detail"]["code"] == "DPA_REQUIRED"
-    assert "UUID" in r.json()["detail"]["message"]
+    assert r.json()["error"]["code"] == "DPA_REQUIRED"
+    assert "UUID" in r.json()["error"]["message"]
 
 
 def test_subscribers_list_with_unknown_tenant_returns_403_tenant_required():
@@ -59,7 +59,7 @@ def test_subscribers_list_with_unknown_tenant_returns_403_tenant_required():
         },
     )
     assert r.status_code == 403
-    assert r.json()["detail"]["code"] == "TENANT_REQUIRED"
+    assert r.json()["error"]["code"] == "TENANT_REQUIRED"
 
 
 def test_notify_conflict_without_headers_returns_403_tenant_required():
@@ -77,7 +77,7 @@ def test_notify_conflict_without_headers_returns_403_tenant_required():
         },
     )
     assert r.status_code == 403
-    assert r.json()["detail"]["code"] == "TENANT_REQUIRED"
+    assert r.json()["error"]["code"] == "TENANT_REQUIRED"
 
 
 # ─── Dependency-tree contract (no HTTP request) ────────────────────────────

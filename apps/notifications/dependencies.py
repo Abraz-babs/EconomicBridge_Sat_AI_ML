@@ -20,9 +20,11 @@ enough to copy again rather than build a shared package.
 """
 from __future__ import annotations
 
-from uuid import UUID
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from db import get_session_factory, is_valid_tenant_id
@@ -40,6 +42,35 @@ class DPAGateError(HTTPException):
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": code, "message": message},
         )
+
+
+async def dpa_gate_exception_handler(
+    request: Request, exc: DPAGateError,
+) -> JSONResponse:
+    """Render DPAGateError in the standard response envelope (CLAUDE.md §7).
+    Mirror of the API service's handler — keeps the 403 shape consistent
+    across services so a single frontend error-parser handles both."""
+    detail = exc.detail if isinstance(exc.detail, dict) else {}
+    trace = getattr(request.state, "trace_id", None)
+    trace_str = str(trace) if trace else str(uuid4())
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "data": None,
+            "error": {
+                "code": detail.get("code", "DPA_REQUIRED"),
+                "message": detail.get("message", "Access denied."),
+                "trace_id": trace_str,
+            },
+            "meta": {
+                "tenant_id": None,
+                "trace_id": trace_str,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "pagination": None,
+            },
+        },
+    )
 
 
 async def require_signed_dpa(request: Request) -> UUID:

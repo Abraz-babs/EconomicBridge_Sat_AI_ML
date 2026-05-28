@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import get_settings
+from dependencies import DPAGateError, dpa_gate_exception_handler
 from middleware.audit import AuditLogMiddleware
 from middleware.security import SecurityHeadersMiddleware
 from middleware.tenant import TenantContextMiddleware
@@ -56,6 +57,10 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
 )
+
+# DPA gate (Slice 14/19) — render its 403s in the standard envelope so the
+# frontend can read error.code === 'DPA_REQUIRED'.
+app.add_exception_handler(DPAGateError, dpa_gate_exception_handler)
 
 # Inner-first add order (Starlette wraps in reverse):
 app.add_middleware(AuditLogMiddleware)

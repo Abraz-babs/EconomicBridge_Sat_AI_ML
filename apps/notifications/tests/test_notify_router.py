@@ -40,7 +40,7 @@ def test_notify_unknown_tenant_returns_403_via_gate() -> None:
     gate fires first (missing X-Tenant-Id → TENANT_REQUIRED)."""
     response = client.post("/api/v1/notify/conflict", json=_payload(tenant_id="atlantis"))
     assert response.status_code == 403
-    assert response.json()["detail"]["code"] == "TENANT_REQUIRED"
+    assert response.json()["error"]["code"] == "TENANT_REQUIRED"
 
 
 def test_notify_invalid_severity_blocked_by_gate_before_pydantic() -> None:
@@ -60,13 +60,13 @@ def test_subscribers_missing_tenant_header_returns_403_via_gate() -> None:
     gate raises TENANT_REQUIRED with the same intent (no tenant context)."""
     response = client.get("/api/v1/subscribers")
     assert response.status_code == 403
-    assert response.json()["detail"]["code"] == "TENANT_REQUIRED"
+    assert response.json()["error"]["code"] == "TENANT_REQUIRED"
 
 
 def test_subscribers_unknown_tenant_header_returns_403_via_gate() -> None:
     response = client.get("/api/v1/subscribers", headers={"X-Tenant-Id": "atlantis"})
     assert response.status_code == 403
-    assert response.json()["detail"]["code"] == "TENANT_REQUIRED"
+    assert response.json()["error"]["code"] == "TENANT_REQUIRED"
 
 
 def test_create_subscriber_rejects_invalid_e164() -> None:

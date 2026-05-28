@@ -34,6 +34,7 @@ from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 from starlette.responses import Response  # noqa: E402
 
 from config import get_settings  # noqa: E402
+from dependencies import DPAGateError, dpa_gate_exception_handler  # noqa: E402
 from routers import health, notify, subscribers  # noqa: E402
 
 settings = get_settings()
@@ -60,6 +61,9 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
 )
+
+# DPA gate (Slice 17/19) — render its 403s in the standard envelope.
+app.add_exception_handler(DPAGateError, dpa_gate_exception_handler)
 
 app.add_middleware(TraceIdMiddleware)
 app.add_middleware(

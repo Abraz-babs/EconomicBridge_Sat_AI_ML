@@ -43,7 +43,7 @@ def test_dsr_list_without_any_headers_returns_403_tenant_required():
     r = client.get("/api/v1/dpa/data-subject-requests")
     assert r.status_code == 403, r.text
     body = r.json()
-    assert body["detail"]["code"] == "TENANT_REQUIRED"
+    assert body["error"]["code"] == "TENANT_REQUIRED"
 
 
 def test_dsr_list_with_tenant_but_no_org_returns_403_dpa_required():
@@ -52,7 +52,7 @@ def test_dsr_list_with_tenant_but_no_org_returns_403_dpa_required():
         headers={"X-Tenant-Id": "kebbi"},
     )
     assert r.status_code == 403
-    assert r.json()["detail"]["code"] == "DPA_REQUIRED"
+    assert r.json()["error"]["code"] == "DPA_REQUIRED"
 
 
 def test_dsr_list_with_invalid_org_uuid_returns_403_dpa_required():
@@ -67,8 +67,8 @@ def test_dsr_list_with_invalid_org_uuid_returns_403_dpa_required():
         },
     )
     assert r.status_code == 403
-    assert r.json()["detail"]["code"] == "DPA_REQUIRED"
-    assert "UUID" in r.json()["detail"]["message"]
+    assert r.json()["error"]["code"] == "DPA_REQUIRED"
+    assert "UUID" in r.json()["error"]["message"]
 
 
 def test_dsr_patch_inherits_the_same_gate():
@@ -81,7 +81,7 @@ def test_dsr_patch_inherits_the_same_gate():
         headers={"X-Tenant-Id": "kebbi"},  # tenant set, org missing
     )
     assert r.status_code == 403
-    assert r.json()["detail"]["code"] == "DPA_REQUIRED"
+    assert r.json()["error"]["code"] == "DPA_REQUIRED"
 
 
 def test_dsr_post_is_not_gated():
@@ -270,7 +270,7 @@ def test_dsr_list_with_pending_dpa_returns_403():
             },
         )
         assert r.status_code == 403
-        assert r.json()["detail"]["code"] == "DPA_REQUIRED"
+        assert r.json()["error"]["code"] == "DPA_REQUIRED"
     finally:
         _cleanup(org_id, dpa_id)
 
@@ -290,7 +290,7 @@ def test_dsr_list_with_expired_dpa_returns_403():
             },
         )
         assert r.status_code == 403
-        assert r.json()["detail"]["code"] == "DPA_REQUIRED"
+        assert r.json()["error"]["code"] == "DPA_REQUIRED"
     finally:
         _cleanup(org_id, dpa_id)
 
@@ -309,6 +309,6 @@ def test_dsr_list_with_dpa_for_different_tenant_returns_403():
             },
         )
         assert r.status_code == 403
-        assert r.json()["detail"]["code"] == "DPA_REQUIRED"
+        assert r.json()["error"]["code"] == "DPA_REQUIRED"
     finally:
         _cleanup(org_id, dpa_id)
