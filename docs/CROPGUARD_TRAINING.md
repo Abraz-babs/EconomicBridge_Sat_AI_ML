@@ -59,6 +59,25 @@ tomato_healthy, tomato_late_blight,
 plantain_healthy, plantain_black_sigatoka,
 ```
 
+> **Automation (Slice 20).** The maize + tomato families (the part
+> PlantVillage covers) are mapped for you by
+> `scripts/prepare_plantvillage.py`. After downloading PlantVillage:
+>
+> ```powershell
+> python apps/ml/scripts/prepare_plantvillage.py `
+>     --source <PlantVillage-Dataset>/raw/color `
+>     --dest   /data/cropguard
+> # add --dry-run to preview, --link hardlink to save disk
+> ```
+>
+> It copies `Corn___*` + `Tomato___*` into the right target folders
+> (combining Cercospora + Common-rust into `maize_streak_virus` as the
+> documented proxy), prefixes filenames to avoid collisions, and is
+> idempotent on re-run. The cassava / rice / plantain classes still
+> need the Kaggle datasets dropped in manually per the table above —
+> the script warns about (but does not fail on) the classes it can't
+> source from PlantVillage.
+
 Reorganise the downloaded data into this layout:
 
 ```
