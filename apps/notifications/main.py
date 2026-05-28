@@ -33,8 +33,12 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 from starlette.responses import Response  # noqa: E402
 
+from fastapi.exceptions import RequestValidationError  # noqa: E402
+from starlette.exceptions import HTTPException as StarletteHTTPException  # noqa: E402
+
 from config import get_settings  # noqa: E402
 from dependencies import DPAGateError, dpa_gate_exception_handler  # noqa: E402
+from errors import http_exception_handler, validation_exception_handler  # noqa: E402
 from routers import health, notify, subscribers  # noqa: E402
 
 settings = get_settings()
@@ -62,8 +66,12 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-# DPA gate (Slice 17/19) — render its 403s in the standard envelope.
+# Error envelope (CLAUDE.md §7). DPAGateError (subclass) keeps its own
+# handler; the general HTTPException + validation handlers (Slice 24)
+# cover everything else.
 app.add_exception_handler(DPAGateError, dpa_gate_exception_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 app.add_middleware(TraceIdMiddleware)
 app.add_middleware(

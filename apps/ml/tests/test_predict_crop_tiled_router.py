@@ -137,7 +137,8 @@ def test_tiled_rejects_image_too_small_for_grid():
         json=_body(image_base64=_field_png_b64(500, 500), rows=4, cols=4),
     )
     assert response.status_code == 422
-    assert "too small" in response.json()["detail"].lower()
+    # Slice 24: §7 envelope — message under error.message.
+    assert "too small" in response.json()["error"]["message"].lower()
 
 
 def test_tiled_rejects_unknown_fields():

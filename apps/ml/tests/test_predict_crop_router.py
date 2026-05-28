@@ -190,7 +190,9 @@ def test_predict_crop_s3_path_returns_501_in_slice_5a():
     }
     response = client.post("/api/v1/predict/crop_disease", json=body)
     assert response.status_code == 501
-    assert "Slice 5c" in response.json()["detail"]
+    # Slice 24: errors normalised to the §7 envelope — message moved
+    # from top-level "detail" to error.message.
+    assert "Slice 5c" in response.json()["error"]["message"]
 
 
 def test_predict_crop_s3_path_rejects_cross_tenant_key():

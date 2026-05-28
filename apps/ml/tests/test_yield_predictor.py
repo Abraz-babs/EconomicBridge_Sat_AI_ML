@@ -204,7 +204,8 @@ def test_predict_yield_unknown_tenant_returns_404():
 def test_predict_yield_unknown_crop_returns_400():
     response = client.post("/api/v1/predict/yield", json=_body(crop="quinoa"))
     assert response.status_code == 400
-    assert "Unsupported crop" in response.json()["detail"]
+    # Slice 24: §7 envelope — message under error.message.
+    assert "Unsupported crop" in response.json()["error"]["message"]
 
 
 def test_predict_yield_rejects_ndvi_out_of_range():

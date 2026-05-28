@@ -31,7 +31,11 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 from starlette.responses import Response  # noqa: E402
 
+from fastapi.exceptions import RequestValidationError  # noqa: E402
+from starlette.exceptions import HTTPException as StarletteHTTPException  # noqa: E402
+
 from config import get_settings  # noqa: E402
+from errors import http_exception_handler, validation_exception_handler  # noqa: E402
 from routers import (  # noqa: E402
     health,
     predict,
@@ -64,6 +68,10 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
 )
+
+# Error envelope (CLAUDE.md §7) — Slice 24.
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 app.add_middleware(TraceIdMiddleware)
 app.add_middleware(
