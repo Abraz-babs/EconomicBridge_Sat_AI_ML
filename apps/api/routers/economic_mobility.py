@@ -67,15 +67,31 @@ async def list_indicators(
 ) -> SuccessResponse[MobilityStatsData]:
     tenant_id = _require_tenant(request)
 
+    # Source-preference dedup (Slice 21): a tenant can hold both seed_v1
+    # and live (nbs_col_v1 / ecowas_stat_v1) rows for the same LGA — the
+    # swap-in coexistence the table's UNIQUE(tenant,lga,source) allows.
+    # DISTINCT ON (lga) keeps ONE row per LGA, preferring a live source
+    # over seed (priority 0 vs 9), newest observed_at as tiebreak — so
+    # the dashboard shows each LGA once and automatically upgrades to
+    # live data the moment an ingest lands.
     result = await session.execute(
         text(
             """
-            SELECT id, tenant_id, lga,
-                   ST_X(location) AS lon, ST_Y(location) AS lat,
-                   cost_of_living_index, avg_household_income_ngn,
-                   income_opportunity_score, displacement_capacity_index,
-                   population, observed_at, source, created_at, updated_at
-              FROM mobility_indicators
+            SELECT * FROM (
+                SELECT DISTINCT ON (lga)
+                       id, tenant_id, lga,
+                       ST_X(location) AS lon, ST_Y(location) AS lat,
+                       cost_of_living_index, avg_household_income_ngn,
+                       income_opportunity_score, displacement_capacity_index,
+                       population, observed_at, source, created_at, updated_at
+                  FROM mobility_indicators
+                 ORDER BY lga,
+                          CASE
+                            WHEN source = 'seed_v1' THEN 9
+                            ELSE 0
+                          END,
+                          observed_at DESC
+            ) deduped
              ORDER BY cost_of_living_index DESC
              LIMIT :limit
             """

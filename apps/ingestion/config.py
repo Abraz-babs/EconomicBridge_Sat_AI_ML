@@ -129,6 +129,20 @@ class Settings(BaseSettings):
     # ~2 years behind; 2024 layers are stable as of 2026-Q1.
     worldpop_default_year: int = 2024
 
+    # NBS — Nigeria National Bureau of Statistics (cost-of-living / CPI +
+    # household income). Drives Module 06 (Economic Mobility Compass)
+    # live data. Empty key = mock mode: the client returns deterministic
+    # synthetic indicators tagged source='nbs_col_v1' so the swap-in
+    # path (seed_v1 → nbs_col_v1) is exercisable without credentials.
+    # NBS publishes Selected Food + All-Items CPI at the state level;
+    # the real client maps those to our per-LGA cost_of_living_index.
+    nbs_api_key: str = ""
+    nbs_base_url: str = "https://nigerianstat.gov.ng/api"
+    # ECOWAS STAT covers the non-Nigerian pilots (Ghana, Senegal). Same
+    # mock-fallback contract; separate key because it's a different body.
+    ecowas_stat_api_key: str = ""
+    ecowas_stat_base_url: str = "https://ecowas.int/statistics/api"
+
     # S3 imagery archive — Phase A.6. Empty bucket name = mock mode; the
     # downloader records what *would* have happened but doesn't call AWS.
     # Production Terraform (infrastructure/terraform/) provisions the
