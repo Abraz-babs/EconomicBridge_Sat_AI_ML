@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import EBMap from '@/components/map/EBMap';
+import { haloRadiusPx, haloRows } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
 import type { LgaPoint } from '@/hooks/useAidCoordination';
 
@@ -42,9 +43,9 @@ export default function AidCoverageMap({ tenant, lgaPoints }: Props) {
   const [layers, setLayers] = useState<unknown[]>([]);
   const [pulse, setPulse] = useState(0);
 
-  // Heartbeat — pulses coverage gaps (LGAs with no agency), the rows
-  // this module exists to surface. Uniform cadence/size (Slice 25).
-  const hasAttention = lgaPoints.some((p) => p.status === 'gap');
+  // Heartbeat — pulses coverage gaps (LGAs with no agency), falling back to
+  // the most under-served few so every tenant shows a uniform halo (Slice 25).
+  const hasAttention = lgaPoints.length > 0;
   useEffect(() => {
     if (!hasAttention) return;
     const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
@@ -59,19 +60,21 @@ export default function AidCoverageMap({ tenant, lgaPoints }: Props) {
       ]);
       if (cancelled) return;
 
-      const pulseRows = lgaPoints.filter((p) => p.status === 'gap');
-      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
+      const pulseRows = haloRows(
+        lgaPoints,
+        (p) => p.status === 'gap',
+        (p) => -p.agency_count,
+      );
       const built: unknown[] = [
         // Pulse halo on coverage gaps.
         new ScatterplotLayer<LgaPoint>({
           id: 'aid-lga-pulse',
           data: pulseRows,
           getPosition: (p: LgaPoint) => [p.lon, p.lat],
-          getRadius: () => 30000 * pulseScale,
+          // Uniform pixel-pulse halo (Slice 25 fix): matches Poverty.
+          getRadius: () => haloRadiusPx(pulse),
           getFillColor: [224, 90, 43, 40],
-          radiusUnits: 'meters',
-          radiusMinPixels: 14,
-          radiusMaxPixels: 80,
+          radiusUnits: 'pixels',
           stroked: false,
           pickable: false,
           updateTriggers: { getRadius: pulse },
@@ -81,8 +84,9 @@ export default function AidCoverageMap({ tenant, lgaPoints }: Props) {
           id: 'aid-lga-coverage',
           data: lgaPoints,
           getPosition: (p: LgaPoint) => [p.lon, p.lat],
+          // Tidy meter scale (Slice 25): matches Poverty so dots stay small.
           getRadius: (p: LgaPoint) =>
-            12000 + p.agency_count * 6000,
+            4000 + p.agency_count * 4000,
           getFillColor: (p: LgaPoint) => colourFor(p),
           getLineColor: [255, 255, 255, 220],
           lineWidthMinPixels: 1.5,

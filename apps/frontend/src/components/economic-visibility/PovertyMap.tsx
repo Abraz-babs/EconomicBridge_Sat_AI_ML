@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import EBMap from '@/components/map/EBMap';
+import { haloRadiusPx, haloRows } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
 import type { PovertyVillage } from '@/hooks/usePovertyVillages';
 
@@ -43,10 +44,10 @@ export default function PovertyMap({ tenant, villages }: Props) {
   const [layers, setLayers] = useState<unknown[]>([]);
   const [pulse, setPulse] = useState(0);
 
-  // Heartbeat — pulses critical-poverty villages (score >= 0.80) so the
-  // eye lands on the highest-need settlements first, even when the
-  // heatmap is dense.
-  const hasAttention = villages.some((v) => v.poverty_score >= 0.80);
+  // Heartbeat — pulses critical-poverty villages (score >= 0.80), falling
+  // back to the highest-need few so the eye always lands on the worst
+  // settlements first, even when no village crosses the critical line.
+  const hasAttention = villages.length > 0;
   useEffect(() => {
     if (!hasAttention) return;
     const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
@@ -62,8 +63,11 @@ export default function PovertyMap({ tenant, villages }: Props) {
       ]);
       if (cancelled) return;
 
-      const pulseRows = villages.filter((v) => v.poverty_score >= 0.80);
-      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
+      const pulseRows = haloRows(
+        villages,
+        (v) => v.poverty_score >= 0.80,
+        (v) => v.poverty_score,
+      );
       const built: unknown[] = [
         new HeatmapLayer<PovertyVillage>({
           id: 'poverty-heatmap',
@@ -84,11 +88,9 @@ export default function PovertyMap({ tenant, villages }: Props) {
           id: 'poverty-pulse',
           data: pulseRows,
           getPosition: (v: PovertyVillage) => [v.location.lon, v.location.lat],
-          getRadius: () => 30000 * pulseScale,
+          getRadius: () => haloRadiusPx(pulse),
           getFillColor: [255, 69, 0, 40],
-          radiusUnits: 'meters',
-          radiusMinPixels: 14,
-          radiusMaxPixels: 80,
+          radiusUnits: 'pixels',
           stroked: false,
           pickable: false,
           updateTriggers: { getRadius: pulse },

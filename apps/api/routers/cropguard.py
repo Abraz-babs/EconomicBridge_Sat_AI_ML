@@ -20,6 +20,7 @@ from schemas.cropguard import (
     CropPredictionListData,
     CropPredictionRow,
     CropTopKEntry,
+    LonLat,
     YieldForecastListData,
     YieldForecastRow,
 )
@@ -69,7 +70,8 @@ async def list_predictions(
                    requires_human_review, top_k,
                    image_source, image_s3_bucket, image_s3_key,
                    model_name, model_version, inference_time_ms,
-                   created_at
+                   created_at,
+                   ST_X(location) AS lon, ST_Y(location) AS lat
               FROM crop_predictions
              ORDER BY created_at DESC
              LIMIT :limit
@@ -117,6 +119,11 @@ def _row_to_response(row: dict) -> CropPredictionRow:
         image_source=row["image_source"],
         image_s3_key=row.get("image_s3_key"),
         image_s3_bucket=row.get("image_s3_bucket"),
+        location=(
+            LonLat(lon=float(row["lon"]), lat=float(row["lat"]))
+            if row.get("lon") is not None and row.get("lat") is not None
+            else None
+        ),
         model_name=row["model_name"],
         model_version=row["model_version"],
         inference_time_ms=row.get("inference_time_ms"),

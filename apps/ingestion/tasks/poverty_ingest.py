@@ -87,12 +87,37 @@ class PovertyIngestResult:
     sources_observed: tuple[str, ...]
 
 
-def settlements_for(tenant_id: str) -> list[PovertySettlementInput]:
-    """Two synthetic settlements per LGA, spread around the tenant centroid.
+async def _seed_settlements(
+    session: AsyncSession, tenant_id: str,
+) -> list[PovertySettlementInput]:
+    """Settlement points (+ coords) from the tenant's seed_v1 rows.
 
-    These are STABLE per tenant — same lon/lat for every run so the upsert
-    by (tenant, lga, settlement_name, source) is meaningful. Replaced by
-    OSM settlement polygons in Phase B.
+    Reusing the seed geometry keeps live rows at the same hand-curated LGA
+    centroids as the seed (apps/api services/lga_geo.py) — no coordinate
+    drift between the seed and live sources, mirroring the mobility/skills
+    ingests. Returns [] when the tenant hasn't been seeded yet, in which
+    case the caller falls back to `settlements_for()`.
+    """
+    await set_tenant_schema(session, tenant_id)
+    rows = (await session.execute(text(
+        "SELECT settlement_name, lga, ST_X(location) AS lon, ST_Y(location) AS lat "
+        "FROM poverty_villages WHERE source = 'seed_v1'"
+    ))).mappings().all()
+    return [
+        PovertySettlementInput(
+            settlement_name=r["settlement_name"], lga=r["lga"],
+            lon=float(r["lon"]), lat=float(r["lat"]),
+        )
+        for r in rows
+    ]
+
+
+def settlements_for(tenant_id: str) -> list[PovertySettlementInput]:
+    """Fallback synthetic settlements when a tenant has no seed_v1 rows.
+
+    Two points per LGA on a deterministic ring around the tenant centroid.
+    Only used pre-seed; the live path normally reuses the seed geometry via
+    `_seed_settlements()` so coordinates match the dashboard exactly.
     """
     centroid_lon, centroid_lat = TENANT_CENTROIDS.get(tenant_id, (0.0, 0.0))
     lgas = LGA_SAMPLE.get(tenant_id, [f"{tenant_id} Region 1"])
@@ -137,7 +162,14 @@ async def ingest_tenant(
 
     layer: WorldPopLayer | None = await worldpop_client.latest_layer_for_tenant(tenant_id)
 
-    settlements = settlements_for(tenant_id)
+    # Reuse the seed-village geometry so live rows land on the same LGA
+    # centroids as the dashboard's seed rows (no coordinate drift). Only
+    # fabricate a synthetic grid when the tenant hasn't been seeded.
+    # _seed_settlements() has already set the tenant search_path; the writes
+    # below run in the same schema.
+    settlements = await _seed_settlements(session, tenant_id)
+    if not settlements:
+        settlements = settlements_for(tenant_id)
     signals = compose_signals(
         tenant_id=tenant_id,
         settlements=settlements,
@@ -145,7 +177,6 @@ async def ingest_tenant(
         worldpop_layer=layer,
     )
 
-    await set_tenant_schema(session, tenant_id)
     written = 0
     for sig in signals:
         await _upsert_village(session, tenant_id=tenant_id, sig=sig)

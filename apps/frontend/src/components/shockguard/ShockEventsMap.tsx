@@ -3,8 +3,18 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import EBMap from '@/components/map/EBMap';
+import { haloRadiusPx, haloRows } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
 import type { ShockEventRow } from '@/hooks/useShockGuard';
+
+
+/** Severity → sortable rank for the halo fallback. */
+const SEVERITY_RANK: Record<string, number> = {
+  critical: 3,
+  high: 2,
+  medium: 1,
+  low: 0,
+};
 
 
 /** Deterministic offset around the tenant centroid for events without lat/lon. */
@@ -25,6 +35,7 @@ function syntheticPosition(
 
 interface PositionedEvent extends ShockEventRow {
   position: [number, number];
+  synthetic_location: boolean;
 }
 
 
@@ -47,13 +58,15 @@ function tooltipFor(obj: unknown): string | null {
   const e = obj as PositionedEvent;
   if (!e?.event_type) return null;
   const icon = e.event_type === 'flood' ? '🌊' : '🔥';
-  return [
+  const lines = [
     `${icon} ${e.event_type.toUpperCase()} · ${e.severity}`,
     `Location: ${e.lga ?? '—'}`,
     `~${Math.round(e.population_at_risk).toLocaleString()} at risk · ${e.affected_area_km2.toFixed(0)} km²`,
     `Onset in ${e.projected_onset_hours}h · ${e.confidence_band}`,
     `${e.detector_name} ${e.detector_version}`,
-  ].join('\n');
+  ];
+  if (e.synthetic_location) lines.push('⚠ synthesised position');
+  return lines.join('\n');
 }
 
 
@@ -67,7 +80,12 @@ export default function ShockEventsMap({ tenant, events }: Props) {
   const positioned = useMemo<PositionedEvent[]>(
     () => events.map((ev) => ({
       ...ev,
-      position: syntheticPosition(ev.id, tenant.centroid),
+      // Real point geometry when the detector/seed attached one; only fall
+      // back to a deterministic synthetic offset when the row has no coords.
+      position: ev.location
+        ? [ev.location.lon, ev.location.lat]
+        : syntheticPosition(ev.id, tenant.centroid),
+      synthetic_location: !ev.location,
     })),
     [events, tenant.centroid],
   );
@@ -75,11 +93,9 @@ export default function ShockEventsMap({ tenant, events }: Props) {
   const [layers, setLayers] = useState<unknown[]>([]);
   const [pulse, setPulse] = useState(0);
 
-  // Heartbeat — pulses critical + high severity events. Two-tier scaling so
-  // critical events read louder than high (same convention as FarmlandMap).
-  const hasAttention = positioned.some(
-    (p) => p.severity === 'critical' || p.severity === 'high',
-  );
+  // Heartbeat — pulses critical + high severity events, falling back to the
+  // most severe few so every tenant with events shows a uniform halo.
+  const hasAttention = positioned.length > 0;
   useEffect(() => {
     if (!hasAttention) return;
     const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
@@ -93,25 +109,24 @@ export default function ShockEventsMap({ tenant, events }: Props) {
         import('@deck.gl/layers'),
       ]);
       if (cancelled) return;
-      const pulseRows = positioned.filter(
+      const pulseRows = haloRows(
+        positioned,
         (p) => p.severity === 'critical' || p.severity === 'high',
+        (p) => SEVERITY_RANK[p.severity] ?? 0,
       );
-      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
       const built: unknown[] = [
         new ScatterplotLayer<PositionedEvent>({
           id: 'shock-events-pulse',
           data: pulseRows,
           getPosition: (p) => p.position,
-          // Uniform halo (Slice 25): 30000m / 80px, matches Poverty.
+          // Uniform pixel-pulse halo (Slice 25 fix): matches Poverty.
           // Severity is conveyed by colour, not size.
-          getRadius: () => 30000 * pulseScale,
+          getRadius: () => haloRadiusPx(pulse),
           getFillColor: (p) => {
             const c = colourFor(p);
             return [c[0], c[1], c[2], 40] as [number, number, number, number];
           },
-          radiusUnits: 'meters',
-          radiusMinPixels: 14,
-          radiusMaxPixels: 80,
+          radiusUnits: 'pixels',
           stroked: false,
           pickable: false,
           updateTriggers: { getRadius: pulse },
@@ -120,8 +135,9 @@ export default function ShockEventsMap({ tenant, events }: Props) {
           id: 'shock-events',
           data: positioned,
           getPosition: (p) => p.position,
-          // Radius scales with affected area
-          getRadius: (p) => Math.max(8000, Math.sqrt(p.affected_area_km2) * 4000),
+          // Radius scales with affected area. Tidy meter scale (Slice 25):
+          // comparable band to Poverty so dots stay small at default zoom.
+          getRadius: (p) => 4000 + Math.sqrt(p.affected_area_km2) * 800,
           getFillColor: (p) => colourFor(p),
           getLineColor: [255, 255, 255, 220],
           lineWidthMinPixels: 1.5,
@@ -158,6 +174,7 @@ export default function ShockEventsMap({ tenant, events }: Props) {
 
   const floodCount = positioned.filter((p) => p.event_type === 'flood').length;
   const droughtCount = positioned.length - floodCount;
+  const syntheticCount = positioned.filter((p) => p.synthetic_location).length;
 
   return (
     <EBMap
@@ -181,8 +198,15 @@ export default function ShockEventsMap({ tenant, events }: Props) {
         <>
           {positioned.length} event{positioned.length === 1 ? '' : 's'} ·{' '}
           {floodCount} flood · {droughtCount} drought<br />
-          Circle size ≈ affected area · synthesised positions until real
-          event-geometry lands
+          Circle size ≈ affected area
+          {syntheticCount > 0 && (
+            <>
+              {' · '}
+              <span className="fp-map-overlay__warn">
+                {syntheticCount} synthesised position{syntheticCount === 1 ? '' : 's'}
+              </span>
+            </>
+          )}
         </>
       }
     />

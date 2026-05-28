@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import EBMap from '@/components/map/EBMap';
+import { haloRadiusPx, haloRows } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
 import type { MobilityIndicatorRow } from '@/hooks/useEconomicMobility';
 
@@ -43,9 +44,9 @@ export default function MobilityMap({ tenant, indicators }: Props) {
   const [layers, setLayers] = useState<unknown[]>([]);
   const [pulse, setPulse] = useState(0);
 
-  // Heartbeat — drives the halo expand/shrink on premium-COL LGAs.
-  // Only run the interval if there are any rows worth pulsing for.
-  const hasAttention = indicators.some((p) => p.cost_of_living_band === 'premium');
+  // Heartbeat — pulses premium-COL LGAs, falling back to the priciest few so
+  // every tenant with data shows a uniform halo (Slice 25 follow-up).
+  const hasAttention = indicators.length > 0;
   useEffect(() => {
     if (!hasAttention) return;
     const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
@@ -59,21 +60,20 @@ export default function MobilityMap({ tenant, indicators }: Props) {
         import('@deck.gl/layers'),
       ]);
       if (cancelled) return;
-      const pulseRows = indicators.filter(
+      const pulseRows = haloRows(
+        indicators,
         (p) => p.cost_of_living_band === 'premium',
+        (p) => p.cost_of_living_index,
       );
-      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
       const built: unknown[] = [
         new ScatterplotLayer<MobilityIndicatorRow>({
           id: 'mobility-lga-pulse',
           data: pulseRows,
           getPosition: (p) => [p.location.lon, p.location.lat],
-          // Uniform halo (Slice 25): 30000m / 80px max, matches Poverty.
-          getRadius: () => 30000 * pulseScale,
+          // Uniform pixel-pulse halo (Slice 25 fix): matches Poverty.
+          getRadius: () => haloRadiusPx(pulse),
           getFillColor: [192, 60, 40, 40],
-          radiusUnits: 'meters',
-          radiusMinPixels: 14,
-          radiusMaxPixels: 80,
+          radiusUnits: 'pixels',
           stroked: false,
           pickable: false,
           updateTriggers: { getRadius: pulse },
@@ -83,7 +83,8 @@ export default function MobilityMap({ tenant, indicators }: Props) {
           data: indicators,
           getPosition: (p) => [p.location.lon, p.location.lat],
           // Radius scales with population so denser LGAs read louder.
-          getRadius: (p) => 8000 + Math.sqrt(p.population) * 80,
+          // Tidy meter scale (Slice 25): matches Poverty so dots stay small.
+          getRadius: (p) => 4000 + Math.sqrt(p.population) * 40,
           getFillColor: (p) => colourFor(p),
           getLineColor: [255, 255, 255, 220],
           lineWidthMinPixels: 1.5,

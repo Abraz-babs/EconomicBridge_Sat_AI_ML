@@ -13,10 +13,14 @@ endpoint reads).
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 
 from main import app
+from routers.cropguard import _row_to_response
 
 
 @pytest.fixture
@@ -59,6 +63,50 @@ def test_predictions_endpoint_declares_limit_constraints(client) -> None:
     assert limit["schema"]["minimum"] == 1
     assert limit["schema"]["maximum"] == 100
     assert limit["schema"]["default"] == 10
+
+
+# ─── _row_to_response location mapping (DB-free row → CropPredictionRow) ───
+
+
+def _base_prediction_row() -> dict:
+    return {
+        "id": uuid4(),
+        "tenant_id": "kebbi",
+        "predicted_class": "cassava_mosaic_disease",
+        "prediction": 0.92,
+        "confidence": 0.88,
+        "confidence_band": "MEDIUM",
+        "requires_human_review": True,
+        "top_k": [
+            {"class_name": "cassava_mosaic_disease", "probability": 0.88},
+            {"class_name": "maize_streak_virus", "probability": 0.07},
+        ],
+        "image_source": "inline",
+        "image_s3_key": None,
+        "image_s3_bucket": None,
+        "model_name": "crop_classifier",
+        "model_version": "0.0.0-seed",
+        "inference_time_ms": 55,
+        "created_at": datetime.now(timezone.utc),
+    }
+
+
+def test_row_to_response_attaches_real_location() -> None:
+    """ST_X/ST_Y(location) → a LonLat the map uses for the field marker."""
+    row = _base_prediction_row() | {"lon": 4.52, "lat": 12.74}
+    pred = _row_to_response(row)
+    assert pred.location is not None
+    assert (pred.location.lon, pred.location.lat) == (4.52, 12.74)
+    assert pred.predicted_class == "cassava_mosaic_disease"
+    assert len(pred.top_k) == 2
+
+
+def test_row_to_response_location_none_when_no_gps() -> None:
+    """An upload with no GPS (lon/lat NULL) yields location=None so the map
+    synthesises a position rather than failing."""
+    row = _base_prediction_row() | {"lon": None, "lat": None}
+    pred = _row_to_response(row)
+    assert pred.location is None
 
 
 # ─── Integration: real DB round-trip ──────────────────────────────────────

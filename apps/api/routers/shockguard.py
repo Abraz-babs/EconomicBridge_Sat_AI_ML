@@ -10,8 +10,9 @@ optionally persists the event row.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -23,6 +24,7 @@ from schemas.envelope import ResponseMeta, SuccessResponse
 from schemas.shockguard import (
     DroughtSeriesPoint,
     FloodSeriesPoint,
+    LonLat,
     ShockEventListData,
     ShockEventRow,
     ShockScanData,
@@ -49,6 +51,37 @@ def _require_tenant(request: Request) -> str:
             detail="X-Tenant-Id header is required for this endpoint",
         )
     return tenant_id
+
+
+def _event_row(r: Mapping[str, Any]) -> ShockEventRow:
+    """Map a `shock_events` row mapping to its API shape.
+
+    `lon`/`lat` come from ST_X/ST_Y(location); both are NULL for events with
+    no geometry, in which case `location` is omitted and the map synthesises
+    a position.
+    """
+    lon, lat = r.get("lon"), r.get("lat")
+    location = LonLat(lon=float(lon), lat=float(lat)) if lon is not None and lat is not None else None
+    return ShockEventRow(
+        id=r["id"],
+        tenant_id=r["tenant_id"],
+        event_type=r["event_type"],
+        detector_name=r["detector_name"],
+        detector_version=r["detector_version"],
+        severity=r["severity"],
+        confidence=float(r["confidence"]),
+        confidence_band=r["confidence_band"],
+        requires_human_review=bool(r["requires_human_review"]),
+        projected_onset_hours=int(r["projected_onset_hours"]),
+        affected_area_km2=float(r["affected_area_km2"]),
+        population_at_risk=int(r["population_at_risk"]),
+        lga=r.get("lga"),
+        zone_name=r.get("zone_name"),
+        location=location,
+        metrics=r.get("metrics") or {},
+        source=r["source"],
+        created_at=r["created_at"],
+    )
 
 
 # ─── POST /scan ───────────────────────────────────────────────────────────
@@ -199,7 +232,8 @@ async def list_events(
             SELECT id, tenant_id, event_type, detector_name, detector_version,
                    severity, confidence, confidence_band, requires_human_review,
                    projected_onset_hours, affected_area_km2, population_at_risk,
-                   lga, zone_name, metrics, source, created_at
+                   lga, zone_name, metrics, source, created_at,
+                   ST_X(location) AS lon, ST_Y(location) AS lat
               FROM shock_events
               {where_clause}
              ORDER BY created_at DESC
@@ -210,28 +244,7 @@ async def list_events(
     )
     rows = result.mappings().all()
 
-    events = [
-        ShockEventRow(
-            id=r["id"],
-            tenant_id=r["tenant_id"],
-            event_type=r["event_type"],
-            detector_name=r["detector_name"],
-            detector_version=r["detector_version"],
-            severity=r["severity"],
-            confidence=float(r["confidence"]),
-            confidence_band=r["confidence_band"],
-            requires_human_review=bool(r["requires_human_review"]),
-            projected_onset_hours=int(r["projected_onset_hours"]),
-            affected_area_km2=float(r["affected_area_km2"]),
-            population_at_risk=int(r["population_at_risk"]),
-            lga=r.get("lga"),
-            zone_name=r.get("zone_name"),
-            metrics=r.get("metrics") or {},
-            source=r["source"],
-            created_at=r["created_at"],
-        )
-        for r in rows
-    ]
+    events = [_event_row(r) for r in rows]
 
     return SuccessResponse(
         data=ShockEventListData(events=events),

@@ -1,12 +1,14 @@
 """Tests for ShockGuard flood + drought detectors + HTTP contract (Slice 05)."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
 from main import app
+from routers.shockguard import _event_row
 from services.shock_detector import (
     DROUGHT_BASELINE_DAYS,
     DROUGHT_RECENT_DAYS,
@@ -255,3 +257,45 @@ def test_events_endpoint_declares_limit_constraints():
     limit = next(p for p in params if p["name"] == "limit")
     assert limit["schema"]["minimum"] == 1
     assert limit["schema"]["maximum"] == 100
+
+
+# ─── _event_row location mapping (DB-free row → ShockEventRow) ─────────────
+
+
+def _base_event_row() -> dict:
+    return {
+        "id": uuid4(),
+        "tenant_id": "kebbi",
+        "event_type": "flood",
+        "detector_name": "shock_flood_v1",
+        "detector_version": "0.1.0-statistical",
+        "severity": "critical",
+        "confidence": 0.93,
+        "confidence_band": "HIGH",
+        "requires_human_review": False,
+        "projected_onset_hours": 24,
+        "affected_area_km2": 278.0,
+        "population_at_risk": 32664,
+        "lga": "Argungu",
+        "zone_name": "Argungu",
+        "metrics": {"backscatter_delta_db": -5.5},
+        "source": "seed_v1",
+        "created_at": datetime.now(timezone.utc),
+    }
+
+
+def test_event_row_attaches_real_location():
+    """ST_X/ST_Y(location) → a LonLat the map uses for the marker."""
+    row = _base_event_row() | {"lon": 4.52, "lat": 12.74}
+    event = _event_row(row)
+    assert event.location is not None
+    assert (event.location.lon, event.location.lat) == (4.52, 12.74)
+    assert event.lga == "Argungu"
+
+
+def test_event_row_location_none_when_geometry_missing():
+    """A NULL geometry (lon/lat NULL) yields location=None so the map
+    falls back to a synthetic position instead of crashing."""
+    row = _base_event_row() | {"lon": None, "lat": None}
+    event = _event_row(row)
+    assert event.location is None

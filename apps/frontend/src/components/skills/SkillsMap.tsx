@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import EBMap from '@/components/map/EBMap';
+import { haloRadiusPx, haloRows } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
 import type { SkillsIndicatorRow } from '@/hooks/useSkillsBridge';
 
@@ -48,7 +49,7 @@ export default function SkillsMap({ tenant, indicators }: Props) {
   // rule the dashboard exposes via the worst_gap_lga aggregate.
   const isAttention = (p: SkillsIndicatorRow) =>
     p.connectivity_band === 'no_signal' || p.learning_gap_index >= 0.7;
-  const hasAttention = indicators.some(isAttention);
+  const hasAttention = indicators.length > 0;
   useEffect(() => {
     if (!hasAttention) return;
     const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
@@ -62,19 +63,20 @@ export default function SkillsMap({ tenant, indicators }: Props) {
         import('@deck.gl/layers'),
       ]);
       if (cancelled) return;
-      const pulseRows = indicators.filter(isAttention);
-      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
+      const pulseRows = haloRows(
+        indicators,
+        isAttention,
+        (p) => p.learning_gap_index,
+      );
       const built: unknown[] = [
         new ScatterplotLayer<SkillsIndicatorRow>({
           id: 'skills-lga-pulse',
           data: pulseRows,
           getPosition: (p) => [p.location.lon, p.location.lat],
-          // Uniform halo (Slice 25): 30000m / 80px max, matches Poverty.
-          getRadius: () => 30000 * pulseScale,
+          // Uniform pixel-pulse halo (Slice 25 fix): matches Poverty.
+          getRadius: () => haloRadiusPx(pulse),
           getFillColor: [192, 60, 40, 40],
-          radiusUnits: 'meters',
-          radiusMinPixels: 14,
-          radiusMaxPixels: 80,
+          radiusUnits: 'pixels',
           stroked: false,
           pickable: false,
           updateTriggers: { getRadius: pulse },
@@ -84,8 +86,8 @@ export default function SkillsMap({ tenant, indicators }: Props) {
           data: indicators,
           getPosition: (p) => [p.location.lon, p.location.lat],
           // Radius scales with youth pop — bigger circle = more young
-          // people affected by the local connectivity gap.
-          getRadius: (p) => 7000 + Math.sqrt(p.youth_population) * 90,
+          // people affected. Tidy meter scale (Slice 25): matches Poverty.
+          getRadius: (p) => 4000 + Math.sqrt(p.youth_population) * 40,
           getFillColor: (p) => colourFor(p),
           getLineColor: [255, 255, 255, 220],
           lineWidthMinPixels: 1.5,

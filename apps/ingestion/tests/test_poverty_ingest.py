@@ -26,6 +26,7 @@ from tasks.poverty_ingest import (
     LGA_SAMPLE,
     TENANT_CENTROIDS,
     PovertyIngestResult,
+    _seed_settlements,
     ingest_tenant,
     settlements_for,
 )
@@ -58,6 +59,65 @@ def test_settlements_are_deterministic():
     a = settlements_for("benue")
     b = settlements_for("benue")
     assert a == b
+
+
+# ─── _seed_settlements: reuse seed geometry (no coordinate drift) ──────────
+
+
+class _SeedRowResult:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self._rows = rows
+
+    def mappings(self):
+        return self
+
+    def all(self) -> list[dict[str, Any]]:
+        return self._rows
+
+
+class _SeedSession:
+    """Stub session whose SELECT on poverty_villages returns canned rows."""
+
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self._rows = rows
+        self.statements: list[str] = []
+
+    async def execute(self, stmt, params=None):  # noqa: ANN001 — duck-typed
+        sql = " ".join(str(stmt).split())
+        self.statements.append(sql)
+        if sql.startswith("SELECT settlement_name"):
+            return _SeedRowResult(self._rows)
+        return _SeedRowResult([])
+
+    async def commit(self) -> None:
+        pass
+
+
+@pytest.mark.asyncio
+async def test_seed_settlements_reuses_seed_geometry():
+    """The live ingest reads settlement coords from the seed_v1 rows so live
+    rows land at the same hand-curated LGA centroids — no coordinate drift
+    between the seed and live sources."""
+    rows = [
+        {"settlement_name": "Argungu settlement 1", "lga": "Argungu",
+         "lon": 4.52, "lat": 12.74},
+        {"settlement_name": "Birnin Kebbi settlement 2", "lga": "Birnin Kebbi",
+         "lon": 4.20, "lat": 12.45},
+    ]
+    out = await _seed_settlements(_SeedSession(rows), "kebbi")
+    assert [s.settlement_name for s in out] == [
+        "Argungu settlement 1", "Birnin Kebbi settlement 2",
+    ]
+    assert (out[0].lon, out[0].lat) == (4.52, 12.74)
+    assert out[1].lga == "Birnin Kebbi"
+
+
+@pytest.mark.asyncio
+async def test_seed_settlements_empty_when_unseeded():
+    """No seed rows → empty list, so ingest_tenant falls back to the
+    synthetic grid."""
+    out = await _seed_settlements(_SeedSession([]), "kebbi")
+    assert out == []
 
 
 # ─── DB stub ──────────────────────────────────────────────────────────────

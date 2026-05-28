@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import EBMap from '@/components/map/EBMap';
+import { haloRadiusPx, haloRows } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
 import type { CropPredictionRow } from '@/hooks/useCropPredictions';
 
@@ -70,6 +71,11 @@ function isHighSeverity(p: PositionedPrediction): boolean {
   return !p.predicted_class.endsWith('_healthy') && p.prediction >= 0.80;
 }
 
+/** Halo-fallback ranking: healthy rows sink, diseased rows sort by probability. */
+function severityFor(p: PositionedPrediction): number {
+  return p.predicted_class.endsWith('_healthy') ? -1 : p.prediction;
+}
+
 
 interface Props {
   tenant: Tenant;
@@ -80,9 +86,7 @@ interface Props {
 export default function CropGuardMap({ tenant, predictions }: Props) {
   const positioned = useMemo<PositionedPrediction[]>(
     () => predictions.map((row) => {
-      const realCoord = (row as CropPredictionRow & {
-        location?: { lon: number; lat: number };
-      }).location;
+      const realCoord = row.location;
       if (realCoord) {
         return {
           ...row,
@@ -103,9 +107,9 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
   const [pulse, setPulse] = useState(0);
 
   // Heartbeat — pulses high-severity disease detections (prob >= 0.80),
-  // the rows an extension officer should act on first. Uniform
-  // cadence/size (Slice 25).
-  const hasAttention = positioned.some(isHighSeverity);
+  // falling back to the most-likely-diseased few so every tenant with
+  // predictions shows a uniform halo (Slice 25).
+  const hasAttention = positioned.length > 0;
   useEffect(() => {
     if (!hasAttention) return;
     const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
@@ -124,8 +128,7 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
       const diseasePoints = positioned.filter(
         (p) => !p.predicted_class.endsWith('_healthy'),
       );
-      const pulseRows = positioned.filter(isHighSeverity);
-      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
+      const pulseRows = haloRows(positioned, isHighSeverity, severityFor);
 
       const built: unknown[] = [
         // Disease-density heatmap.
@@ -149,11 +152,10 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
           id: 'cropguard-pulse',
           data: pulseRows,
           getPosition: (p) => p.position,
-          getRadius: () => 30000 * pulseScale,
+          // Uniform pixel-pulse halo (Slice 25 fix): matches Poverty.
+          getRadius: () => haloRadiusPx(pulse),
           getFillColor: [255, 69, 0, 40],
-          radiusUnits: 'meters',
-          radiusMinPixels: 14,
-          radiusMaxPixels: 80,
+          radiusUnits: 'pixels',
           stroked: false,
           pickable: false,
           updateTriggers: { getRadius: pulse },
@@ -163,7 +165,8 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
           id: 'cropguard-predictions',
           data: positioned,
           getPosition: (p) => p.position,
-          getRadius: (p) => 5000 + p.confidence * 12000,
+          // Tidy meter scale (Slice 25): comparable band to Poverty.
+          getRadius: (p) => 4000 + p.confidence * 8000,
           getFillColor: (p) => colourFor(p),
           getLineColor: (p) =>
             p.synthetic_location ? [180, 180, 180, 220] : [255, 255, 255, 220],

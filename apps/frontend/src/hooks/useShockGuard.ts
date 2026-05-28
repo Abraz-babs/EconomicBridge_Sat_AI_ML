@@ -81,6 +81,7 @@ export interface ShockEventRow {
   population_at_risk: number;
   lga: string | null;
   zone_name: string | null;
+  location: { lon: number; lat: number } | null;
   metrics: Record<string, number>;
   source: string;
   created_at: string;

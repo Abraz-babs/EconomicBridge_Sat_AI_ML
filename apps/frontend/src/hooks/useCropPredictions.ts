@@ -71,6 +71,7 @@ export interface CropPredictionRow {
   top_k: CropTopKEntry[];
   image_source: 's3' | 'inline';
   image_s3_key: string | null;
+  location: { lon: number; lat: number } | null;
   model_name: string;
   model_version: string;
   inference_time_ms: number | null;

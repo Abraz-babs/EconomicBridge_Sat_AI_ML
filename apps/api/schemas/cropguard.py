@@ -17,6 +17,11 @@ ConfidenceBand = Literal["HIGH", "MEDIUM", "LOW"]
 ImageSource = Literal["s3", "inline"]
 
 
+class LonLat(BaseModel):
+    lon: float
+    lat: float
+
+
 class CropTopKEntry(BaseModel):
     class_name: str
     probability: float
@@ -41,6 +46,10 @@ class CropPredictionRow(BaseModel):
     image_source: ImageSource
     image_s3_key: str | None
     image_s3_bucket: str | None
+
+    # Field/farm point when the caller attached one — drives the map marker.
+    # Null for uploads with no GPS (map then synthesises a position).
+    location: LonLat | None = None
 
     model_name: str
     model_version: str

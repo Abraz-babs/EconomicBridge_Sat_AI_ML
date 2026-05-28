@@ -84,6 +84,11 @@ class ShockScanData(BaseModel):
 # ─── List endpoint ────────────────────────────────────────────────────────
 
 
+class LonLat(BaseModel):
+    lon: float
+    lat: float
+
+
 class ShockEventRow(BaseModel):
     """One row from `tenant_<id>.shock_events`."""
 
@@ -103,6 +108,9 @@ class ShockEventRow(BaseModel):
     population_at_risk: int
     lga: str | None = None
     zone_name: str | None = None
+    # Real point geometry when the detector/seed attached one — drives the
+    # map marker. Null for events with no geometry (map then synthesises one).
+    location: LonLat | None = None
     metrics: dict[str, float] = Field(default_factory=dict)
     source: str
     created_at: datetime
