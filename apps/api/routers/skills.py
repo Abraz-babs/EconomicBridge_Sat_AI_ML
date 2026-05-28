@@ -67,17 +67,31 @@ async def list_indicators(
 ) -> SuccessResponse[SkillsStatsData]:
     tenant_id = _require_tenant(request)
 
+    # Source-preference dedup (Slice 22): a tenant can hold both seed_v1
+    # and live (giga_v1) rows per LGA. DISTINCT ON (lga) keeps one row
+    # per LGA, preferring any live source over seed (priority 0 vs 9),
+    # newest observed_at as tiebreak — so the dashboard shows each LGA
+    # once and auto-upgrades to GIGA/ITU data when an ingest lands.
     result = await session.execute(
         text(
             """
-            SELECT id, tenant_id, lga,
-                   ST_X(location) AS lon, ST_Y(location) AS lat,
-                   school_count, school_density_per_10k,
-                   internet_coverage_pct, mobile_coverage_pct,
-                   electricity_reliability, youth_population,
-                   learning_gap_index, observed_at, source,
-                   created_at, updated_at
-              FROM skills_indicators
+            SELECT * FROM (
+                SELECT DISTINCT ON (lga)
+                       id, tenant_id, lga,
+                       ST_X(location) AS lon, ST_Y(location) AS lat,
+                       school_count, school_density_per_10k,
+                       internet_coverage_pct, mobile_coverage_pct,
+                       electricity_reliability, youth_population,
+                       learning_gap_index, observed_at, source,
+                       created_at, updated_at
+                  FROM skills_indicators
+                 ORDER BY lga,
+                          CASE
+                            WHEN source = 'seed_v1' THEN 9
+                            ELSE 0
+                          END,
+                          observed_at DESC
+            ) deduped
              ORDER BY learning_gap_index DESC
              LIMIT :limit
             """

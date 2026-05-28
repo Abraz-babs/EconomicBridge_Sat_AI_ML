@@ -143,6 +143,16 @@ class Settings(BaseSettings):
     ecowas_stat_api_key: str = ""
     ecowas_stat_base_url: str = "https://ecowas.int/statistics/api"
 
+    # UNICEF GIGA (school connectivity mapping) + ITU (telecom coverage)
+    # feed Module 07 (SkillsBridge). Both are global so they apply to all
+    # pilots — a single giga_v1 source tag carries the combined per-LGA
+    # row (school density from GIGA, internet/mobile coverage from ITU).
+    # Empty keys => mock mode, same contract as NBS. NEVER hardcode keys.
+    giga_api_key: str = ""
+    giga_base_url: str = "https://giga.global/api"
+    itu_api_key: str = ""
+    itu_base_url: str = "https://api.datahub.itu.int"
+
     # S3 imagery archive — Phase A.6. Empty bucket name = mock mode; the
     # downloader records what *would* have happened but doesn't call AWS.
     # Production Terraform (infrastructure/terraform/) provisions the
