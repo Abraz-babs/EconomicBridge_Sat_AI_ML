@@ -18,8 +18,12 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
 from config import get_settings
 from dependencies import DPAGateError, dpa_gate_exception_handler
+from errors import http_exception_handler, validation_exception_handler
 from middleware.audit import AuditLogMiddleware
 from middleware.security import SecurityHeadersMiddleware
 from middleware.tenant import TenantContextMiddleware
@@ -58,9 +62,14 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-# DPA gate (Slice 14/19) — render its 403s in the standard envelope so the
-# frontend can read error.code === 'DPA_REQUIRED'.
+# Error envelope (CLAUDE.md §7). Order of specificity matters — Starlette
+# dispatches to the most-specific registered handler:
+#   DPAGateError (subclass)  → dpa_gate_exception_handler  (Slice 14/19)
+#   HTTPException (general)   → http_exception_handler      (Slice 23)
+#   RequestValidationError    → validation_exception_handler (Slice 23)
 app.add_exception_handler(DPAGateError, dpa_gate_exception_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 # Inner-first add order (Starlette wraps in reverse):
 app.add_middleware(AuditLogMiddleware)
