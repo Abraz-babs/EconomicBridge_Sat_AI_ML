@@ -108,19 +108,17 @@ async def ingest_mobility_worldbank_for_tenant(
 ) -> MobilityIngestResult:
     """Anchor Module 06 to the real World Bank national income figure.
 
-    Fetches GNI per capita (current LCU) for the tenant's country and
-    disaggregates it to per-LGA estimates tagged source='worldbank_v1',
-    reusing the seed_v1 LGA geometry. Phase 1 is Nigeria-only — the LCU is
-    Naira, so no FX is needed to fill `avg_household_income_ngn`. On a World
-    Bank fetch/parse failure we write nothing rather than ship a fake row.
+    Fetches GNI per capita (USD for every country; Naira too for Nigeria)
+    and disaggregates it to per-LGA estimates tagged source='worldbank_v1',
+    reusing the seed_v1 LGA geometry. All pilots are covered — USD is the
+    universal anchor (no FX), so Ghana/Senegal land in USD and Nigeria gets
+    `₦X ($Y)`. On a World Bank fetch/parse failure we write nothing rather
+    than ship a fake row.
     """
     wb = client or WorldBankClient()
     iso3 = TENANT_TO_ISO3.get(tenant_id)
-    if iso3 != "NGA":
-        log.info(
-            "mobility.worldbank tenant=%s skipped — Phase 1 income anchor is "
-            "Nigeria-only (LCU=NGN); ECOWAS FX lands later", tenant_id,
-        )
+    if iso3 is None:
+        log.info("mobility.worldbank tenant=%s skipped — no ISO3 mapping", tenant_id)
         return MobilityIngestResult(
             tenant_id=tenant_id, source=SOURCE_WORLDBANK,
             lgas_found=0, rows_upserted=0, mock=False,
@@ -145,9 +143,9 @@ async def ingest_mobility_worldbank_for_tenant(
             tenant_id=tenant_id, source=SOURCE_WORLDBANK,
             lgas_found=len(lga_coords), rows_upserted=0, mock=False,
         )
-    if anchor.gni_per_capita_lcu is None:
+    if anchor.gni_per_capita_usd is None:
         log.warning(
-            "mobility.worldbank tenant=%s: no GNI per capita for %s — skipped",
+            "mobility.worldbank tenant=%s: no USD GNI per capita for %s — skipped",
             tenant_id, iso3,
         )
         return MobilityIngestResult(
@@ -156,15 +154,15 @@ async def ingest_mobility_worldbank_for_tenant(
         )
 
     indicators = compose_mobility_indicators(tenant_id, list(lga_coords), anchor)
-    observed = date(anchor.gni_year or date.today().year, 1, 1)
+    observed = date(anchor.gni_usd_year or date.today().year, 1, 1)
     await set_tenant_schema(session, tenant_id)
     upserted = await _upsert_indicators(
         session, tenant_id, indicators, lga_coords, observed,
     )
     await session.commit()
     log.info(
-        "mobility.worldbank tenant=%s gni_pc_lcu=%.0f year=%s lgas=%d upserted=%d",
-        tenant_id, anchor.gni_per_capita_lcu, anchor.gni_year,
+        "mobility.worldbank tenant=%s gni_pc_usd=%.0f year=%s lgas=%d upserted=%d",
+        tenant_id, anchor.gni_per_capita_usd, anchor.gni_usd_year,
         len(lga_coords), upserted,
     )
     return MobilityIngestResult(
@@ -193,16 +191,19 @@ async def _upsert_indicators(
             INSERT INTO mobility_indicators (
                 tenant_id, lga, location,
                 cost_of_living_index, avg_household_income_ngn,
+                avg_household_income_usd,
                 income_opportunity_score, displacement_capacity_index,
                 population, observed_at, source
             ) VALUES (
                 :tenant_id, :lga,
                 ST_SetSRID(ST_MakePoint(:lon, :lat), 4326),
-                :col, :income, :opp, :cap, :pop, :observed_at, :source
+                :col, :income_ngn, :income_usd, :opp, :cap, :pop,
+                :observed_at, :source
             )
             ON CONFLICT (tenant_id, lga, source) DO UPDATE SET
                 cost_of_living_index        = EXCLUDED.cost_of_living_index,
                 avg_household_income_ngn    = EXCLUDED.avg_household_income_ngn,
+                avg_household_income_usd    = EXCLUDED.avg_household_income_usd,
                 income_opportunity_score    = EXCLUDED.income_opportunity_score,
                 displacement_capacity_index = EXCLUDED.displacement_capacity_index,
                 population                  = EXCLUDED.population,
@@ -213,7 +214,8 @@ async def _upsert_indicators(
             "tenant_id": tenant_id, "lga": ind.lga,
             "lon": lon, "lat": lat,
             "col": ind.cost_of_living_index,
-            "income": ind.avg_household_income_ngn,
+            "income_ngn": ind.avg_household_income_ngn,
+            "income_usd": ind.avg_household_income_usd,
             "opp": ind.income_opportunity_score,
             "cap": ind.displacement_capacity_index,
             "pop": ind.population,

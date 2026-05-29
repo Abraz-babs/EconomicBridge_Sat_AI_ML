@@ -59,15 +59,22 @@ SOURCE_ECOWAS = "ecowas_stat_v1"
 
 @dataclass(frozen=True, slots=True)
 class MobilityIndicator:
-    """One LGA's cost-of-living + income profile from a stats body."""
+    """One LGA's cost-of-living + income profile from a stats body.
+
+    Income is dual-currency: USD is the universal cross-country comparable
+    (every row carries it); NGN is populated for Nigerian tenants only (the
+    ECOWAS pilots are USD-only). The dashboard renders `₦X ($Y)` for Nigeria
+    and `$Y` for Ghana/Senegal.
+    """
 
     lga: str
     cost_of_living_index: float
-    avg_household_income_ngn: int
+    avg_household_income_ngn: int | None
     income_opportunity_score: float
     displacement_capacity_index: float
     population: int
     source: str
+    avg_household_income_usd: int | None = None
 
 
 class NbsStatsError(RuntimeError):

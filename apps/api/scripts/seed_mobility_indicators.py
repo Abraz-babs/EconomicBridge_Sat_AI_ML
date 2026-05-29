@@ -85,6 +85,17 @@ LGA_POOL: dict[str, list[str]] = {
 }
 
 
+# Nigerian pilots carry a Naira figure; ECOWAS pilots are USD-only (the
+# dashboard shows ₦X ($Y) for Nigeria, $Y for Ghana/Senegal).
+NIGERIAN_TENANTS = frozenset({
+    "kebbi", "benue", "plateau", "kaduna", "niger", "zamfara", "nasarawa", "fct",
+})
+# Seed-only indicative FX (Naira per USD, ~2026). The live worldbank_v1 rows
+# carry real per-currency figures from the World Bank and override seed in the
+# source-preference dedup; this constant only shapes the synthetic baseline.
+SEED_NGN_PER_USD = 1600.0
+
+
 @dataclass(frozen=True, slots=True)
 class SeedRow:
     tenant_id: str
@@ -92,7 +103,8 @@ class SeedRow:
     lon: float
     lat: float
     cost_of_living_index: float
-    avg_household_income_ngn: int
+    avg_household_income_ngn: int | None
+    avg_household_income_usd: int
     income_opportunity_score: float
     displacement_capacity_index: float
     population: int
@@ -119,12 +131,16 @@ def _rows_for(tenant_id: str) -> list[SeedRow]:
         col_unit = _hash_unit(tenant_id, lga, "col")
         col_index = col_anchor + (col_unit - 0.5) * col_spread * 2
 
-        # Income roughly tracks cost of living, with noise. ~ NGN/month.
-        # National median household income ~ 110_000 NGN/month (NBS 2024).
+        # Income roughly tracks cost of living, with noise. The base figure is
+        # modelled in NGN/month (national median ~110_000 NGN, NBS 2024); USD
+        # is derived via the seed FX. Nigerian tenants keep the NGN figure;
+        # ECOWAS tenants are USD-only (NGN set to None).
         income_unit = _hash_unit(tenant_id, lga, "income")
-        avg_income = int(
+        avg_income_ngn = int(
             45_000 + (col_index / 100.0) * 95_000 + income_unit * 35_000
         )
+        avg_income_usd = int(avg_income_ngn / SEED_NGN_PER_USD)
+        is_nigerian = tenant_id in NIGERIAN_TENANTS
 
         # Opportunity score: capital regions higher, rural lower. Strongly
         # correlated with COL but also has independent variation (small
@@ -150,7 +166,8 @@ def _rows_for(tenant_id: str) -> list[SeedRow]:
             lga=lga,
             lon=lon, lat=lat,
             cost_of_living_index=round(col_index, 1),
-            avg_household_income_ngn=avg_income,
+            avg_household_income_ngn=avg_income_ngn if is_nigerian else None,
+            avg_household_income_usd=avg_income_usd,
             income_opportunity_score=round(opportunity, 3),
             displacement_capacity_index=round(capacity, 3),
             population=population,
@@ -177,12 +194,14 @@ async def seed() -> int:
                         INSERT INTO mobility_indicators (
                             tenant_id, lga, location,
                             cost_of_living_index, avg_household_income_ngn,
+                            avg_household_income_usd,
                             income_opportunity_score, displacement_capacity_index,
                             population, observed_at, source
                         ) VALUES (
                             :tenant_id, :lga,
                             ST_SetSRID(ST_MakePoint(:lon, :lat), 4326),
-                            :col, :income, :opp, :cap, :pop, :observed_at, :source
+                            :col, :income_ngn, :income_usd, :opp, :cap, :pop,
+                            :observed_at, :source
                         )
                         """
                     ),
@@ -190,7 +209,8 @@ async def seed() -> int:
                         "tenant_id": r.tenant_id, "lga": r.lga,
                         "lon": r.lon, "lat": r.lat,
                         "col": r.cost_of_living_index,
-                        "income": r.avg_household_income_ngn,
+                        "income_ngn": r.avg_household_income_ngn,
+                        "income_usd": r.avg_household_income_usd,
                         "opp": r.income_opportunity_score,
                         "cap": r.displacement_capacity_index,
                         "pop": r.population,

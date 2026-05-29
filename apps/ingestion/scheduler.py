@@ -213,14 +213,14 @@ async def run_monthly_mobility_ingest(
 ) -> dict[str, str]:
     """Anchor Module 06 to the World Bank national income figure, monthly.
 
-    Defaults to the Nigerian pilots only (Phase 1: LCU = NGN, no FX). Pulls
-    keylessly from the World Bank API; failures for one tenant don't abort
-    the rest.
+    Covers all pilots — USD is the universal anchor (no FX), so Ghana/Senegal
+    are included alongside the Nigerian states. Pulls keylessly from the
+    World Bank API; failures for one tenant don't abort the rest.
     """
     if tenants is not None:
         target = list(tenants)
     else:
-        target = [t for t in sorted(PILOT_TENANT_IDS) if TENANT_TO_ISO3.get(t) == "NGA"]
+        target = [t for t in sorted(PILOT_TENANT_IDS) if TENANT_TO_ISO3.get(t) is not None]
     factory = get_session_factory()
     results: dict[str, str] = {}
 

@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import EBMap from '@/components/map/EBMap';
 import { haloRadiusPx, haloRows } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
-import type { MobilityIndicatorRow } from '@/hooks/useEconomicMobility';
+import { formatIncome, type MobilityIndicatorRow } from '@/hooks/useEconomicMobility';
 
 
 /** Cost-of-living band → [r, g, b, a]. Below_avg = green (affordable),
@@ -27,7 +27,7 @@ function tooltipFor(obj: unknown): string | null {
   return [
     r.lga,
     `Cost-of-living index: ${r.cost_of_living_index.toFixed(1)} (${r.cost_of_living_band.replace('_', ' ')})`,
-    `Avg household income: ₦${r.avg_household_income_ngn.toLocaleString()}/mo`,
+    `Avg household income: ${formatIncome(r.avg_household_income_ngn, r.avg_household_income_usd)}/mo`,
     `Opportunity: ${(r.income_opportunity_score * 100).toFixed(0)}% · Capacity: ${(r.displacement_capacity_index * 100).toFixed(0)}%`,
     `Source: ${r.source}`,
   ].join('\n');

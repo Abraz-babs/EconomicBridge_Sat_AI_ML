@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
 import {
+  formatIncome,
   useEconomicMobility,
   type CompareBand,
   type MobilityIndicatorRow,
@@ -19,12 +20,6 @@ const STATE_NAMES: Record<string, string> = {
   ghana: 'Ghana', senegal: 'Senegal',
 };
 
-
-function fmtNgn(n: number): string {
-  if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `₦${Math.round(n / 1_000)}K`;
-  return `₦${n.toLocaleString()}`;
-}
 
 function fmtPop(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -124,9 +119,13 @@ export default function MobilityCompassPanel() {
         <div className="fp-stat ok">
           <div className="fp-stat-label">Median Household Income</div>
           <div className="fp-stat-val">
-            {stats ? fmtNgn(stats.median_household_income_ngn) : '—'}
+            {stats
+              ? formatIncome(stats.median_household_income_ngn, stats.median_household_income_usd)
+              : '—'}
           </div>
-          <div className="fp-stat-sub">NGN per month</div>
+          <div className="fp-stat-sub">
+            {stats?.median_household_income_ngn != null ? 'NGN (USD) per month' : 'USD per month'}
+          </div>
         </div>
         <div className="fp-stat crit">
           <div className="fp-stat-label">Best for Resettlement</div>
@@ -178,7 +177,7 @@ export default function MobilityCompassPanel() {
                   <th>LGA</th>
                   <th>COL idx</th>
                   <th>Band</th>
-                  <th>Avg income (NGN/mo)</th>
+                  <th>Avg income/mo</th>
                   <th>Opportunity</th>
                   <th>Capacity</th>
                   <th>Population</th>
@@ -194,7 +193,7 @@ export default function MobilityCompassPanel() {
                         {row.cost_of_living_band.replace('_', ' ')}
                       </span>
                     </td>
-                    <td>{fmtNgn(row.avg_household_income_ngn)}</td>
+                    <td>{formatIncome(row.avg_household_income_ngn, row.avg_household_income_usd)}</td>
                     <td>
                       <ScoreBar score={row.income_opportunity_score} />
                     </td>

@@ -29,7 +29,10 @@ class MobilityIndicatorRow(BaseModel):
 
     cost_of_living_index: float        # 100 = national average
     cost_of_living_band: CompareBand   # derived
-    avg_household_income_ngn: int
+    # Dual currency: USD is the universal figure (every row); NGN is set for
+    # Nigerian tenants only (ECOWAS pilots are USD-only). UI shows ₦X ($Y).
+    avg_household_income_ngn: int | None = None
+    avg_household_income_usd: int | None = None
     income_opportunity_score: float    # 0..1
     displacement_capacity_index: float # 0..1
     population: int
@@ -46,7 +49,10 @@ class MobilityStatsData(BaseModel):
     tenant_id: str
     total_lgas: int
     median_cost_of_living: float
-    median_household_income_ngn: int
+    # Median income in both currencies. NGN is null for ECOWAS (USD-only)
+    # tenants; USD is always present.
+    median_household_income_ngn: int | None = None
+    median_household_income_usd: int | None = None
     cheapest_lga: str | None
     most_expensive_lga: str | None
     best_opportunity_lga: str | None

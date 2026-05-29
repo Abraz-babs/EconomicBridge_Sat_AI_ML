@@ -41,6 +41,17 @@ def _require_tenant(request: Request) -> str:
     return tenant_id
 
 
+def _median_int(values: list[int | None]) -> int | None:
+    """Median of the non-null values, or None when none are present.
+
+    NGN is absent for ECOWAS (USD-only) tenants, so each currency's median
+    is computed over whichever rows actually carry it."""
+    present = sorted(v for v in values if v is not None)
+    if not present:
+        return None
+    return present[len(present) // 2]
+
+
 def _col_band(col: float) -> str:
     """Map cost-of-living index to a descriptive band the dashboard uses
     to colour the LGA points (cheaper → green, expensive → red)."""
@@ -82,6 +93,7 @@ async def list_indicators(
                        id, tenant_id, lga,
                        ST_X(location) AS lon, ST_Y(location) AS lat,
                        cost_of_living_index, avg_household_income_ngn,
+                       avg_household_income_usd,
                        income_opportunity_score, displacement_capacity_index,
                        population, observed_at, source, created_at, updated_at
                   FROM mobility_indicators
@@ -108,7 +120,14 @@ async def list_indicators(
             location=LonLat(lon=float(r["lon"]), lat=float(r["lat"])),
             cost_of_living_index=float(r["cost_of_living_index"]),
             cost_of_living_band=_col_band(float(r["cost_of_living_index"])),
-            avg_household_income_ngn=int(r["avg_household_income_ngn"]),
+            avg_household_income_ngn=(
+                int(r["avg_household_income_ngn"])
+                if r["avg_household_income_ngn"] is not None else None
+            ),
+            avg_household_income_usd=(
+                int(r["avg_household_income_usd"])
+                if r["avg_household_income_usd"] is not None else None
+            ),
             income_opportunity_score=float(r["income_opportunity_score"]),
             displacement_capacity_index=float(r["displacement_capacity_index"]),
             population=int(r["population"]),
@@ -122,17 +141,22 @@ async def list_indicators(
 
     if indicators:
         sorted_col = sorted(indicators, key=lambda i: i.cost_of_living_index)
-        sorted_income = sorted(indicators, key=lambda i: i.avg_household_income_ngn)
         cheapest = sorted_col[0].lga
         most_expensive = sorted_col[-1].lga
         median_col = sorted_col[len(sorted_col) // 2].cost_of_living_index
-        median_income = sorted_income[len(sorted_income) // 2].avg_household_income_ngn
+        # Median over whichever currency is present (NGN absent for ECOWAS).
+        median_income_ngn = _median_int(
+            [i.avg_household_income_ngn for i in indicators]
+        )
+        median_income_usd = _median_int(
+            [i.avg_household_income_usd for i in indicators]
+        )
         best_opp = max(indicators, key=lambda i: i.income_opportunity_score).lga
         best_cap = max(indicators, key=lambda i: i.displacement_capacity_index).lga
     else:
         cheapest = most_expensive = best_opp = best_cap = None
         median_col = 0.0
-        median_income = 0
+        median_income_ngn = median_income_usd = None
 
     sources = sorted({i.source for i in indicators})
 
@@ -141,7 +165,8 @@ async def list_indicators(
             tenant_id=tenant_id,
             total_lgas=len(indicators),
             median_cost_of_living=median_col,
-            median_household_income_ngn=median_income,
+            median_household_income_ngn=median_income_ngn,
+            median_household_income_usd=median_income_usd,
             cheapest_lga=cheapest,
             most_expensive_lga=most_expensive,
             best_opportunity_lga=best_opp,
