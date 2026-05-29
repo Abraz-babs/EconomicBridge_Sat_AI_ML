@@ -2,9 +2,11 @@
 
 > **Purpose.** This document captures every meaningful build step from project inception through today, what is currently working, and the exact next steps to take. If you carry this project to another IDE or hand it to a fresh AI agent, this file plus [ARCHITECTURE.md](ARCHITECTURE.md) and [CLAUDE.md](../CLAUDE.md) is all you need to continue without re-discovery.
 
-**Snapshot date:** 2026-05-11
-**Current stage:** Pre-production — Next.js dashboard v0.3 live locally, backend not yet started
+**Snapshot date:** 2026-05-29
+**Current stage:** Pre-production build — all 5 services run locally (Next.js frontend + 4 FastAPI services), 24 DB migrations, 28 feature slices shipped, fully Dockerised with full production Terraform + CI/CD workflows written. **Not yet deployed to AWS** (no environment provisioned; Terraform never applied).
 **Active working directory:** `economic-bridge-project/`
+
+> **Note (2026-05-29):** This doc's step-by-step history below is accurate through **Step 12 (Q1 finale, 2026-05-19)**. Work since then ships as numbered **slices 13–28** — see `git log` (the authoritative record) and § "Post-Q1 slices" near the end. §3/§4 below were refreshed on this date.
 
 ---
 
@@ -110,32 +112,38 @@ The Next.js dashboard at [apps/frontend/](../apps/frontend/) is the only current
 
 ---
 
-## 3. What Currently Works
+## 3. What Currently Works (2026-05-29)
 
-| Capability | Where | How to verify |
-|------------|-------|---------------|
-| Multi-role dashboard | `apps/frontend` | `npm run dev` → http://localhost:3000 → switch role |
-| Tab navigation (Overview, Farmland, Admin, 5 stubs) | `page.tsx` | Click each tab |
-| Error isolation (one module crash ≠ page crash) | `ErrorBoundary` wraps every panel | Throw in a component → only that panel shows fallback |
-| Admin-only visibility | `page.tsx:83` | Admin tab only renders when role === 'admin' |
-| Live UTC clock | `Header.tsx` | Visible top right |
-| Farmland Protection demo view | `FarmlandPanel.tsx` | Click "farmland" tab |
-| 52-tenant registry | `tenants.yaml` | YAML parses; pilot states have `active: true` |
+Five services run locally side by side: **frontend :3001** (3000 if free), **api :8000**, **ingestion :8001**, **ml :8002**, **notifications :8003**. Postgres 15 + PostGIS local; 24 Alembic migrations; 10 pilot tenants (schema-per-tenant).
+
+| Capability | Where | Notes |
+|------------|-------|-------|
+| Multi-role open-access dashboard, 7 module tabs + Admin | `apps/frontend` | Mapbox + Deck.gl maps live across all modules |
+| Module 01 Economic Visibility (Poverty) | api `economic_visibility/villages` | live seed data, real LGA coords |
+| Module 02 Aid Coordination | api `aid_coordination/coverage` | seed data; HAPI connector built (dormant — NE-only) |
+| Module 03 Farmland Protection | api `farmland/alerts` + PATCH | live, conflict-prediction timeline |
+| Module 04 CropGuard | api `cropguard/predictions` + ml ResNet stub | demo seed predictions |
+| Module 05 ShockGuard | api `shockguard/*` | demo seed flood/drought events |
+| Module 06 Economic Mobility | api `economic_mobility/indicators` | **LIVE World Bank** income + employment anchor (NG pilots) |
+| Module 07 SkillsBridge | api `skills/indicators` | live seed data |
+| Satellite ingestion | `apps/ingestion` | NASA FIRMS, WorldPop, VIIRS, World Bank, HDX HAPI; APScheduler jobs |
+| ML conflict predictor | `apps/ml` | Random Forest + SHAP, per-tenant persistence |
+| SMS dispatch | `apps/notifications` | Termii + Twilio + mock gateway |
+| Audit log + DPA/DSR enforcement gate | `apps/api` | INSERT-only audit; DPA gate on PII routes |
+| Tests + CI | all services | api/ingestion/ml/notifications suites green; per-service coverage floors in CI |
+| Containers + IaC | `docker-compose.yml`, `infrastructure/terraform/`, `.github/workflows/` | full prod Terraform + ci/deploy/terraform workflows written |
 
 ---
 
-## 4. What Does NOT Work Yet
+## 4. What Does NOT Work Yet (2026-05-29)
 
-- **Backend** — no FastAPI app running, no DB, no auth
-- **Satellite ingestion** — none of Copernicus/FIRMS/N2YO/EarthEngine wired up
-- **ML services** — no models trained or served
-- **Real map** — `SatelliteMap` is a styled div, not Mapbox + Deck.gl
-- **Real data** — every panel renders hardcoded/mock data
-- **Auth** — no JWT, no login screen, no session
-- **AWS** — no account configured, no Terraform applied
-- **CI/CD** — no GitHub Actions workflow committed
-- **Tests** — no test files committed for backend or frontend yet
-- **Migrations** — `migrations/` directory exists but no migration files
+- **AWS deployment** — Terraform written but **never applied**; no environment provisioned. Everything is local. (Lean pilot deploy ~$15–40/mo vs full Multi-AZ stack ~$250–350+/mo.)
+- **Live data credentials still pending** — NBS/GIGA/ITU (paid/keyed) and satellite tokens. Module 06 is live via *keyless* World Bank; HAPI aid data exists only for NE-Nigeria (not the pilots).
+- **Module 06 dual-currency (USD + Ghana/Senegal)** — queued next (ECOWAS pilot centerpiece).
+- **CropGuard real model** — code + prep CLI done; needs PlantVillage download + GPU training run.
+- **Termii live SMS** — sender ID `Ecobridge` submitted, awaiting approval.
+- **Auth** — intentionally removed (open-access model); re-enters per-feature for paid tiers.
+- **Legal/business** — Bizra Farms CAC amendment.
 
 ---
 
@@ -752,6 +760,25 @@ landed. The platform is *deployable* — `terraform apply` followed by a
 AWS staging environment.
 
 Anything beyond Step 12 belongs to Q2 and onwards — see [ROADMAP.md](ROADMAP.md).
+
+---
+
+## 5b. Post-Q1 slices (13–28) — summary
+
+Work since the Q1 finale ships as numbered slices on `main`. `git log` is the authoritative record; this is the map.
+
+- **13–19** — Scheduler observability UI; DPA enforcement gate (DSR/notifications) + §7 error envelope on 403s; conflict pipeline → `ingestion_runs`; per-service coverage floors in CI.
+- **20** — PlantVillage dataset-prep CLI (CropGuard training).
+- **21–22** — Module 06 (mobility) + Module 07 (skills) live-ingest scaffolds with mock fallback + source-preference dedup.
+- **23–24** — API error-envelope normalisation across api + ingestion/ml/notifications (one error contract platform-wide).
+- **25** — Uniform pulsing map halos (pixel-unit) + hover tooltips; real marker positions for ShockGuard/CropGuard; demo seed data; fixed Poverty coordinate drift.
+- **26** — **World Bank live income anchor → Module 06** (keyless `NY.GNP.PCAP.CN`, monthly scheduler job, Nigerian pilots).
+- **27** — World Bank employment-to-pop ratio → Module 06 opportunity score (the ILO estimate via WB; ILOSTAT SDMX was down).
+- **28** — HDX HAPI aid-coordination connector → Module 02 (keyless; correct + tested but dormant — HAPI ops-presence is NE-Nigeria-only, 0 for pilots/Ghana/Senegal).
+
+**Open-data ingestion strategy:** prefer keyless aggregator/standards APIs (World Bank, HDX, ILOSTAT) over scraping national portals. Verified endpoints + coverage gotchas live in the agent's project memory.
+
+**Queued next:** Module 06 dual-currency (USD + Naira, extend live anchor to Ghana/Senegal for the ECOWAS pilot) — needs a `mobility_indicators` USD-column migration + frontend `₦X ($Y)` formatting.
 
 ---
 
