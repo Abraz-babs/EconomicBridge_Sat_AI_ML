@@ -160,6 +160,16 @@ class Settings(BaseSettings):
     itu_api_key: str = ""
     itu_base_url: str = "https://api.datahub.itu.int"
 
+    # HDX HAPI (Humanitarian API) — keyless, open. Module 02 (Aid
+    # Coordination): operational-presence ("who does what where") becomes
+    # per-LGA agency coverage tagged source='hapi_v1'. The "app identifier"
+    # HAPI wants is a public attribution token = base64("<app>:<email>"),
+    # NOT a credential — the client derives it from the two fields below
+    # (override via .env for your own attribution).
+    hdx_hapi_base_url: str = "https://hapi.humdata.org/api/v2"
+    hdx_app_name: str = "economicbridge"
+    hdx_app_email: str = "data@bizrafarms.org"
+
     # S3 imagery archive — Phase A.6. Empty bucket name = mock mode; the
     # downloader records what *would* have happened but doesn't call AWS.
     # Production Terraform (infrastructure/terraform/) provisions the

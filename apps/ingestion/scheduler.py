@@ -28,6 +28,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from db import PILOT_TENANT_IDS, get_session_factory
 from sources.worldbank import TENANT_TO_ISO3
+from tasks.aid_ingest import ingest_aid_for_tenant
 from tasks.conflict_pipeline import run_daily_conflict_pipeline
 from tasks.firms_ingest import ingest_firms_for_tenant
 from tasks.mobility_ingest import ingest_mobility_worldbank_for_tenant
@@ -43,6 +44,7 @@ JOB_ID_CONFLICT_DAILY = "conflict_daily_0630utc"
 JOB_ID_PASS_IMAGERY_SWEEP = "pass_imagery_sweep_15min"
 JOB_ID_WORLDPOP_WEEKLY = "worldpop_weekly_sun_07utc"
 JOB_ID_MOBILITY_MONTHLY = "mobility_worldbank_monthly_1st_08utc"
+JOB_ID_AID_MONTHLY = "aid_hapi_monthly_1st_09utc"
 
 
 def setup_scheduler() -> AsyncIOScheduler:
@@ -110,6 +112,18 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         max_instances=1,
         # 12h grace covers a pod restart on the 1st.
+        misfire_grace_time=43200,
+    )
+
+    scheduler.add_job(
+        run_monthly_aid_ingest,
+        # HAPI operational-presence refreshes on a slow (~monthly) cadence;
+        # 09:00 UTC on the 1st, after the mobility anchor.
+        trigger=CronTrigger(day=1, hour=9, minute=0, timezone="UTC"),
+        id=JOB_ID_AID_MONTHLY,
+        name="HDX HAPI aid-coordination coverage (all pilots, monthly)",
+        replace_existing=True,
+        max_instances=1,
         misfire_grace_time=43200,
     )
 
@@ -228,4 +242,33 @@ async def run_monthly_mobility_ingest(
                 )
 
     log.info("scheduled.mobility summary: %s", results)
+    return results
+
+
+async def run_monthly_aid_ingest(
+    tenants: Iterable[str] | None = None,
+) -> dict[str, str]:
+    """Refresh Module 02 aid coverage from HDX HAPI for every pilot, monthly.
+
+    Keyless. Failures for one tenant don't abort the rest. Tenants with no
+    humanitarian operational presence simply write nothing (seed remains).
+    """
+    target = list(tenants) if tenants is not None else sorted(PILOT_TENANT_IDS)
+    factory = get_session_factory()
+    results: dict[str, str] = {}
+
+    for tenant_id in target:
+        async with factory() as session:
+            try:
+                outcome = await ingest_aid_for_tenant(session, tenant_id=tenant_id)
+                results[tenant_id] = (
+                    f"{outcome.coverage_rows} rows, {outcome.lgas_covered} LGAs, "
+                    f"{outcome.orgs_found} orgs"
+                )
+                log.info("scheduled.aid tenant=%s outcome=%s", tenant_id, results[tenant_id])
+            except Exception as exc:  # noqa: BLE001 — log every failure, continue
+                results[tenant_id] = f"failed: {exc!s}"
+                log.exception("scheduled.aid FAILED tenant=%s: %s", tenant_id, exc)
+
+    log.info("scheduled.aid summary: %s", results)
     return results
