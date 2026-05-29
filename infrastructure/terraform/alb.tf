@@ -35,7 +35,10 @@ resource "aws_lb" "main" {
 resource "aws_lb_target_group" "service" {
   for_each = local.services
 
-  name        = "${local.name_prefix}-${each.key}-tg"
+  # ALB target-group names are capped at 32 chars, so use a short
+  # `eb-<env>-<service>` form instead of the full name_prefix
+  # (`economicbridge-staging-notifications-tg` would be 39 chars).
+  name        = "eb-${var.environment}-${each.key}"
   port        = each.value.port
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id

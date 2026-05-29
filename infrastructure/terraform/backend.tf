@@ -16,8 +16,12 @@
 
 terraform {
   backend "s3" {
-    bucket         = "economicbridge-tf-state-198566079411"
-    key            = "economicbridge/${terraform.workspace}/terraform.tfstate"
+    bucket = "economicbridge-tf-state-198566079411"
+    # Static key — backend config cannot use interpolation. The S3 backend
+    # namespaces non-default workspaces automatically under
+    # `env:/<workspace>/<key>` (workspace_key_prefix defaults to `env:`), so
+    # staging and production state never collide.
+    key            = "economicbridge/terraform.tfstate"
     region         = "eu-west-1"
     dynamodb_table = "economicbridge-tf-locks"
     encrypt        = true

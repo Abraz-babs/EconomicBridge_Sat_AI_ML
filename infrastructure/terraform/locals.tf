@@ -12,11 +12,13 @@ locals {
   # in the region; we take the first N).
   azs = slice(data.aws_availability_zones.available.names, 0, var.az_count)
 
-  # CIDR carve-up: /20 per subnet gives 4096 IPs each, plenty for any
-  # imaginable scale. Public subnets in slot 0-1, private in slot 16-17,
-  # so they don't collide and remain visually distinct in route tables.
-  public_subnet_cidrs  = [for i, az in local.azs : cidrsubnet(var.vpc_cidr, 4, i)]
-  private_subnet_cidrs = [for i, az in local.azs : cidrsubnet(var.vpc_cidr, 4, i + 16)]
+  # CIDR carve-up: /24 per subnet (256 IPs each, ample for ECS/RDS).
+  # Public subnets in slot 0-1, private in slot 16-17, so they don't collide
+  # and remain visually distinct in route tables. NOTE: the extension must be
+  # /8 — a /4 extension only yields 16 subnets (0-15) and the private slots
+  # at 16+ overflowed it.
+  public_subnet_cidrs  = [for i, az in local.azs : cidrsubnet(var.vpc_cidr, 8, i)]
+  private_subnet_cidrs = [for i, az in local.azs : cidrsubnet(var.vpc_cidr, 8, i + 16)]
 
   # The 5 microservices we're deploying. Per-service config drives:
   #   - ECR repo name
