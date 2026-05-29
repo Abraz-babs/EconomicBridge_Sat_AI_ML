@@ -108,7 +108,7 @@ def setup_scheduler() -> AsyncIOScheduler:
         # NBS CPI is monthly — the 1st at 08:00 UTC is plenty.
         trigger=CronTrigger(day=1, hour=8, minute=0, timezone="UTC"),
         id=JOB_ID_MOBILITY_MONTHLY,
-        name="World Bank mobility income anchor (Nigerian pilots, monthly)",
+        name="World Bank mobility income anchor (all pilots, USD + Naira, monthly)",
         replace_existing=True,
         max_instances=1,
         # 12h grace covers a pod restart on the 1st.
