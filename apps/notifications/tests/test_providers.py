@@ -4,13 +4,14 @@ from __future__ import annotations
 import pytest
 
 from gateways.mock import MockGateway
+from gateways.sns import SnsGateway
 from services.providers import PILOT_GATEWAY, gateway_for_tenant, resolve_gateway
 
 
-def test_nigerian_pilots_route_to_termii() -> None:
+def test_nigerian_pilots_route_to_sns() -> None:
     for tenant in ("kebbi", "benue", "plateau", "kaduna", "niger", "zamfara", "nasarawa", "fct"):
-        assert gateway_for_tenant(tenant) == "termii", (
-            f"{tenant} should route to Termii (Nigerian carriers)"
+        assert gateway_for_tenant(tenant) == "sns", (
+            f"{tenant} should route to AWS SNS (replaced Termii)"
         )
 
 
@@ -27,22 +28,31 @@ def test_unknown_tenant_raises() -> None:
 
 
 def test_resolve_gateway_falls_back_to_mock_when_unconfigured(monkeypatch) -> None:
-    """With no Termii/Twilio keys configured, every tenant gets the mock.
+    """With SNS disabled + no Twilio keys, every tenant gets the mock.
 
     Env vars take precedence over the .env file in pydantic-settings, so
-    setting them to empty strings forces the unconfigured path even when
-    real keys are present in .env.
+    setting them forces the unconfigured path even when real values exist
+    in .env.
     """
-    monkeypatch.setenv("TERMII_API_KEY", "")
+    monkeypatch.setenv("SNS_ENABLED", "false")
     monkeypatch.setenv("TWILIO_ACCOUNT_SID", "")
     monkeypatch.setenv("TWILIO_AUTH_TOKEN", "")
     from config import get_settings
     get_settings.cache_clear()
     try:
-        gw = resolve_gateway("kebbi")
-        assert isinstance(gw, MockGateway)
-        gw2 = resolve_gateway("ghana")
-        assert isinstance(gw2, MockGateway)
+        assert isinstance(resolve_gateway("kebbi"), MockGateway)
+        assert isinstance(resolve_gateway("ghana"), MockGateway)
+    finally:
+        get_settings.cache_clear()
+
+
+def test_resolve_gateway_uses_sns_when_enabled(monkeypatch) -> None:
+    """NG tenants get the real SNS gateway once SNS is enabled."""
+    monkeypatch.setenv("SNS_ENABLED", "true")
+    from config import get_settings
+    get_settings.cache_clear()
+    try:
+        assert isinstance(resolve_gateway("kebbi"), SnsGateway)
     finally:
         get_settings.cache_clear()
 

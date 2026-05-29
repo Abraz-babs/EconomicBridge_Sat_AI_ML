@@ -43,6 +43,17 @@ class Settings(BaseSettings):
     twilio_auth_token: str = ""
     twilio_from_number: str = ""
 
+    # ── AWS SNS (primary Nigerian SMS, replaces Termii) ────────────────
+    # Credentials come from the standard AWS chain (the ECS task role in
+    # production, ~/.aws or env vars in dev) — never a hardcoded key, so
+    # there's no api_key field. `sns_enabled` is the operator opt-in;
+    # leaving it False keeps dev on the mock gateway. The sender ID is the
+    # alphanumeric origination ID shown on the handset (must be registered
+    # with Nigerian carriers, same as any provider).
+    sns_enabled: bool = False
+    sns_region: str = "eu-west-1"
+    sns_sender_id: str = "EconBridge"
+
     @property
     def termii_configured(self) -> bool:
         return bool(self.termii_api_key)
@@ -50,6 +61,10 @@ class Settings(BaseSettings):
     @property
     def twilio_configured(self) -> bool:
         return bool(self.twilio_account_sid and self.twilio_auth_token and self.twilio_from_number)
+
+    @property
+    def sns_configured(self) -> bool:
+        return bool(self.sns_enabled)
 
 
 @lru_cache

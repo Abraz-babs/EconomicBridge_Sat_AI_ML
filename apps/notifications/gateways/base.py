@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-GatewayName = Literal["termii", "twilio", "mock"]
+GatewayName = Literal["termii", "twilio", "sns", "mock"]
 
 
 @dataclass(frozen=True, slots=True)
