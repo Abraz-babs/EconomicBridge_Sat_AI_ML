@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
+import { sourceBadge } from '@/lib/display';
 import {
   useSkillsBridge,
   type ConnectivityBand,
@@ -46,7 +47,7 @@ export default function SkillsBridgePanel() {
   const stats = query.data;
 
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
-  const isSeedOnly = stats?.sources.length === 1 && stats.sources[0] === 'seed_v1';
+  const badge = sourceBadge(stats?.sources, { loading: query.isLoading, error: query.isError });
 
   // Sort LGAs by learning gap (worst first) — that's the row the
   // education ministry wants to see at the top.
@@ -65,16 +66,10 @@ export default function SkillsBridgePanel() {
           <div className="cg-title">SkillsBridge</div>
           <div className="cg-subtitle">
             Per-LGA education access + connectivity gap index ·
-            Digital learning infrastructure prioritisation · UNICEF GIGA / ITU
+            Digital learning infrastructure prioritisation · UNICEF GIGA / ITU (planned)
           </div>
         </div>
-        <div className={`cg-mode-badge ${isSeedOnly ? 'cg-mode-untuned' : 'cg-mode-trained'}`}>
-          {query.isLoading
-            ? 'LOADING'
-            : query.isError
-            ? 'API UNREACHABLE'
-            : `LIVE · ${stats?.sources.join(' + ') ?? '—'}`}
-        </div>
+        <div className={`cg-mode-badge ${badge.cls}`}>{badge.label}</div>
       </div>
 
       {/* TENANT SELECTOR */}

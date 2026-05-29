@@ -1,6 +1,7 @@
 'use client';
 
 import { useTenant } from '@/context/TenantContext';
+import { sourceBadge } from '@/lib/display';
 import { useAidCoordination } from '@/hooks/useAidCoordination';
 
 import AidCoverageMap from './AidCoverageMap';
@@ -31,7 +32,7 @@ export default function AidCoordinationPanel() {
   const stats = query.data;
 
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
-  const isSeedOnly = stats?.sources.length === 1 && stats.sources[0] === 'seed_v1';
+  const badge = sourceBadge(stats?.sources, { loading: query.isLoading, error: query.isError });
 
   return (
     <div>
@@ -40,17 +41,11 @@ export default function AidCoordinationPanel() {
         <div>
           <div className="cg-title">Aid Coordination Bridge</div>
           <div className="cg-subtitle">
-            Multi-tenant operational layer · WFP SCOPE + UNHCR proGres + NEMA integration ·
-            duplication detection + gap analysis
+            Multi-tenant operational layer · duplication detection + gap analysis ·
+            WFP SCOPE / UNHCR proGres / NEMA integration (planned)
           </div>
         </div>
-        <div className={`cg-mode-badge ${isSeedOnly ? 'cg-mode-untuned' : 'cg-mode-trained'}`}>
-          {query.isLoading
-            ? 'LOADING'
-            : query.isError
-            ? 'API UNREACHABLE'
-            : `LIVE · ${stats?.sources.join(' + ') ?? '—'}`}
-        </div>
+        <div className={`cg-mode-badge ${badge.cls}`}>{badge.label}</div>
       </div>
 
       {/* TENANT SELECTOR */}

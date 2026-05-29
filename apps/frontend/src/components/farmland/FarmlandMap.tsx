@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { Tenant } from '@/data/tenants';
+import { formatLatLon } from '@/lib/display';
 import {
   hoursAgo,
   newestScene,
@@ -526,7 +527,7 @@ function HoverTooltip({ info }: { info: HoverInfo }) {
       </div>
       {a.zoneName && <div className="fp-tt-zone">{a.zoneName}</div>}
       <div className="fp-tt-coord">
-        {a.latitude.toFixed(4)}°N, {a.longitude.toFixed(4)}°E
+        {formatLatLon(a.latitude, a.longitude)}
       </div>
       {(a.affectedAreaHa != null || a.livelihoodsAtRisk != null) && (
         <div className="fp-tt-metrics">

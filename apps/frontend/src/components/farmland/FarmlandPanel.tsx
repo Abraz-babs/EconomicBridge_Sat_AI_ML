@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
+import { formatLatLon } from '@/lib/display';
 import {
   useFarmlandAlerts,
   useResolveAlert,
@@ -546,7 +547,7 @@ export default function FarmlandPanel() {
                 </div>
                 {a.location && (
                   <div className="fp-alert-coords">
-                    📍 {a.location.lat.toFixed(4)}°N, {a.location.lon.toFixed(4)}°E
+                    📍 {formatLatLon(a.location.lat, a.location.lon)}
                     {a.lga ? ` · ${a.lga} LGA` : ''}
                   </div>
                 )}

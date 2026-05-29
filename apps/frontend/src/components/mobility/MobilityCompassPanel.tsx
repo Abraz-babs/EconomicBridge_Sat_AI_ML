@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
+import { sourceBadge } from '@/lib/display';
 import {
   formatIncome,
   useEconomicMobility,
@@ -38,7 +39,7 @@ export default function MobilityCompassPanel() {
   const stats = query.data;
 
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
-  const isSeedOnly = stats?.sources.length === 1 && stats.sources[0] === 'seed_v1';
+  const badge = sourceBadge(stats?.sources, { loading: query.isLoading, error: query.isError });
 
   // Sort LGAs from cheapest to most expensive for the table render.
   const sortedByCol = useMemo<MobilityIndicatorRow[]>(
@@ -56,16 +57,10 @@ export default function MobilityCompassPanel() {
           <div className="cg-title">Economic Mobility Compass</div>
           <div className="cg-subtitle">
             Per-LGA cost-of-living + income opportunity index ·
-            Resettlement suitability for displaced households · NBS / ECOWAS STAT
+            Resettlement suitability for displaced households · World Bank Indicators
           </div>
         </div>
-        <div className={`cg-mode-badge ${isSeedOnly ? 'cg-mode-untuned' : 'cg-mode-trained'}`}>
-          {query.isLoading
-            ? 'LOADING'
-            : query.isError
-            ? 'API UNREACHABLE'
-            : `LIVE · ${stats?.sources.join(' + ') ?? '—'}`}
-        </div>
+        <div className={`cg-mode-badge ${badge.cls}`}>{badge.label}</div>
       </div>
 
       {/* TENANT SELECTOR */}

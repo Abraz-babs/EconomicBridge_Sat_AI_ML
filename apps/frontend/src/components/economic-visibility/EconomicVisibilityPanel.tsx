@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
+import { formatLatLon, sourceBadge } from '@/lib/display';
 import {
   usePovertyVillages,
   type PovertyVillage,
@@ -43,6 +44,7 @@ export default function EconomicVisibilityPanel() {
   );
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
   const isSeedOnly = stats?.sources.length === 1 && stats.sources[0] === 'seed_v1';
+  const badge = sourceBadge(stats?.sources, { loading: query.isLoading, error: query.isError });
 
   return (
     <div>
@@ -55,13 +57,7 @@ export default function EconomicVisibilityPanel() {
             VIIRS Nightlight + WorldPop + DHS validation
           </div>
         </div>
-        <div className={`cg-mode-badge ${isSeedOnly ? 'cg-mode-untuned' : 'cg-mode-trained'}`}>
-          {query.isLoading
-            ? 'LOADING'
-            : query.isError
-            ? 'API UNREACHABLE'
-            : `LIVE · ${stats?.sources.join(' + ') ?? '—'}`}
-        </div>
+        <div className={`cg-mode-badge ${badge.cls}`}>{badge.label}</div>
       </div>
 
       {/* TENANT SELECTOR */}
@@ -270,7 +266,7 @@ function VillageRow({ village, rank }: { village: PovertyVillage; rank: number }
         )}
       </div>
       <div className="fp-alert-coords">
-        📍 {village.location.lat.toFixed(4)}°N, {village.location.lon.toFixed(4)}°E
+        📍 {formatLatLon(village.location.lat, village.location.lon)}
         {' · '}
         {village.lga} LGA
       </div>
