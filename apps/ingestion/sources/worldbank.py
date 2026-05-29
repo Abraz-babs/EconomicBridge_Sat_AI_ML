@@ -7,7 +7,9 @@ disaggregate to per-LGA estimates using a transparent, documented model.
 
 What is REAL here vs MODELLED:
   * REAL  — the national income level (GNI per capita, current local currency,
-            `NY.GNP.PCAP.CN`) and its observation year, fetched live.
+            `NY.GNP.PCAP.CN`) and the national employment-to-population ratio
+            (`SL.EMP.TOTL.SP.ZS`, the ILO modelled estimate surfaced via the
+            World Bank), both fetched live with their observation year.
   * MODEL — the per-LGA spread of cost-of-living + income. No public source
             (NBS included) publishes true per-LGA cost-of-living, so the
             within-country spatial pattern is a deterministic model anchored
@@ -41,6 +43,11 @@ SOURCE_WORLDBANK = "worldbank_v1"
 INDICATOR_GNI_PC_LCU = "NY.GNP.PCAP.CN"
 # Consumer price index (2010 = 100) — inflation context, optional.
 INDICATOR_CPI = "FP.CPI.TOTL"
+# Employment-to-population ratio, 15+, total (%) — this is the ILO modeled
+# estimate surfaced through the World Bank, so it carries the same labour
+# data ILOSTAT publishes but via the reliable keyless WB channel. Drives the
+# Module 06 income-opportunity score. Optional (degrades like CPI).
+INDICATOR_EMP_POP_RATIO = "SL.EMP.TOTL.SP.ZS"
 
 # Tenant → ISO3. Phase 1 income anchor is Nigeria-only (LCU = NGN); the
 # ECOWAS pilots are mapped for completeness but skipped until FX lands.
@@ -72,6 +79,10 @@ class CountryAnchor:
     gni_year: int | None
     cpi: float | None
     cpi_year: int | None
+    # Employment-to-population ratio as a 0..1 fraction (WB returns a %),
+    # or None when the optional fetch fails. Anchors the opportunity score.
+    employment_ratio: float | None = None
+    employment_year: int | None = None
 
 
 class WorldBankError(RuntimeError):
@@ -136,18 +147,29 @@ class WorldBankClient:
         error, and a flaky CPI fetch must not discard a good GNI.
         """
         gni = await self.fetch_observation(iso3, INDICATOR_GNI_PC_LCU)
-        try:
-            cpi = await self.fetch_observation(iso3, INDICATOR_CPI)
-        except WorldBankError as exc:
-            log.warning("World Bank CPI fetch degraded for %s: %s", iso3, exc)
-            cpi = None
+        cpi = await self._optional_observation(iso3, INDICATOR_CPI)
+        emp = await self._optional_observation(iso3, INDICATOR_EMP_POP_RATIO)
         return CountryAnchor(
             iso3=iso3,
             gni_per_capita_lcu=gni.value if gni else None,
             gni_year=gni.year if gni else None,
             cpi=cpi.value if cpi else None,
             cpi_year=cpi.year if cpi else None,
+            # WB returns a percentage (0-100); store as a 0..1 fraction.
+            employment_ratio=emp.value / 100.0 if emp else None,
+            employment_year=emp.year if emp else None,
         )
+
+    async def _optional_observation(
+        self, iso3: str, indicator: str,
+    ) -> WorldBankObservation | None:
+        """Fetch a non-essential indicator; a transient error degrades to None
+        rather than discarding the whole anchor (the WB API occasionally 400s)."""
+        try:
+            return await self.fetch_observation(iso3, indicator)
+        except WorldBankError as exc:
+            log.warning("World Bank %s fetch degraded for %s: %s", indicator, iso3, exc)
+            return None
 
     def _http_ctx(self) -> "httpx.AsyncClient | _Borrowed":
         if self._http is not None:
@@ -206,8 +228,17 @@ def compose_mobility_indicators(
         income_noise = 0.9 + _hash_unit(tenant_id, lga, "wb_income") * 0.2
         income = int(national_monthly_household * (col_index / col_anchor) * income_noise)
         opp_unit = _hash_unit(tenant_id, lga, "wb_opportunity")
-        opportunity = max(0.05, min(0.95,
-            0.20 + (col_index - 70) / 100 * 0.50 + (opp_unit - 0.5) * 0.20))
+        if anchor.employment_ratio is not None:
+            # Anchor opportunity to the real national employment-to-population
+            # ratio (WB's ILO-modelled estimate), with a small per-LGA
+            # modulation — pricier/richer LGAs read slightly higher — + noise.
+            opportunity = max(0.05, min(0.98,
+                anchor.employment_ratio
+                + (col_index - col_anchor) / col_anchor * 0.10
+                + (opp_unit - 0.5) * 0.10))
+        else:
+            opportunity = max(0.05, min(0.95,
+                0.20 + (col_index - 70) / 100 * 0.50 + (opp_unit - 0.5) * 0.20))
         cap_unit = _hash_unit(tenant_id, lga, "wb_capacity")
         capacity = max(0.10, min(0.92,
             0.30 + (col_index - 70) / 200 + (cap_unit - 0.5) * 0.30))

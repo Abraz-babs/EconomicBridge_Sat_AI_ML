@@ -20,6 +20,7 @@ import pytest
 
 from sources.worldbank import (
     INDICATOR_CPI,
+    INDICATOR_EMP_POP_RATIO,
     INDICATOR_GNI_PC_LCU,
     SOURCE_WORLDBANK,
     CountryAnchor,
@@ -37,6 +38,7 @@ from tasks.mobility_ingest import ingest_mobility_worldbank_for_tenant
 def _wb_transport(
     *, gni: float = 1_500_000.0, gni_year: str = "2023",
     cpi: float = 520.0, cpi_year: str = "2023",
+    emp: float = 80.0, emp_year: str = "2025",
 ) -> httpx.MockTransport:
     """Mock the World Bank API, branching on the indicator in the URL path."""
     def handler(req: httpx.Request) -> httpx.Response:
@@ -49,6 +51,10 @@ def _wb_transport(
             body = [{"page": 1}, [
                 {"indicator": {"id": INDICATOR_CPI},
                  "date": cpi_year, "value": cpi}]]
+        elif INDICATOR_EMP_POP_RATIO in path:
+            body = [{"page": 1}, [
+                {"indicator": {"id": INDICATOR_EMP_POP_RATIO},
+                 "date": emp_year, "value": emp}]]
         else:
             body = [{"message": [{"id": "120", "value": "not found"}]}]
         return httpx.Response(200, content=json.dumps(body).encode())
@@ -94,10 +100,15 @@ async def test_fetch_observation_parses_latest_value():
 
 @pytest.mark.asyncio
 async def test_fetch_country_anchor_combines_indicators():
-    anchor = await _wb_client(gni=1_500_000.0, cpi=520.0).fetch_country_anchor("NGA")
+    anchor = await _wb_client(
+        gni=1_500_000.0, cpi=520.0, emp=80.0,
+    ).fetch_country_anchor("NGA")
     assert anchor.gni_per_capita_lcu == 1_500_000.0
     assert anchor.cpi == 520.0
     assert anchor.gni_year == 2023
+    # WB returns employment as a percentage; anchor stores a 0..1 fraction.
+    assert anchor.employment_ratio == pytest.approx(0.80)
+    assert anchor.employment_year == 2025
 
 
 @pytest.mark.asyncio
@@ -112,7 +123,9 @@ async def test_country_anchor_survives_flaky_cpi():
     client = WorldBankClient(http=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
     anchor = await client.fetch_country_anchor("NGA")
     assert anchor.gni_per_capita_lcu == 1_500_000.0
+    # Both optional indicators (CPI + employment) flaked → None, GNI survives.
     assert anchor.cpi is None
+    assert anchor.employment_ratio is None
 
 
 @pytest.mark.asyncio
@@ -149,6 +162,19 @@ def test_compose_income_scales_with_national_anchor():
     hi_rows = compose_mobility_indicators("kebbi", lgas, high)
     for lo, hi in zip(lo_rows, hi_rows):
         assert hi.avg_household_income_ngn > lo.avg_household_income_ngn
+
+
+def test_compose_anchors_opportunity_to_employment():
+    """The income-opportunity score tracks the national employment ratio."""
+    hi_emp = CountryAnchor("NGA", 1_500_000.0, 2023, None, None,
+                           employment_ratio=0.80, employment_year=2025)
+    lo_emp = CountryAnchor("NGA", 1_500_000.0, 2023, None, None,
+                           employment_ratio=0.40, employment_year=2025)
+    hi = compose_mobility_indicators("kebbi", ["Argungu", "Jega"], hi_emp)
+    lo = compose_mobility_indicators("kebbi", ["Argungu", "Jega"], lo_emp)
+    for h, l in zip(hi, lo):
+        assert h.income_opportunity_score > l.income_opportunity_score
+    assert all(0.6 <= r.income_opportunity_score <= 0.98 for r in hi)
 
 
 def test_compose_is_deterministic():
