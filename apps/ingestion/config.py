@@ -143,6 +143,13 @@ class Settings(BaseSettings):
     ecowas_stat_api_key: str = ""
     ecowas_stat_base_url: str = "https://ecowas.int/statistics/api"
 
+    # World Bank Indicators API (v2) — keyless, open (CC BY 4.0). Supplies
+    # the national economic ANCHOR for Module 06: GNI per capita in local
+    # currency (NY.GNP.PCAP.CN — Naira for Nigerian pilots, so no FX) is
+    # disaggregated to per-LGA estimates tagged source='worldbank_v1'.
+    # No API key required; this runs automatically on the scheduler.
+    worldbank_api_base_url: str = "https://api.worldbank.org/v2"
+
     # UNICEF GIGA (school connectivity mapping) + ITU (telecom coverage)
     # feed Module 07 (SkillsBridge). Both are global so they apply to all
     # pilots — a single giga_v1 source tag carries the combined per-LGA

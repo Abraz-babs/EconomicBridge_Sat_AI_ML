@@ -27,8 +27,10 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from db import PILOT_TENANT_IDS, get_session_factory
+from sources.worldbank import TENANT_TO_ISO3
 from tasks.conflict_pipeline import run_daily_conflict_pipeline
 from tasks.firms_ingest import ingest_firms_for_tenant
+from tasks.mobility_ingest import ingest_mobility_worldbank_for_tenant
 from tasks.pass_imagery_sweep import run_pass_imagery_sweep
 from tasks.worldpop_raster_sample import sweep_tenant as worldpop_sweep_tenant
 
@@ -40,6 +42,7 @@ JOB_ID_FIRMS_DAILY = "firms_daily_06utc"
 JOB_ID_CONFLICT_DAILY = "conflict_daily_0630utc"
 JOB_ID_PASS_IMAGERY_SWEEP = "pass_imagery_sweep_15min"
 JOB_ID_WORLDPOP_WEEKLY = "worldpop_weekly_sun_07utc"
+JOB_ID_MOBILITY_MONTHLY = "mobility_worldbank_monthly_1st_08utc"
 
 
 def setup_scheduler() -> AsyncIOScheduler:
@@ -95,6 +98,19 @@ def setup_scheduler() -> AsyncIOScheduler:
         max_instances=1,
         # 6h grace covers a Sunday-morning pod restart.
         misfire_grace_time=21600,
+    )
+
+    scheduler.add_job(
+        run_monthly_mobility_ingest,
+        # World Bank republishes national indicators on a slow cadence and
+        # NBS CPI is monthly — the 1st at 08:00 UTC is plenty.
+        trigger=CronTrigger(day=1, hour=8, minute=0, timezone="UTC"),
+        id=JOB_ID_MOBILITY_MONTHLY,
+        name="World Bank mobility income anchor (Nigerian pilots, monthly)",
+        replace_existing=True,
+        max_instances=1,
+        # 12h grace covers a pod restart on the 1st.
+        misfire_grace_time=43200,
     )
 
     return scheduler
@@ -175,4 +191,41 @@ async def run_weekly_worldpop_sweep(
                 )
 
     log.info("scheduled.worldpop summary: %s", results)
+    return results
+
+
+async def run_monthly_mobility_ingest(
+    tenants: Iterable[str] | None = None,
+) -> dict[str, str]:
+    """Anchor Module 06 to the World Bank national income figure, monthly.
+
+    Defaults to the Nigerian pilots only (Phase 1: LCU = NGN, no FX). Pulls
+    keylessly from the World Bank API; failures for one tenant don't abort
+    the rest.
+    """
+    if tenants is not None:
+        target = list(tenants)
+    else:
+        target = [t for t in sorted(PILOT_TENANT_IDS) if TENANT_TO_ISO3.get(t) == "NGA"]
+    factory = get_session_factory()
+    results: dict[str, str] = {}
+
+    for tenant_id in target:
+        async with factory() as session:
+            try:
+                outcome = await ingest_mobility_worldbank_for_tenant(
+                    session, tenant_id=tenant_id,
+                )
+                results[tenant_id] = f"{outcome.rows_upserted}/{outcome.lgas_found} upserted"
+                log.info(
+                    "scheduled.mobility tenant=%s outcome=%s",
+                    tenant_id, results[tenant_id],
+                )
+            except Exception as exc:  # noqa: BLE001 — log every failure, continue
+                results[tenant_id] = f"failed: {exc!s}"
+                log.exception(
+                    "scheduled.mobility FAILED tenant=%s: %s", tenant_id, exc
+                )
+
+    log.info("scheduled.mobility summary: %s", results)
     return results

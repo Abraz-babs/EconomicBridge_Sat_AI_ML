@@ -26,7 +26,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import set_tenant_schema
-from sources.nbs_stats import NbsStatsClient, source_for_tenant
+from sources.nbs_stats import MobilityIndicator, NbsStatsClient, source_for_tenant
+from sources.worldbank import (
+    SOURCE_WORLDBANK,
+    TENANT_TO_ISO3,
+    WorldBankClient,
+    WorldBankError,
+    compose_mobility_indicators,
+)
 
 log = logging.getLogger(__name__)
 
@@ -78,9 +85,106 @@ async def ingest_mobility_for_tenant(
         )
 
     indicators = await nbs.fetch_indicators(tenant_id, list(lga_coords))
-    observed = date.today()
     await set_tenant_schema(session, tenant_id)
+    upserted = await _upsert_indicators(
+        session, tenant_id, indicators, lga_coords, date.today(),
+    )
+    await session.commit()
+    log.info(
+        "mobility.ingest tenant=%s source=%s lgas=%d upserted=%d mock=%s",
+        tenant_id, source, len(lga_coords), upserted, mock,
+    )
+    return MobilityIngestResult(
+        tenant_id=tenant_id, source=source,
+        lgas_found=len(lga_coords), rows_upserted=upserted, mock=mock,
+    )
 
+
+async def ingest_mobility_worldbank_for_tenant(
+    session: AsyncSession,
+    *,
+    tenant_id: str,
+    client: WorldBankClient | None = None,
+) -> MobilityIngestResult:
+    """Anchor Module 06 to the real World Bank national income figure.
+
+    Fetches GNI per capita (current LCU) for the tenant's country and
+    disaggregates it to per-LGA estimates tagged source='worldbank_v1',
+    reusing the seed_v1 LGA geometry. Phase 1 is Nigeria-only — the LCU is
+    Naira, so no FX is needed to fill `avg_household_income_ngn`. On a World
+    Bank fetch/parse failure we write nothing rather than ship a fake row.
+    """
+    wb = client or WorldBankClient()
+    iso3 = TENANT_TO_ISO3.get(tenant_id)
+    if iso3 != "NGA":
+        log.info(
+            "mobility.worldbank tenant=%s skipped — Phase 1 income anchor is "
+            "Nigeria-only (LCU=NGN); ECOWAS FX lands later", tenant_id,
+        )
+        return MobilityIngestResult(
+            tenant_id=tenant_id, source=SOURCE_WORLDBANK,
+            lgas_found=0, rows_upserted=0, mock=False,
+        )
+
+    lga_coords = await _seed_lgas(session, tenant_id)
+    if not lga_coords:
+        log.warning(
+            "mobility.worldbank tenant=%s has no seed_v1 rows — run "
+            "scripts.seed_mobility_indicators first", tenant_id,
+        )
+        return MobilityIngestResult(
+            tenant_id=tenant_id, source=SOURCE_WORLDBANK,
+            lgas_found=0, rows_upserted=0, mock=False,
+        )
+
+    try:
+        anchor = await wb.fetch_country_anchor(iso3)
+    except WorldBankError as exc:
+        log.warning("mobility.worldbank tenant=%s fetch failed: %s", tenant_id, exc)
+        return MobilityIngestResult(
+            tenant_id=tenant_id, source=SOURCE_WORLDBANK,
+            lgas_found=len(lga_coords), rows_upserted=0, mock=False,
+        )
+    if anchor.gni_per_capita_lcu is None:
+        log.warning(
+            "mobility.worldbank tenant=%s: no GNI per capita for %s — skipped",
+            tenant_id, iso3,
+        )
+        return MobilityIngestResult(
+            tenant_id=tenant_id, source=SOURCE_WORLDBANK,
+            lgas_found=len(lga_coords), rows_upserted=0, mock=False,
+        )
+
+    indicators = compose_mobility_indicators(tenant_id, list(lga_coords), anchor)
+    observed = date(anchor.gni_year or date.today().year, 1, 1)
+    await set_tenant_schema(session, tenant_id)
+    upserted = await _upsert_indicators(
+        session, tenant_id, indicators, lga_coords, observed,
+    )
+    await session.commit()
+    log.info(
+        "mobility.worldbank tenant=%s gni_pc_lcu=%.0f year=%s lgas=%d upserted=%d",
+        tenant_id, anchor.gni_per_capita_lcu, anchor.gni_year,
+        len(lga_coords), upserted,
+    )
+    return MobilityIngestResult(
+        tenant_id=tenant_id, source=SOURCE_WORLDBANK,
+        lgas_found=len(lga_coords), rows_upserted=upserted, mock=False,
+    )
+
+
+async def _upsert_indicators(
+    session: AsyncSession,
+    tenant_id: str,
+    indicators: list[MobilityIndicator],
+    lga_coords: dict[str, tuple[float, float]],
+    observed: date,
+) -> int:
+    """UPSERT one mobility_indicators row per indicator. Caller commits.
+
+    Shared by the NBS/ECOWAS and World Bank ingest paths so the live rows
+    land at the seed_v1 LGA geometry with one source-keyed row each.
+    """
     upserted = 0
     for ind in indicators:
         lon, lat = lga_coords[ind.lga]
@@ -117,13 +221,4 @@ async def ingest_mobility_for_tenant(
             "source": ind.source,
         })
         upserted += 1
-
-    await session.commit()
-    log.info(
-        "mobility.ingest tenant=%s source=%s lgas=%d upserted=%d mock=%s",
-        tenant_id, source, len(lga_coords), upserted, mock,
-    )
-    return MobilityIngestResult(
-        tenant_id=tenant_id, source=source,
-        lgas_found=len(lga_coords), rows_upserted=upserted, mock=mock,
-    )
+    return upserted
