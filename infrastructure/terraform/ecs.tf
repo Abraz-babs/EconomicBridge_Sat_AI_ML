@@ -69,10 +69,10 @@ locals {
   # every service that touches external APIs (api, ingestion, notifications).
   # frontend + ml don't need third-party API keys yet.
   service_secrets = {
-    api           = [for path in local.secret_paths : { name = upper(replace(path, "/", "_")), valueFrom = aws_secretsmanager_secret.external[path].arn }]
-    ingestion     = [for path in local.secret_paths : { name = upper(replace(path, "/", "_")), valueFrom = aws_secretsmanager_secret.external[path].arn } if can(regex("^(copernicus|nasa_firms|n2yo|earth_engine|mapbox)/", path))]
-    ml            = [for path in local.secret_paths : { name = upper(replace(path, "/", "_")), valueFrom = aws_secretsmanager_secret.external[path].arn } if can(regex("^claude/", path))]
-    notifications = [for path in local.secret_paths : { name = upper(replace(path, "/", "_")), valueFrom = aws_secretsmanager_secret.external[path].arn } if can(regex("^(termii|twilio)/", path))]
+    api           = [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn }]
+    ingestion     = [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn } if can(regex("^(copernicus|nasa_firms|n2yo|earth_engine|giga|earthdata)/", path))]
+    ml            = [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn } if can(regex("^claude/", path))]
+    notifications = [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn } if can(regex("^(termii|twilio)/", path))]
     frontend      = []
   }
 }

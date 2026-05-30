@@ -98,5 +98,27 @@ locals {
     "termii/api_key",
     "twilio/account_sid",
     "twilio/auth_token",
+    # Added for the live open-data feeds (Skills + Poverty/VIIRS).
+    "giga/api_key",
+    "earthdata/token",
   ]
+
+  # Secret path → the ENV VAR NAME each service's config actually reads.
+  # Most are upper(replace(path,'/','_')), but a few differ from that default
+  # and must be pinned or the live feed silently falls back to mock in prod
+  # (e.g. the app reads NASA_FIRMS_MAP_KEY, not NASA_FIRMS_API_KEY).
+  secret_env_name = {
+    "copernicus/client_id"         = "COPERNICUS_CLIENT_ID"
+    "copernicus/client_secret"     = "COPERNICUS_CLIENT_SECRET"
+    "nasa_firms/api_key"           = "NASA_FIRMS_MAP_KEY"
+    "n2yo/api_key"                 = "N2YO_API_KEY"
+    "earth_engine/service_account" = "GEE_SERVICE_ACCOUNT"
+    "mapbox/public_token"          = "NEXT_PUBLIC_MAPBOX_TOKEN"
+    "claude/api_key"               = "ANTHROPIC_API_KEY"
+    "termii/api_key"               = "TERMII_API_KEY"
+    "twilio/account_sid"           = "TWILIO_ACCOUNT_SID"
+    "twilio/auth_token"            = "TWILIO_AUTH_TOKEN"
+    "giga/api_key"                 = "GIGA_API_KEY"
+    "earthdata/token"              = "EARTHDATA_TOKEN"
+  }
 }
