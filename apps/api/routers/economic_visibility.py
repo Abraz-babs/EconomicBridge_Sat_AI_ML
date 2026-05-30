@@ -70,7 +70,13 @@ async def list_villages(
     result = await session.execute(
         text(
             """
-            SELECT v.id, v.tenant_id, v.settlement_name, v.lga,
+            SELECT * FROM (
+                -- One row per settlement, preferring a live source
+                -- (viirs_v2 / worldpop_v1) over seed_v1, newest first — so a
+                -- settlement that has been ingested live shows once, not as
+                -- duplicate seed + live pins (Slice 34).
+                SELECT DISTINCT ON (v.lga, v.settlement_name)
+                   v.id, v.tenant_id, v.settlement_name, v.lga,
                    ST_X(v.location) AS lon, ST_Y(v.location) AS lat,
                    v.poverty_score, v.population, v.households_unreached,
                    v.nightlight_dimness, v.has_dhs_data,
@@ -78,17 +84,21 @@ async def list_villages(
                    v.source, v.created_at, v.updated_at,
                    wp.value       AS latest_worldpop_sample,
                    wp.captured_at AS worldpop_sampled_at
-              FROM poverty_villages v
-              LEFT JOIN LATERAL (
-                  SELECT value, captured_at
-                    FROM raster_samples r
-                   WHERE r.linked_settlement_name = v.settlement_name
-                     AND r.source = 'worldpop_ppp_v1'
-                     AND r.valid = TRUE
-                   ORDER BY r.captured_at DESC
-                   LIMIT 1
-              ) wp ON TRUE
-             ORDER BY v.poverty_score DESC
+                  FROM poverty_villages v
+                  LEFT JOIN LATERAL (
+                      SELECT value, captured_at
+                        FROM raster_samples r
+                       WHERE r.linked_settlement_name = v.settlement_name
+                         AND r.source = 'worldpop_ppp_v1'
+                         AND r.valid = TRUE
+                       ORDER BY r.captured_at DESC
+                       LIMIT 1
+                  ) wp ON TRUE
+                 ORDER BY v.lga, v.settlement_name,
+                          CASE WHEN v.source = 'seed_v1' THEN 9 ELSE 0 END,
+                          v.updated_at DESC
+            ) deduped
+             ORDER BY poverty_score DESC
              LIMIT :limit
             """
         ),

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import text
@@ -38,6 +38,12 @@ from sources.viirs_black_marble import BlackMarbleClient, BlackMarbleGranule
 from sources.worldpop import WorldPopClient, WorldPopLayer
 
 log = logging.getLogger(__name__)
+
+# VNP46A2 nightlight granules publish ~1 week behind real time, so searching
+# "today" always returns nothing. Default the VIIRS search back by this many
+# days to pick up the latest actually-published granule. WorldPop is annual,
+# unaffected.
+VIIRS_LATENCY_DAYS = 10
 
 
 # Per-tenant centroid + LGA pool. Mirrors apps/api/scripts/seed_poverty_villages.py
@@ -153,7 +159,7 @@ async def ingest_tenant(
     if bbox is None:
         raise ValueError(f"No bbox for tenant {tenant_id}")
 
-    target_date = date or datetime.now(timezone.utc)
+    target_date = date or (datetime.now(timezone.utc) - timedelta(days=VIIRS_LATENCY_DAYS))
 
     granules = await viirs_client.search_granules(
         bbox=bbox, date=target_date, max_results=4,
