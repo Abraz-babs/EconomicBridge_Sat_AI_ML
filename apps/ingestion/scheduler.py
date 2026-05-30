@@ -33,6 +33,7 @@ from tasks.conflict_pipeline import run_daily_conflict_pipeline
 from tasks.firms_ingest import ingest_firms_for_tenant
 from tasks.mobility_ingest import ingest_mobility_worldbank_for_tenant
 from tasks.pass_imagery_sweep import run_pass_imagery_sweep
+from tasks.satellite_observations_ingest import ingest_all as satobs_ingest_all
 from tasks.skills_ingest import ingest_skills_for_tenant
 from tasks.worldpop_raster_sample import sweep_tenant as worldpop_sweep_tenant
 
@@ -47,6 +48,7 @@ JOB_ID_WORLDPOP_WEEKLY = "worldpop_weekly_sun_07utc"
 JOB_ID_MOBILITY_MONTHLY = "mobility_worldbank_monthly_1st_08utc"
 JOB_ID_AID_MONTHLY = "aid_hapi_monthly_1st_09utc"
 JOB_ID_SKILLS_MONTHLY = "skills_giga_monthly_1st_10utc"
+JOB_ID_SATOBS_WEEKLY = "satellite_obs_weekly_sat_05utc"
 
 
 def setup_scheduler() -> AsyncIOScheduler:
@@ -139,6 +141,18 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         max_instances=1,
         misfire_grace_time=43200,
+    )
+
+    scheduler.add_job(
+        run_weekly_satellite_observations,
+        # Sentinel-1/2 revisit every ~5-6 days; weekly keeps the SAR + NDVI
+        # time-series fresh for the ShockGuard / CropGuard live scans.
+        trigger=CronTrigger(day_of_week="sat", hour=5, minute=0, timezone="UTC"),
+        id=JOB_ID_SATOBS_WEEKLY,
+        name="CDSE Sentinel-1 SAR + Sentinel-2 NDVI observations (all pilots, weekly)",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=21600,
     )
 
     return scheduler
@@ -315,3 +329,24 @@ async def run_monthly_skills_ingest(
 
     log.info("scheduled.skills summary: %s", results)
     return results
+
+
+async def run_weekly_satellite_observations(
+    tenants: Iterable[str] | None = None,
+) -> dict[str, str]:
+    """Refresh CDSE Sentinel-1 SAR + Sentinel-2 NDVI time-series for the pilots.
+
+    Feeds the ShockGuard flood + CropGuard NDVI live scans. One ingest_all
+    call manages its own session; a tenant failure inside is logged there.
+    """
+    target = list(tenants) if tenants is not None else None
+    try:
+        results = await satobs_ingest_all(get_session_factory(), tenants=target)
+    except Exception as exc:  # noqa: BLE001 — log + surface, don't crash the scheduler
+        log.exception("scheduled.satobs FAILED: %s", exc)
+        return {"_error": str(exc)}
+    summary = {
+        r.tenant_id: f"S1={r.s1_points} S2={r.s2_points}" for r in results
+    }
+    log.info("scheduled.satobs summary: %s", summary)
+    return summary
