@@ -155,8 +155,13 @@ class Settings(BaseSettings):
     # pilots — a single giga_v1 source tag carries the combined per-LGA
     # row (school density from GIGA, internet/mobile coverage from ITU).
     # Empty keys => mock mode, same contract as NBS. NEVER hardcode keys.
+    # GIGA: register at https://maps.giga.global (Azure AD B2C sign-in) and
+    # request an API key via their API-keys admin dashboard; full API docs at
+    # https://maps.giga.global/docs/explore-api. Key auth model confirmed
+    # 2026-05; exact schools/measurements endpoint paths + JSON field names
+    # must be verified against a live key before the real fetch ships.
     giga_api_key: str = ""
-    giga_base_url: str = "https://giga.global/api"
+    giga_base_url: str = "https://maps.giga.global/api"
     itu_api_key: str = ""
     itu_base_url: str = "https://api.datahub.itu.int"
 

@@ -74,13 +74,36 @@ def _hash_unit(tenant_id: str, lga: str, salt: str) -> float:
     return int.from_bytes(h, "big") / 0xFFFFFFFF
 
 
+# Tenant → ISO country code for the GIGA country filter. GIGA maps schools
+# per country; we aggregate the returned school points to the tenant's LGAs.
+TENANT_TO_GIGA_COUNTRY: dict[str, str] = {
+    "kebbi": "NG", "benue": "NG", "plateau": "NG", "kaduna": "NG",
+    "niger": "NG", "zamfara": "NG", "nasarawa": "NG", "fct": "NG",
+    "ghana": "GH", "senegal": "SN",
+}
+
+
 class GigaItuStatsClient:
     """SkillsBridge indicators client with mock fallback.
 
-    Real path (keys configured) will hit GIGA's school-connectivity
-    GraphQL + ITU DataHub REST, then aggregate to per-LGA — not built
-    yet, so a configured key raises NotImplementedError rather than
-    silently returning mock data.
+    Real path (key configured) hits the GIGA Maps API
+    (https://maps.giga.global/docs/explore-api) for school locations +
+    connectivity status per country, then aggregates the school points to
+    per-LGA `school_count` / `school_density_per_10k` / `internet_coverage`.
+    ITU DataHub supplies national coverage context; the learning-gap index
+    stays a documented composite (same real-vs-modelled split as Module 06).
+
+    NOT yet wired to the live endpoint: the exact GIGA schools/measurements
+    paths + JSON field names need verifying against a real key + sample
+    response first (the docs page is JS-rendered and the key is gated behind
+    Azure AD B2C sign-up). Until then a configured key raises
+    NotImplementedError rather than silently shipping mock data as 'live'.
+
+    To finish (≈30 min once a key + one sample response are in hand):
+      1. confirm the schools endpoint path + auth header at /docs/explore-api
+      2. implement `_fetch_schools(country)` (httpx + Bearer/api-key header)
+      3. map school points → LGA via admin-2 name, fill SkillsIndicator
+      4. add a contract test against the real sample payload
     """
 
     def __init__(self) -> None:
@@ -98,8 +121,11 @@ class GigaItuStatsClient:
     ) -> list[SkillsIndicator]:
         if self.configured:
             raise NotImplementedError(
-                "GIGA/ITU live fetch not implemented yet — unset the API "
-                "keys to use mock mode, or implement the HTTP calls."
+                "GIGA/ITU live fetch not wired yet. Key auth is confirmed "
+                "(register at https://maps.giga.global, request a key via "
+                "their API-keys admin); the schools endpoint path + response "
+                "field names still need verifying against a live key before "
+                "this ships. Unset GIGA_API_KEY/ITU_API_KEY to use mock mode."
             )
         log.info(
             "giga_itu: no API key for tenant=%s — returning mock "
