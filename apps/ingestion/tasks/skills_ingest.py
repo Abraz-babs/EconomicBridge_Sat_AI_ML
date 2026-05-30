@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import set_tenant_schema
 from sources.giga_itu_stats import GigaItuStatsClient
+from sources.worldbank import TENANT_TO_ISO3, WorldBankClient, WorldBankError
 
 log = logging.getLogger(__name__)
 
@@ -49,8 +50,14 @@ async def ingest_skills_for_tenant(
     *,
     tenant_id: str,
     client: GigaItuStatsClient | None = None,
+    worldbank: WorldBankClient | None = None,
 ) -> SkillsIngestResult:
-    """Pull GIGA/ITU indicators for one tenant and upsert the live rows."""
+    """Pull GIGA school counts + World Bank ICT connectivity and upsert rows.
+
+    School counts come from live GIGA; connectivity (internet/mobile) is
+    anchored to the real World Bank national ICT figures — the commercial-safe
+    alternative to ITU. Both keyless/keyed external sources; mock when no GIGA.
+    """
     giga = client or GigaItuStatsClient()
     mock = not giga.configured
 
@@ -65,7 +72,20 @@ async def ingest_skills_for_tenant(
             lgas_found=0, rows_upserted=0, mock=mock,
         )
 
-    indicators = await giga.fetch_indicators(tenant_id, lga_coords)
+    # Real connectivity anchor from World Bank ICT (only on the live path).
+    net_pct = mob_pct = None
+    if not mock:
+        iso3 = TENANT_TO_ISO3.get(tenant_id)
+        if iso3:
+            try:
+                net_pct, mob_pct = await (worldbank or WorldBankClient()).fetch_ict(iso3)
+            except WorldBankError as exc:
+                log.warning("skills.ingest WB ICT degraded for %s: %s", tenant_id, exc)
+
+    indicators = await giga.fetch_indicators(
+        tenant_id, lga_coords,
+        national_internet_pct=net_pct, national_mobile_pct=mob_pct,
+    )
     observed = date.today()
     await set_tenant_schema(session, tenant_id)
 

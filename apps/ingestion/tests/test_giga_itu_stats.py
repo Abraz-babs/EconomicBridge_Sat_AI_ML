@@ -115,6 +115,24 @@ async def test_real_bins_schools_to_nearest_lga(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_real_connectivity_anchored_to_wb_national(monkeypatch):
+    """When World Bank national ICT figures are supplied, per-LGA internet sits
+    near the national rate (±spread), not the mock anchor."""
+    GigaItuStatsClient._schools_cache.clear()
+    schools = [{"longitude": 4.52, "latitude": 12.74}]
+    client = GigaItuStatsClient(http=httpx.AsyncClient(transport=_giga_transport(schools)))
+    monkeypatch.setattr(client._settings, "giga_api_key", "live-key")
+    out = await client.fetch_indicators(
+        "kebbi", {"Argungu": (4.52, 12.74), "Jega": (4.38, 12.22)},
+        national_internet_pct=41.0, national_mobile_pct=71.0,
+    )
+    for i in out:
+        assert abs(i.internet_coverage_pct - 41.0) <= 6.0  # within ±spread of WB
+        assert i.mobile_coverage_pct >= i.internet_coverage_pct
+    GigaItuStatsClient._schools_cache.clear()
+
+
+@pytest.mark.asyncio
 async def test_real_non_200_raises(monkeypatch):
     from sources.giga_itu_stats import GigaItuStatsError
     GigaItuStatsClient._schools_cache.clear()

@@ -55,6 +55,10 @@ INDICATOR_CPI = "FP.CPI.TOTL"
 # data ILOSTAT publishes but via the reliable keyless WB channel. Drives the
 # Module 06 income-opportunity score. Optional (degrades like CPI).
 INDICATOR_EMP_POP_RATIO = "SL.EMP.TOTL.SP.ZS"
+# ICT indicators (Module 07 connectivity) — keyless, CC BY 4.0 (commercial-OK),
+# the licence-safe alternative to ITU DataHub (CC BY-NC).
+INDICATOR_INTERNET_PCT = "IT.NET.USER.ZS"   # Individuals using the Internet, %
+INDICATOR_MOBILE_P100 = "IT.CEL.SETS.P2"    # Mobile subscriptions per 100 people
 
 # Tenant → ISO3. All pilots are anchored in USD; Nigerian tenants also get
 # a Naira figure from the local-currency series.
@@ -181,6 +185,19 @@ class WorldBankClient:
             employment_ratio=emp.value / 100.0 if emp else None,
             employment_year=emp.year if emp else None,
         )
+
+    async def fetch_ict(self, iso3: str) -> tuple[float | None, float | None]:
+        """National (internet_pct, mobile_pct) for a country — both 0..100.
+
+        Internet = individuals using the internet (%). Mobile = subscriptions
+        per 100 people, capped at 100 for a coverage-style reading. Either may
+        be None when the WB has no value. Optional fetches degrade to None.
+        """
+        net = await self._optional_observation(iso3, INDICATOR_INTERNET_PCT)
+        mob = await self._optional_observation(iso3, INDICATOR_MOBILE_P100)
+        internet_pct = net.value if net else None
+        mobile_pct = min(100.0, mob.value) if mob else None
+        return internet_pct, mobile_pct
 
     async def _optional_observation(
         self, iso3: str, indicator: str,

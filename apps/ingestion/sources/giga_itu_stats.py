@@ -141,12 +141,20 @@ class GigaItuStatsClient:
         return bool(self._settings.giga_api_key)
 
     async def fetch_indicators(
-        self, tenant_id: str, lga_coords: dict[str, tuple[float, float]],
+        self,
+        tenant_id: str,
+        lga_coords: dict[str, tuple[float, float]],
+        *,
+        national_internet_pct: float | None = None,
+        national_mobile_pct: float | None = None,
     ) -> list[SkillsIndicator]:
         """Return one SkillsIndicator per LGA.
 
         `lga_coords` is LGA name → (lon, lat) centroid (from the seed rows),
-        needed to bin GIGA school points to LGAs.
+        needed to bin GIGA school points to LGAs. When `national_internet_pct`
+        / `national_mobile_pct` are supplied (real World Bank ICT figures), the
+        per-LGA connectivity is anchored to them; otherwise connectivity is
+        modelled.
         """
         if not self.configured:
             log.info(
@@ -161,7 +169,10 @@ class GigaItuStatsClient:
             return self._mock_indicators(tenant_id, list(lga_coords))
 
         schools = await self._fetch_schools(iso3)
-        return self._real_indicators(tenant_id, lga_coords, schools)
+        return self._real_indicators(
+            tenant_id, lga_coords, schools,
+            national_internet_pct, national_mobile_pct,
+        )
 
     async def _fetch_schools(self, iso3: str) -> list[tuple[float, float]]:
         """All (lon, lat) school points for a country from GIGA (cached)."""
@@ -200,36 +211,59 @@ class GigaItuStatsClient:
         tenant_id: str,
         lga_coords: dict[str, tuple[float, float]],
         schools: list[tuple[float, float]],
+        national_internet_pct: float | None = None,
+        national_mobile_pct: float | None = None,
     ) -> list[SkillsIndicator]:
-        """Bin real GIGA schools to LGAs; keep connectivity fields modelled."""
+        """Bin real GIGA schools to LGAs. Connectivity is anchored to the real
+        World Bank national ICT figures when supplied, else modelled."""
         counts: dict[str, int] = {lga: 0 for lga in lga_coords}
         for lon, lat in schools:
             lga = _nearest_lga(lon, lat, lga_coords)
             if lga is not None:
                 counts[lga] += 1
 
-        # Modelled fields reuse the mock generator (deterministic), then we
-        # overwrite school_count + density with the REAL GIGA figures.
+        # Modelled fields reuse the mock generator (deterministic); we overwrite
+        # school_count + density with REAL GIGA figures, and connectivity with
+        # the REAL national ICT anchor (+ small per-LGA modulation) when given.
         modelled = {m.lga: m for m in self._mock_indicators(tenant_id, list(lga_coords))}
         out: list[SkillsIndicator] = []
         for lga, m in modelled.items():
             real_count = counts.get(lga, 0)
             youth = m.youth_population
             density = round(real_count / max(1.0, youth / 10_000), 2)
+
+            if national_internet_pct is not None:
+                # ±6pt per-LGA spread around the real national internet rate.
+                net_unit = _hash_unit(tenant_id, lga, "wb_net")
+                internet = max(0.5, min(99.0, national_internet_pct + (net_unit - 0.5) * 12))
+                base_mob = national_mobile_pct if national_mobile_pct is not None else internet + 20
+                mobile = max(internet, min(99.5, base_mob + (net_unit - 0.5) * 6))
+                # Recompute learning gap from the real connectivity + density.
+                density_norm = min(1.0, density / 5.0)
+                gap = round(max(0.05, min(0.98,
+                    (1 - internet / 100.0) * 0.4
+                    + (1 - density_norm) * 0.3
+                    + (1 - m.electricity_reliability) * 0.3)), 3)
+                internet = round(internet, 1)
+                mobile = round(mobile, 1)
+            else:
+                internet, mobile, gap = (
+                    m.internet_coverage_pct, m.mobile_coverage_pct, m.learning_gap_index)
+
             out.append(SkillsIndicator(
                 lga=lga,
                 school_count=real_count,                 # REAL (GIGA)
                 school_density_per_10k=density,          # REAL count / modelled youth
-                internet_coverage_pct=m.internet_coverage_pct,   # modelled
-                mobile_coverage_pct=m.mobile_coverage_pct,       # modelled
+                internet_coverage_pct=internet,          # REAL anchor (WB) or modelled
+                mobile_coverage_pct=mobile,              # REAL anchor (WB) or modelled
                 electricity_reliability=m.electricity_reliability,  # modelled
                 youth_population=youth,                   # modelled
-                learning_gap_index=m.learning_gap_index, # modelled
+                learning_gap_index=gap,
                 source=SOURCE_GIGA,
             ))
         log.info(
-            "giga: tenant=%s real school_count total=%d across %d LGAs",
-            tenant_id, sum(counts.values()), len(counts),
+            "giga: tenant=%s real school_count total=%d net_anchor=%s",
+            tenant_id, sum(counts.values()), national_internet_pct,
         )
         return out
 
