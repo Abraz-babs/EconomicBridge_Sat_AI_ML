@@ -168,3 +168,7 @@ scripts/*.exe
 scripts/*.msi
 scripts/*.zip
 scripts/*.tar.gz
+
+# Terraform plan artifacts (may contain sensitive values)
+tfplan
+*.tfplan
