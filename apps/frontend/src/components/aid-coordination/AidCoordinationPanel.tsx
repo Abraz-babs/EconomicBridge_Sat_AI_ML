@@ -114,7 +114,7 @@ export default function AidCoordinationPanel() {
             Sources: {stats?.sources.join(', ') ?? '—'}
           </span>
         </div>
-        <AidCoverageMap tenant={activeTenant} lgaPoints={stats?.lga_points ?? []} />
+        <AidCoverageMap tenant={activeTenant} lgaPoints={stats?.lga_points ?? []} sources={stats?.sources ?? []} />
       </div>
 
       {/* COVERAGE MATRIX */}

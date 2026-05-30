@@ -92,6 +92,7 @@ export default function CropGuardPanel() {
     if (v.endsWith('-trained')) return { label: 'TRAINED', cls: 'cg-mode-trained' };
     if (v.endsWith('-untuned')) return { label: 'UNTUNED', cls: 'cg-mode-untuned' };
     if (v.endsWith('-stub')) return { label: 'STUB', cls: 'cg-mode-stub' };
+    if (v.endsWith('-seed')) return { label: 'DEMO', cls: 'cg-mode-untuned' };
     return { label: v, cls: 'cg-mode-stub' };
   }, [lastResult, recent]);
 

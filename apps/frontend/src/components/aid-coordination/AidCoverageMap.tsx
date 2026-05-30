@@ -36,10 +36,11 @@ function tooltipFor(obj: unknown): string | null {
 interface Props {
   tenant: Tenant;
   lgaPoints: LgaPoint[];
+  sources?: string[];
 }
 
 
-export default function AidCoverageMap({ tenant, lgaPoints }: Props) {
+export default function AidCoverageMap({ tenant, lgaPoints, sources = [] }: Props) {
   const [layers, setLayers] = useState<unknown[]>([]);
   const [pulse, setPulse] = useState(0);
 
@@ -148,7 +149,7 @@ export default function AidCoverageMap({ tenant, lgaPoints }: Props) {
         <>
           {lgaPoints.length} LGAs · {gapCount} gaps · {dupCount} duplications<br />
           Circle size ≈ agency count · colour ≈ coverage status<br />
-          <span className="fp-map-overlay__warn">DEV — seed data</span>
+          Sources: {sources.length > 0 ? sources.join(' + ') : '—'}
         </>
       }
     />

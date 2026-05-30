@@ -143,6 +143,14 @@ export default function ShockGuardPanel() {
             <option key={t.id} value={t.id}>{t.name}</option>
           ))}
         </select>
+        <button
+          type="button"
+          className="fp-refresh-btn"
+          onClick={() => eventsQuery.refetch()}
+          disabled={eventsQuery.isFetching}
+        >
+          {eventsQuery.isFetching ? 'Refreshing…' : 'Refresh'}
+        </button>
       </div>
 
       {/* STATS */}
