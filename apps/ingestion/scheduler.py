@@ -33,6 +33,7 @@ from tasks.conflict_pipeline import run_daily_conflict_pipeline
 from tasks.firms_ingest import ingest_firms_for_tenant
 from tasks.mobility_ingest import ingest_mobility_worldbank_for_tenant
 from tasks.pass_imagery_sweep import run_pass_imagery_sweep
+from tasks.skills_ingest import ingest_skills_for_tenant
 from tasks.worldpop_raster_sample import sweep_tenant as worldpop_sweep_tenant
 
 log = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ JOB_ID_PASS_IMAGERY_SWEEP = "pass_imagery_sweep_15min"
 JOB_ID_WORLDPOP_WEEKLY = "worldpop_weekly_sun_07utc"
 JOB_ID_MOBILITY_MONTHLY = "mobility_worldbank_monthly_1st_08utc"
 JOB_ID_AID_MONTHLY = "aid_hapi_monthly_1st_09utc"
+JOB_ID_SKILLS_MONTHLY = "skills_giga_monthly_1st_10utc"
 
 
 def setup_scheduler() -> AsyncIOScheduler:
@@ -122,6 +124,18 @@ def setup_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(day=1, hour=9, minute=0, timezone="UTC"),
         id=JOB_ID_AID_MONTHLY,
         name="HDX HAPI aid-coordination coverage (all pilots, monthly)",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=43200,
+    )
+
+    scheduler.add_job(
+        run_monthly_skills_ingest,
+        # GIGA school data updates slowly; monthly on the 1st at 10:00 UTC,
+        # after the aid job.
+        trigger=CronTrigger(day=1, hour=10, minute=0, timezone="UTC"),
+        id=JOB_ID_SKILLS_MONTHLY,
+        name="UNICEF GIGA school counts (all pilots, monthly)",
         replace_existing=True,
         max_instances=1,
         misfire_grace_time=43200,
@@ -271,4 +285,33 @@ async def run_monthly_aid_ingest(
                 log.exception("scheduled.aid FAILED tenant=%s: %s", tenant_id, exc)
 
     log.info("scheduled.aid summary: %s", results)
+    return results
+
+
+async def run_monthly_skills_ingest(
+    tenants: Iterable[str] | None = None,
+) -> dict[str, str]:
+    """Refresh Module 07 school counts from UNICEF GIGA for every pilot, monthly.
+
+    Real per-LGA school counts when GIGA_API_KEY is set; mock fallback when
+    not. Failures for one tenant don't abort the rest.
+    """
+    target = list(tenants) if tenants is not None else sorted(PILOT_TENANT_IDS)
+    factory = get_session_factory()
+    results: dict[str, str] = {}
+
+    for tenant_id in target:
+        async with factory() as session:
+            try:
+                outcome = await ingest_skills_for_tenant(session, tenant_id=tenant_id)
+                results[tenant_id] = (
+                    f"{outcome.rows_upserted} rows "
+                    f"({'mock' if outcome.mock else 'live'})"
+                )
+                log.info("scheduled.skills tenant=%s outcome=%s", tenant_id, results[tenant_id])
+            except Exception as exc:  # noqa: BLE001 — log every failure, continue
+                results[tenant_id] = f"failed: {exc!s}"
+                log.exception("scheduled.skills FAILED tenant=%s: %s", tenant_id, exc)
+
+    log.info("scheduled.skills summary: %s", results)
     return results

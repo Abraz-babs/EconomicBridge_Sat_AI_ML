@@ -65,8 +65,8 @@ export default function SkillsBridgePanel() {
         <div>
           <div className="cg-title">SkillsBridge</div>
           <div className="cg-subtitle">
-            Per-LGA education access + connectivity gap index ·
-            Digital learning infrastructure prioritisation · UNICEF GIGA / ITU (planned)
+            Per-LGA school counts from live UNICEF GIGA · connectivity +
+            learning-gap index modelled · ITU coverage (planned)
           </div>
         </div>
         <div className={`cg-mode-badge ${badge.cls}`}>{badge.label}</div>

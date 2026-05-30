@@ -65,7 +65,7 @@ async def ingest_skills_for_tenant(
             lgas_found=0, rows_upserted=0, mock=mock,
         )
 
-    indicators = await giga.fetch_indicators(tenant_id, list(lga_coords))
+    indicators = await giga.fetch_indicators(tenant_id, lga_coords)
     observed = date.today()
     await set_tenant_schema(session, tenant_id)
 

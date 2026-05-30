@@ -23,11 +23,29 @@ import hashlib
 import logging
 from dataclasses import dataclass
 
+import httpx
+
 from config import get_settings
 
 log = logging.getLogger(__name__)
 
 SOURCE_GIGA = "giga_v1"
+
+# Live GIGA Maps API (Node service). The `maps.giga.global` host only serves
+# the web app; the api-key data API lives here. Auth: Authorization: Bearer.
+GIGA_API_HOST = "https://uni-ooi-giga-maps-service.azurewebsites.net/api/v1"
+
+# Tenant → ISO3 for the GIGA country filter (/schools_location/country/{ISO3}).
+TENANT_TO_GIGA_COUNTRY: dict[str, str] = {
+    "kebbi": "NGA", "benue": "NGA", "plateau": "NGA", "kaduna": "NGA",
+    "niger": "NGA", "zamfara": "NGA", "nasarawa": "NGA", "fct": "NGA",
+    "ghana": "GHA", "senegal": "SEN",
+}
+
+# A GIGA school is attributed to the nearest pilot-LGA centroid only if within
+# this radius (~0.45° ≈ 50 km), so schools far from any pilot LGA aren't
+# misattributed. Pilot LGAs are large, so this captures the LGA's schools well.
+SCHOOL_BIN_RADIUS_DEG = 0.45
 
 # (internet_pct_anchor, spread, school_density_anchor, electricity_anchor)
 # Mirrors scripts/seed_skills_indicators.py TENANT_SKILLS_PROFILE so mock
@@ -74,64 +92,151 @@ def _hash_unit(tenant_id: str, lga: str, salt: str) -> float:
     return int.from_bytes(h, "big") / 0xFFFFFFFF
 
 
-# Tenant → ISO country code for the GIGA country filter. GIGA maps schools
-# per country; we aggregate the returned school points to the tenant's LGAs.
-TENANT_TO_GIGA_COUNTRY: dict[str, str] = {
-    "kebbi": "NG", "benue": "NG", "plateau": "NG", "kaduna": "NG",
-    "niger": "NG", "zamfara": "NG", "nasarawa": "NG", "fct": "NG",
-    "ghana": "GH", "senegal": "SN",
-}
+def _nearest_lga(
+    lon: float, lat: float, lga_coords: dict[str, tuple[float, float]],
+) -> str | None:
+    """LGA whose centroid is closest to (lon, lat), or None if all are beyond
+    SCHOOL_BIN_RADIUS_DEG (so a far-away school isn't misattributed)."""
+    best_lga: str | None = None
+    best_d2 = SCHOOL_BIN_RADIUS_DEG ** 2
+    for lga, (clon, clat) in lga_coords.items():
+        d2 = (lon - clon) ** 2 + (lat - clat) ** 2
+        if d2 <= best_d2:
+            best_d2 = d2
+            best_lga = lga
+    return best_lga
 
 
 class GigaItuStatsClient:
-    """SkillsBridge indicators client with mock fallback.
+    """SkillsBridge indicators client — real GIGA school data + mock fallback.
 
-    Real path (key configured) hits the GIGA Maps API
-    (https://maps.giga.global/docs/explore-api) for school locations +
-    connectivity status per country, then aggregates the school points to
-    per-LGA `school_count` / `school_density_per_10k` / `internet_coverage`.
-    ITU DataHub supplies national coverage context; the learning-gap index
-    stays a documented composite (same real-vs-modelled split as Module 06).
+    Real path (GIGA key configured): pulls every school's location for the
+    tenant's country from the GIGA Maps API
+    (`/schools_location/country/{ISO3}`, Authorization: Bearer) and bins the
+    school points to the tenant's LGAs by nearest centroid → REAL per-LGA
+    `school_count` and `school_density_per_10k`.
 
-    NOT yet wired to the live endpoint: the exact GIGA schools/measurements
-    paths + JSON field names need verifying against a real key + sample
-    response first (the docs page is JS-rendered and the key is gated behind
-    Azure AD B2C sign-up). Until then a configured key raises
-    NotImplementedError rather than silently shipping mock data as 'live'.
+    What stays MODELLED (this GIGA key is scoped to School Location only;
+    connectivity/measurements endpoints 404): `internet_coverage_pct`,
+    `mobile_coverage_pct`, `electricity_reliability`, `learning_gap_index`,
+    and `youth_population`. Same documented real-vs-modelled split as
+    Module 06. To make connectivity real too, request the "School
+    Connectivity" API category on the GIGA key.
 
-    To finish (≈30 min once a key + one sample response are in hand):
-      1. confirm the schools endpoint path + auth header at /docs/explore-api
-      2. implement `_fetch_schools(country)` (httpx + Bearer/api-key header)
-      3. map school points → LGA via admin-2 name, fill SkillsIndicator
-      4. add a contract test against the real sample payload
+    Mock path (no key): deterministic synthetic indicators (unchanged).
     """
 
-    def __init__(self) -> None:
+    # Per-process cache: country ISO3 → list of (lon, lat) school points.
+    # The 8 Nigerian tenants share NGA's ~109k schools, so we fetch once.
+    _schools_cache: dict[str, list[tuple[float, float]]] = {}
+
+    def __init__(self, *, http: httpx.AsyncClient | None = None) -> None:
         self._settings = get_settings()
+        self._http = http
 
     @property
     def configured(self) -> bool:
-        s = self._settings
-        # Either body counts as "configured" — GIGA for schools or ITU
-        # for coverage. In practice the operator sets both.
-        return bool(s.giga_api_key or s.itu_api_key)
+        # GIGA key drives the real school feed. (ITU is non-commercial and
+        # left unset for the commercial pilot.)
+        return bool(self._settings.giga_api_key)
 
     async def fetch_indicators(
-        self, tenant_id: str, lgas: list[str],
+        self, tenant_id: str, lga_coords: dict[str, tuple[float, float]],
     ) -> list[SkillsIndicator]:
-        if self.configured:
-            raise NotImplementedError(
-                "GIGA/ITU live fetch not wired yet. Key auth is confirmed "
-                "(register at https://maps.giga.global, request a key via "
-                "their API-keys admin); the schools endpoint path + response "
-                "field names still need verifying against a live key before "
-                "this ships. Unset GIGA_API_KEY/ITU_API_KEY to use mock mode."
+        """Return one SkillsIndicator per LGA.
+
+        `lga_coords` is LGA name → (lon, lat) centroid (from the seed rows),
+        needed to bin GIGA school points to LGAs.
+        """
+        if not self.configured:
+            log.info(
+                "giga_itu: no GIGA key for tenant=%s — mock indicators (%d LGAs)",
+                tenant_id, len(lga_coords),
             )
+            return self._mock_indicators(tenant_id, list(lga_coords))
+
+        iso3 = TENANT_TO_GIGA_COUNTRY.get(tenant_id)
+        if not iso3:
+            log.warning("giga: no ISO3 for tenant=%s — mock", tenant_id)
+            return self._mock_indicators(tenant_id, list(lga_coords))
+
+        schools = await self._fetch_schools(iso3)
+        return self._real_indicators(tenant_id, lga_coords, schools)
+
+    async def _fetch_schools(self, iso3: str) -> list[tuple[float, float]]:
+        """All (lon, lat) school points for a country from GIGA (cached)."""
+        if iso3 in self._schools_cache:
+            return self._schools_cache[iso3]
+        url = f"{GIGA_API_HOST}/schools_location/country/{iso3}"
+        headers = {
+            "Authorization": f"Bearer {self._settings.giga_api_key}",
+            "Accept": "application/json",
+        }
+        async with self._http_ctx() as client:
+            resp = await client.get(url, headers=headers, timeout=120.0)
+        if resp.status_code != 200:
+            raise GigaItuStatsError(
+                f"GIGA schools_location {iso3} {resp.status_code}: {resp.text[:200]}"
+            )
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            raise GigaItuStatsError(f"GIGA {iso3}: non-JSON body") from exc
+        rows = payload.get("data") if isinstance(payload, dict) else payload
+        points: list[tuple[float, float]] = []
+        for r in rows or []:
+            lon, lat = r.get("longitude"), r.get("latitude")
+            if lon is not None and lat is not None:
+                try:
+                    points.append((float(lon), float(lat)))
+                except (TypeError, ValueError):
+                    continue
+        self._schools_cache[iso3] = points
+        log.info("giga: fetched %d schools for %s", len(points), iso3)
+        return points
+
+    def _real_indicators(
+        self,
+        tenant_id: str,
+        lga_coords: dict[str, tuple[float, float]],
+        schools: list[tuple[float, float]],
+    ) -> list[SkillsIndicator]:
+        """Bin real GIGA schools to LGAs; keep connectivity fields modelled."""
+        counts: dict[str, int] = {lga: 0 for lga in lga_coords}
+        for lon, lat in schools:
+            lga = _nearest_lga(lon, lat, lga_coords)
+            if lga is not None:
+                counts[lga] += 1
+
+        # Modelled fields reuse the mock generator (deterministic), then we
+        # overwrite school_count + density with the REAL GIGA figures.
+        modelled = {m.lga: m for m in self._mock_indicators(tenant_id, list(lga_coords))}
+        out: list[SkillsIndicator] = []
+        for lga, m in modelled.items():
+            real_count = counts.get(lga, 0)
+            youth = m.youth_population
+            density = round(real_count / max(1.0, youth / 10_000), 2)
+            out.append(SkillsIndicator(
+                lga=lga,
+                school_count=real_count,                 # REAL (GIGA)
+                school_density_per_10k=density,          # REAL count / modelled youth
+                internet_coverage_pct=m.internet_coverage_pct,   # modelled
+                mobile_coverage_pct=m.mobile_coverage_pct,       # modelled
+                electricity_reliability=m.electricity_reliability,  # modelled
+                youth_population=youth,                   # modelled
+                learning_gap_index=m.learning_gap_index, # modelled
+                source=SOURCE_GIGA,
+            ))
         log.info(
-            "giga_itu: no API key for tenant=%s — returning mock "
-            "indicators (%d LGAs)", tenant_id, len(lgas),
+            "giga: tenant=%s real school_count total=%d across %d LGAs",
+            tenant_id, sum(counts.values()), len(counts),
         )
-        return self._mock_indicators(tenant_id, lgas)
+        return out
+
+    def _http_ctx(self) -> "httpx.AsyncClient | _Borrowed":
+        if self._http is not None:
+            return _Borrowed(self._http)
+        return httpx.AsyncClient()
 
     def _mock_indicators(
         self, tenant_id: str, lgas: list[str],
@@ -180,3 +285,16 @@ class GigaItuStatsClient:
                 source=SOURCE_GIGA,
             ))
         return out
+
+
+class _Borrowed:
+    """Async-context wrapper that does NOT close an injected client (tests)."""
+
+    def __init__(self, client: httpx.AsyncClient) -> None:
+        self._client = client
+
+    async def __aenter__(self) -> httpx.AsyncClient:
+        return self._client
+
+    async def __aexit__(self, *_exc: object) -> None:
+        return None

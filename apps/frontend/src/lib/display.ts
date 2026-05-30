@@ -15,7 +15,8 @@
  */
 const DEMO_SOURCES = new Set([
   "seed_v1",
-  "giga_v1",        // GIGA/ITU client is mock-fallback until keys land
+  // giga_v1 is now REAL: per-LGA school counts come from the live UNICEF GIGA
+  // Maps API (connectivity within it stays modelled — see the Skills panel note).
   "nbs_col_v1",     // NBS client is mock-fallback (no public API)
   "ecowas_stat_v1", // ECOWAS STAT client is mock-fallback
 ]);
