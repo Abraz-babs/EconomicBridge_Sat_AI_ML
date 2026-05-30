@@ -172,3 +172,6 @@ scripts/*.tar.gz
 # Terraform plan artifacts (may contain sensitive values)
 tfplan
 *.tfplan
+
+# Standalone landing-page preview (embeds public token; ported to Next later)
+landing-preview/
