@@ -188,6 +188,13 @@ class SentinelStatisticalClient:
 
 # ─── Request / response shaping ──────────────────────────────────────────
 
+# Output resolution for the aggregation grid, in degrees (bounds CRS is
+# EPSG:4326). CDSE's Statistical API rejects requests coarser than 1500 m/px;
+# our state-sized bboxes otherwise auto-resolve to ~2600 m/px and 400 out.
+# 0.0125° ≈ 1.39 km/px at the equator — safely under the limit, and coarse
+# enough to keep the processing-unit cost low for a whole-state aggregation.
+AGG_RESOLUTION_DEG = 0.0125
+
 
 def _build_request_body(
     *,
@@ -231,6 +238,10 @@ def _build_request_body(
                 "to": _to_iso_utc(end),
             },
             "aggregationInterval": {"of": agg_interval},
+            # Pin the output grid resolution so CDSE doesn't auto-pick a
+            # value coarser than its 1500 m/px limit for large bboxes.
+            "resx": AGG_RESOLUTION_DEG,
+            "resy": AGG_RESOLUTION_DEG,
             "evalscript": evalscript,
         },
         "calculations": {
