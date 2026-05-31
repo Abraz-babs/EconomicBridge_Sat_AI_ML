@@ -173,8 +173,11 @@ async def _persist_tiled(
                 :prediction, :confidence, :confidence_band, :requires_human_review,
                 :predicted_class, CAST(:top_k AS JSONB),
                 'inline', NULL, NULL, :image_sha256,
-                CASE WHEN :lon IS NULL OR :lat IS NULL THEN NULL
-                     ELSE ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
+                CASE WHEN CAST(:lon AS double precision) IS NULL
+                       OR CAST(:lat AS double precision) IS NULL THEN NULL
+                     ELSE ST_SetSRID(ST_MakePoint(
+                         CAST(:lon AS double precision),
+                         CAST(:lat AS double precision)), 4326)
                 END,
                 :lga, :zone_name,
                 :inference_time_ms, :trace_id, :created_at

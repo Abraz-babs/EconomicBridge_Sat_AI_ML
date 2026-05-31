@@ -154,8 +154,11 @@ async def _persist_prediction(
                 :prediction, :confidence, :confidence_band, :requires_human_review,
                 :crop, :yield_t_ha, :pi_low, :pi_high,
                 CAST(:features AS JSONB), CAST(:shap_values AS JSONB), :shap_base_value,
-                CASE WHEN :lon IS NULL OR :lat IS NULL THEN NULL
-                     ELSE ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)
+                CASE WHEN CAST(:lon AS double precision) IS NULL
+                       OR CAST(:lat AS double precision) IS NULL THEN NULL
+                     ELSE ST_SetSRID(ST_MakePoint(
+                         CAST(:lon AS double precision),
+                         CAST(:lat AS double precision)), 4326)
                 END,
                 :lga, :zone_name,
                 :inference_time_ms, :trace_id, :created_at

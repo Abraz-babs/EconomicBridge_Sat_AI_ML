@@ -117,6 +117,10 @@ apps/ml/artifacts/*.h5
 # Keep directory structure and README
 !models/artifacts/.gitkeep
 !models/artifacts/README.md
+
+# CropGuard training data — large image corpora, never committed (operator-local).
+apps/ml/.plantvillage_src/
+data/cropguard/
 !apps/ml/artifacts/.gitkeep
 
 # ─────────────────────────────────────────

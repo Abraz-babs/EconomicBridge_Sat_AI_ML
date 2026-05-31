@@ -50,6 +50,8 @@ class CropPredictionRow(BaseModel):
     # Field/farm point when the caller attached one — drives the map marker.
     # Null for uploads with no GPS (map then synthesises a position).
     location: LonLat | None = None
+    # LGA the sample was captured in (where the disease was seen), when known.
+    lga: str | None = None
 
     model_name: str
     model_version: str

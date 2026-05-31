@@ -70,7 +70,7 @@ async def list_predictions(
                    requires_human_review, top_k,
                    image_source, image_s3_bucket, image_s3_key,
                    model_name, model_version, inference_time_ms,
-                   created_at,
+                   created_at, lga,
                    ST_X(location) AS lon, ST_Y(location) AS lat
               FROM crop_predictions
              ORDER BY created_at DESC
@@ -124,6 +124,7 @@ def _row_to_response(row: dict) -> CropPredictionRow:
             if row.get("lon") is not None and row.get("lat") is not None
             else None
         ),
+        lga=row.get("lga"),
         model_name=row["model_name"],
         model_version=row["model_version"],
         inference_time_ms=row.get("inference_time_ms"),
