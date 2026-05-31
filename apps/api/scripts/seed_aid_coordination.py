@@ -36,19 +36,34 @@ from services.tenants import PILOT_TENANT_IDS, tenant_schema_name  # noqa: E402
 SEED_SOURCE = "seed_v1"
 
 
-# Global agency registry — mirrors the 10-row AGENCY_POOL in the frontend.
+# Global agency registry. `country` is the SCOPE: 'international' agencies
+# operate everywhere; national agencies only appear in their own country
+# (a Nigerian agency like NEMA must never show up in Ghana/Senegal).
 AGENCY_REGISTRY: list[dict[str, str]] = [
     {"slug": "wfp",         "name": "World Food Programme",      "sector": "food security",    "country": "international"},
     {"slug": "unhcr",       "name": "UNHCR",                       "sector": "displacement",     "country": "international"},
     {"slug": "unicef",      "name": "UNICEF",                      "sector": "child welfare",    "country": "international"},
-    {"slug": "red_cross",   "name": "Nigerian Red Cross",          "sector": "emergency relief", "country": "nigeria"},
-    {"slug": "nema",        "name": "NEMA",                        "sector": "disaster relief",  "country": "nigeria"},
     {"slug": "msf",         "name": "Médecins Sans Frontières",    "sector": "medical",          "country": "international"},
     {"slug": "save_kids",   "name": "Save the Children",           "sector": "child welfare",    "country": "international"},
     {"slug": "oxfam",       "name": "Oxfam",                       "sector": "food security",    "country": "international"},
     {"slug": "mercy",       "name": "Mercy Corps",                 "sector": "livelihoods",      "country": "international"},
     {"slug": "norwegian",   "name": "Norwegian Refugee Council",   "sector": "displacement",     "country": "international"},
+    # National agencies — scoped to their own country only.
+    {"slug": "red_cross",   "name": "Nigerian Red Cross",          "sector": "emergency relief", "country": "nigeria"},
+    {"slug": "nema",        "name": "NEMA",                        "sector": "disaster relief",  "country": "nigeria"},
+    {"slug": "nadmo",       "name": "NADMO (Ghana)",               "sector": "disaster relief",  "country": "ghana"},
+    {"slug": "gh_red_cross", "name": "Ghana Red Cross Society",    "sector": "emergency relief", "country": "ghana"},
+    {"slug": "sn_red_cross", "name": "Croix-Rouge sénégalaise",    "sector": "emergency relief", "country": "senegal"},
+    {"slug": "sn_anacim",   "name": "ANACIM (Senegal)",            "sector": "disaster relief",  "country": "senegal"},
 ]
+
+# Tenant → country, so each tenant only draws from international + its own
+# national agencies. Nigerian states all map to 'nigeria'.
+TENANT_COUNTRY: dict[str, str] = {
+    "kebbi": "nigeria", "benue": "nigeria", "plateau": "nigeria",
+    "kaduna": "nigeria", "niger": "nigeria", "zamfara": "nigeria",
+    "nasarawa": "nigeria", "fct": "nigeria", "ghana": "ghana", "senegal": "senegal",
+}
 
 LGA_POOL: dict[str, list[str]] = {
     "kebbi":   ["Argungu", "Birnin Kebbi", "Dandi", "Gwandu", "Jega", "Yauri", "Zuru", "Bunza"],
@@ -98,11 +113,12 @@ def _coverage_for(tenant_id: str) -> list[SeedCoverage]:
     rng = _Rng(_djb2(tenant_id))
     agency_count = 5 + int(rng.next() * 4)  # 5..8
 
-    # Sort full agency pool by hash(tenant + slug), pick the first N.
-    shuffled = sorted(
-        AGENCY_REGISTRY,
-        key=lambda a: _djb2(tenant_id + a["slug"]),
-    )
+    # Scope to international + this tenant's own national agencies, so e.g.
+    # NEMA (Nigeria) never appears in Ghana. Then sort by hash(tenant+slug)
+    # and pick the first N for a stable per-tenant selection.
+    country = TENANT_COUNTRY.get(tenant_id, "nigeria")
+    pool = [a for a in AGENCY_REGISTRY if a["country"] in ("international", country)]
+    shuffled = sorted(pool, key=lambda a: _djb2(tenant_id + a["slug"]))
     picked = shuffled[:agency_count]
 
     coverage: list[SeedCoverage] = []

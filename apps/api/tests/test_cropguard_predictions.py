@@ -21,6 +21,34 @@ from fastapi.testclient import TestClient
 
 from main import app
 from routers.cropguard import _row_to_response
+from scripts.seed_cropguard_predictions import TENANT_CROPS, _classes_for
+
+
+# ─── Per-state crop realism (regression: Kebbi must not grow plantain) ─────
+
+# Humid-zone crops that have no business in the arid NW states.
+_HUMID_CROPS = ("plantain", "cassava")
+
+
+def test_arid_states_have_no_humid_crops():
+    for tenant in ("kebbi", "zamfara"):
+        classes = _classes_for(tenant, 5)
+        for c in classes:
+            crop = c.rsplit("_", 1)[0] if c.endswith("_healthy") else c.split("_", 1)[0]
+            assert not c.startswith(_HUMID_CROPS), f"{tenant} got {c} — wrong for arid NW"
+
+
+def test_seed_classes_stay_within_tenant_crop_profile():
+    for tenant, crops in TENANT_CROPS.items():
+        for c in _classes_for(tenant, 5):
+            crop = c.split("_", 1)[0]
+            assert crop in crops, f"{tenant} produced {c} outside its crop profile {crops}"
+
+
+def test_humid_tenants_can_grow_plantain():
+    # Ghana + Benue genuinely grow plantain — it should be allowed there.
+    assert "plantain" in TENANT_CROPS["ghana"]
+    assert "plantain" in TENANT_CROPS["benue"]
 
 
 @pytest.fixture

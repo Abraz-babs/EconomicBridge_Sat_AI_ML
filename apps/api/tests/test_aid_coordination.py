@@ -9,6 +9,7 @@ from scripts.seed_aid_coordination import (
     AGENCY_REGISTRY,
     LGA_POOL,
     SEED_SOURCE,
+    TENANT_COUNTRY,
     _coverage_for,
     _djb2,
     _Rng,
@@ -93,6 +94,22 @@ def test_coverage_for_agency_slugs_are_in_registry():
     cov = _coverage_for("plateau")
     seed_slugs = {c.agency_slug for c in cov}
     assert seed_slugs <= registry_slugs
+
+
+def test_agencies_never_cross_borders():
+    """Regression: a national agency (e.g. NEMA, Nigeria) must NOT appear in
+    another country's coverage. Each tenant draws only international + its own
+    national agencies."""
+    scope = {a["slug"]: a["country"] for a in AGENCY_REGISTRY}
+    for tenant, country in TENANT_COUNTRY.items():
+        slugs = {c.agency_slug for c in _coverage_for(tenant)}
+        for slug in slugs:
+            assert scope[slug] in ("international", country), (
+                f"{slug} ({scope[slug]}) leaked into {tenant} ({country})"
+            )
+    # Specifically: NEMA never in Ghana/Senegal.
+    assert "nema" not in {c.agency_slug for c in _coverage_for("ghana")}
+    assert "nema" not in {c.agency_slug for c in _coverage_for("senegal")}
 
 
 def test_coverage_for_lgas_are_in_pool():

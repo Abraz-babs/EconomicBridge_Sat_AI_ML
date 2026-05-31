@@ -50,15 +50,44 @@ CROP_CLASSES: tuple[str, ...] = (
     "plantain_healthy", "plantain_black_sigatoka",
 )
 
-# Disease-heavy cycle with one healthy field per tenant. Several diseased
-# rows land >= 0.80 disease mass so the high-severity halo fires.
-_CLASS_CYCLE: tuple[str, ...] = (
-    "cassava_mosaic_disease",
-    "maize_northern_blight",
-    "tomato_late_blight",
-    "rice_healthy",
-    "plantain_black_sigatoka",
-)
+# What each tenant ACTUALLY cultivates, restricted to the 5 crops the
+# classifier knows (cassava, maize, rice, tomato, plantain). Plantain +
+# cassava are humid-zone crops, so the arid NW states (Kebbi, Zamfara) get
+# cereals/irrigated crops only — never plantain. (The model can't represent
+# millet/sorghum/wheat/yam, so those real staples are simply omitted rather
+# than mislabelled.)
+TENANT_CROPS: dict[str, list[str]] = {
+    "kebbi":    ["rice", "maize", "tomato"],            # Sokoto-Rima rice belt; no plantain/cassava
+    "benue":    ["cassava", "rice", "maize", "plantain"],  # food basket; plantain in humid south
+    "plateau":  ["maize", "tomato", "rice"],            # Jos highlands — veg/tomato
+    "kaduna":   ["maize", "cassava", "rice", "tomato"],
+    "niger":    ["rice", "cassava", "maize"],
+    "zamfara":  ["maize", "rice"],                       # semi-arid NW; no plantain/cassava
+    "nasarawa": ["rice", "cassava", "maize"],
+    "fct":      ["maize", "cassava", "tomato"],
+    "ghana":    ["cassava", "plantain", "maize", "rice"],  # humid forest — plantain major
+    "senegal":  ["rice", "maize", "cassava"],            # Casamance rice belt
+}
+
+# The diseased class for each crop (used for the high-severity halos).
+_DISEASE_CLASS: dict[str, str] = {
+    "cassava":  "cassava_mosaic_disease",
+    "maize":    "maize_northern_blight",
+    "rice":     "rice_blast",
+    "tomato":   "tomato_late_blight",
+    "plantain": "plantain_black_sigatoka",
+}
+
+
+def _classes_for(tenant_id: str, n: int) -> list[str]:
+    """n predicted classes drawn only from crops the tenant actually grows.
+    Mostly diseased (so halos fire) with roughly one healthy field."""
+    crops = TENANT_CROPS.get(tenant_id, ["maize", "rice"])
+    out: list[str] = []
+    for i in range(n):
+        crop = crops[i % len(crops)]
+        out.append(f"{crop}_healthy" if i % 4 == 3 else _DISEASE_CLASS[crop])
+    return out
 
 
 def _hash_unit(*parts: str) -> float:
@@ -104,10 +133,11 @@ def _top_k_for(predicted_class: str, confidence: float, seed: str) -> list[dict[
 
 def _rows_for(tenant_id: str) -> list[CropSeed]:
     lgas = list(LGA_CENTROIDS.get(tenant_id, {}).keys())[:PREDICTIONS_PER_TENANT]
+    classes = _classes_for(tenant_id, len(lgas))
     rows: list[CropSeed] = []
     for i, lga in enumerate(lgas):
         lon, lat = centroid_for(tenant_id, lga)
-        predicted_class = _CLASS_CYCLE[i % len(_CLASS_CYCLE)]
+        predicted_class = classes[i]
         healthy = predicted_class.endswith("_healthy")
         seed = f"{tenant_id}|{lga}"
         if healthy:
