@@ -53,7 +53,7 @@ export interface UsePovertyVillagesParams {
 export function usePovertyVillages(
   params: UsePovertyVillagesParams,
 ): UseQueryResult<PovertyStatsData, ApiException> {
-  const limit = params.limit ?? 200;
+  const limit = params.limit ?? 1000;
   return useQuery<PovertyStatsData, ApiException>({
     queryKey: ['poverty-villages', params.tenantId, limit],
     enabled: params.enabled !== false && Boolean(params.tenantId),

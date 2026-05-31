@@ -30,6 +30,7 @@ if str(API_ROOT) not in sys.path:
 from sqlalchemy import text  # noqa: E402
 
 from db.engine import get_engine, get_session_factory  # noqa: E402
+from services.lga_geo import all_lgas  # noqa: E402
 from services.tenants import PILOT_TENANT_IDS, tenant_schema_name  # noqa: E402
 
 
@@ -109,7 +110,7 @@ class _Rng:
 
 def _coverage_for(tenant_id: str) -> list[SeedCoverage]:
     """Match the frontend's coordinationStatsFor coverage pick."""
-    lgas = LGA_POOL.get(tenant_id, [f"{tenant_id} R1", f"{tenant_id} R2"])
+    lgas = all_lgas(tenant_id) or LGA_POOL.get(tenant_id, [f"{tenant_id} R1", f"{tenant_id} R2"])
     rng = _Rng(_djb2(tenant_id))
     agency_count = 5 + int(rng.next() * 4)  # 5..8
 

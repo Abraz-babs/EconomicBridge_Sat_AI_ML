@@ -58,8 +58,8 @@ async def list_villages(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: Annotated[
-        int, Query(ge=1, le=500, description="Max villages returned.")
-    ] = 200,
+        int, Query(ge=1, le=2000, description="Max villages returned.")
+    ] = 1000,
 ) -> SuccessResponse[PovertyStatsData]:
     tenant_id = _require_tenant(request)
 

@@ -25,7 +25,7 @@ if str(API_ROOT) not in sys.path:
 from sqlalchemy import text  # noqa: E402
 
 from db.engine import get_engine, get_session_factory  # noqa: E402
-from services.lga_geo import centroid_for  # noqa: E402
+from services.lga_geo import all_lgas, centroid_for  # noqa: E402
 from services.tenants import PILOT_TENANT_IDS, tenant_schema_name  # noqa: E402
 
 
@@ -99,12 +99,13 @@ class _Rng:
 
 
 def _villages_for(tenant_id: str) -> list[SeedVillage]:
-    lgas = LGA_POOL.get(
+    lgas = all_lgas(tenant_id) or LGA_POOL.get(
         tenant_id,
         [f"{tenant_id} Region 1", f"{tenant_id} Region 2"],
     )
     rng = _Rng(_djb2(tenant_id))
-    count = 8 + int(rng.next() * 4)   # 8..11 villages
+    # One settlement per real LGA so every LGA in the state appears on the map.
+    count = len(lgas)
 
     out: list[SeedVillage] = []
     for i in range(count):

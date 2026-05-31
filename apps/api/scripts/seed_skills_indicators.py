@@ -35,7 +35,7 @@ if str(API_ROOT) not in sys.path:
 from sqlalchemy import text  # noqa: E402
 
 from db.engine import get_engine, get_session_factory  # noqa: E402
-from services.lga_geo import centroid_for  # noqa: E402
+from services.lga_geo import all_lgas, centroid_for  # noqa: E402
 from services.tenants import PILOT_TENANT_IDS, tenant_schema_name  # noqa: E402
 
 
@@ -109,7 +109,7 @@ def _hash_unit(tenant_id: str, lga: str, salt: str) -> float:
 def _rows_for(tenant_id: str) -> list[SeedRow]:
     profile = TENANT_SKILLS_PROFILE.get(tenant_id, (25.0, 10.0, 2.5, 0.55))
     net_anchor, net_spread, density_anchor, power_anchor = profile
-    lgas = LGA_POOL.get(tenant_id, [f"{tenant_id} Region 1"])
+    lgas = all_lgas(tenant_id) or LGA_POOL.get(tenant_id, [f"{tenant_id} Region 1"])
     rows: list[SeedRow] = []
     for lga in lgas:
         # Real per-LGA centroid (HQ town) from services/lga_geo.py — replaces

@@ -73,8 +73,8 @@ async def list_indicators(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
     limit: Annotated[
-        int, Query(ge=1, le=200, description="Max LGAs returned.")
-    ] = 100,
+        int, Query(ge=1, le=2000, description="Max LGAs returned.")
+    ] = 1000,
 ) -> SuccessResponse[MobilityStatsData]:
     tenant_id = _require_tenant(request)
 

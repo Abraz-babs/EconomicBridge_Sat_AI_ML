@@ -131,7 +131,8 @@ SENEGAL: dict[str, tuple[float, float]] = {
 }
 
 
-LGA_CENTROIDS: dict[str, dict[str, tuple[float, float]]] = {
+# The 8-per-state hand-curated set, kept as an offline fallback only.
+_CURATED_CENTROIDS: dict[str, dict[str, tuple[float, float]]] = {
     "kebbi":    KEBBI,
     "benue":    BENUE,
     "plateau":  PLATEAU,
@@ -145,6 +146,39 @@ LGA_CENTROIDS: dict[str, dict[str, tuple[float, float]]] = {
 }
 
 
+def _load_full_dataset() -> dict[str, dict[str, tuple[float, float]]]:
+    """Load the FULL real admin-2 centroid set built by
+    `apps/ingestion/scripts/build_lga_centroids.py` (geoBoundaries open data:
+    every Nigerian LGA assigned to its pilot state by point-in-polygon, plus
+    all Ghana/Senegal districts). Falls back to the 8-per-state curated set if
+    the dataset file is absent so seeds never hard-fail offline.
+    """
+    import json
+    from pathlib import Path
+
+    # apps/api/services/lga_geo.py → repo .../apps/ → ingestion/data/...
+    path = Path(__file__).resolve().parents[2] / "ingestion" / "data" / "lga_centroids.json"
+    if not path.exists():
+        return _CURATED_CENTROIDS
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    out: dict[str, dict[str, tuple[float, float]]] = {}
+    for tenant, units in raw.items():
+        out[tenant] = {u["lga"]: (u["lon"], u["lat"]) for u in units}
+    # Keep any curated tenant the dataset somehow lacks.
+    for tenant, fan in _CURATED_CENTROIDS.items():
+        out.setdefault(tenant, fan)
+    return out
+
+
+# Primary lookup table — every real LGA/district per tenant.
+LGA_CENTROIDS: dict[str, dict[str, tuple[float, float]]] = _load_full_dataset()
+
+
+def all_lgas(tenant_id: str) -> list[str]:
+    """Every LGA/district name for a tenant (sorted), from the full dataset."""
+    return sorted(LGA_CENTROIDS.get(tenant_id, {}).keys())
+
+
 def centroid_for(tenant_id: str, lga: str) -> tuple[float, float]:
     """Return `(lon, lat)` for the given LGA.
 
@@ -156,6 +190,5 @@ def centroid_for(tenant_id: str, lga: str) -> tuple[float, float]:
         return LGA_CENTROIDS[tenant_id][lga]
     except KeyError as e:
         raise KeyError(
-            f"No curated centroid for ({tenant_id}, {lga}). "
-            f"Add it to services/lga_geo.py."
+            f"No centroid for ({tenant_id}, {lga}) in lga_centroids dataset."
         ) from e
