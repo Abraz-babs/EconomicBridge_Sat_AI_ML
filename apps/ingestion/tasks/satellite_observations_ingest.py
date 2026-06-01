@@ -46,7 +46,10 @@ log = logging.getLogger(__name__)
 # Window sizes match the detector defaults so an ingest fills exactly what
 # the detector reads. Tighter would force the detector to short-window;
 # wider would burn PU on data the detector throws away.
-S1_WINDOW_DAYS: int = 60
+# S1 widened to 120d: single-orbit ROIs (FCT, Benue, Nasarawa, Plateau) only
+# see ~10 Sentinel-1 passes in 60d — below the live flood detector's ≥12 floor.
+# 120d roughly doubles the pass count so live mode works for every tenant.
+S1_WINDOW_DAYS: int = 120
 S2_WINDOW_DAYS: int = 90
 LIVE_SOURCE: str = "sentinel_stat_v1"
 S2_MAX_CLOUD_COVER_PCT: float = 40.0   # CDSE recommends 30-50 for vegetation indices

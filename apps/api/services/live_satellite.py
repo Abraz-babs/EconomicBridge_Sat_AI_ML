@@ -17,13 +17,16 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from services.ndvi_anomaly import NdviSample, SERIES_LENGTH_DAYS
-from services.shock_detector import (
-    FLOOD_SERIES_DAYS,
-    FloodSeriesPoint,
-)
+from services.shock_detector import FloodSeriesPoint
 
 
 LIVE_SOURCE: str = "sentinel_stat_v1"
+
+# Live SAR query window. Decoupled from the synthetic FLOOD_SERIES_DAYS (60d):
+# single-orbit ROIs only yield ~10 Sentinel-1 passes in 60d, below the ≥12
+# detector floor. The ingest now pulls a 120d S1 window, so we read 130d here
+# (one repeat-cycle of margin) to pick up every real pass that was stored.
+LIVE_SAR_WINDOW_DAYS: int = 130
 
 
 class LiveDataMissingError(RuntimeError):
@@ -45,7 +48,7 @@ async def load_flood_series(
     """
     if end is None:
         end = datetime.now(timezone.utc)
-    cutoff = (end - timedelta(days=FLOOD_SERIES_DAYS)).date()
+    cutoff = (end - timedelta(days=LIVE_SAR_WINDOW_DAYS)).date()
 
     result = await session.execute(
         text(
