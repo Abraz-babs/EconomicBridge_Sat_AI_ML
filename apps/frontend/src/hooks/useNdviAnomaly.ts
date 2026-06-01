@@ -34,6 +34,8 @@ export interface NdviScanData {
   series: NdviSamplePoint[];
   crop: string | null;
   persisted: boolean;
+  /** Set when a live request fell back to the modelled series. */
+  notice?: string | null;
 }
 
 export type NdviDataSource = 'synthetic' | 'live';

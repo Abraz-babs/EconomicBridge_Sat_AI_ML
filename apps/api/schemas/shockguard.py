@@ -80,6 +80,11 @@ class ShockScanData(BaseModel):
 
     persisted: bool
 
+    # Set when a 'live' request fell back to the modelled detector because
+    # the tenant doesn't yet have enough satellite passes. Null on success.
+    # The UI shows this as a gentle info note, never a hard error.
+    notice: str | None = None
+
 
 # ─── List endpoint ────────────────────────────────────────────────────────
 

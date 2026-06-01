@@ -72,6 +72,7 @@ async def scan_ndvi_anomaly(
 ) -> SuccessResponse[NdviScanData]:
     tenant_id = _require_tenant(request)
 
+    live_notice: str | None = None
     if body.data_source == "live":
         await session.execute(
             text(f"SET search_path TO {tenant_schema_name(tenant_id)}, public"),
@@ -79,10 +80,12 @@ async def scan_ndvi_anomaly(
         try:
             series = await load_ndvi_series(session)
         except LiveDataMissingError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(exc),
-            ) from exc
+            # Degrade gracefully to the modelled series + carry a friendly
+            # notice rather than erroring the dashboard.
+            live_notice = str(exc)
+            series = ndvi_service.synthetic_series(
+                tenant_id, inject_anomaly=body.demo_inject_anomaly,
+            )
     else:
         series = ndvi_service.synthetic_series(
             tenant_id, inject_anomaly=body.demo_inject_anomaly,
@@ -90,8 +93,11 @@ async def scan_ndvi_anomaly(
     # Real S2 has ~5-day repeat per state ROI — pass sparse-data window
     # sizes so the detector works on actual acquisition counts (~3 recent,
     # ~12 baseline gives the same 14d / 60d coverage as the synthetic path).
+    # Only when we actually have the live series (not the modelled fallback).
     detect_kwargs = (
-        {"recent_n": 3, "baseline_n": 12} if body.data_source == "live" else {}
+        {"recent_n": 3, "baseline_n": 12}
+        if body.data_source == "live" and live_notice is None
+        else {}
     )
     try:
         result = ndvi_service.detect_anomaly(
@@ -135,6 +141,7 @@ async def scan_ndvi_anomaly(
             series=series_points,
             crop=result.crop,
             persisted=persisted,
+            notice=live_notice,
         ),
         meta=ResponseMeta(
             tenant_id=None,

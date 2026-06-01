@@ -76,9 +76,10 @@ async def load_flood_series(
     floor = min_points if min_points is not None else 12
     if len(series) < floor:
         raise LiveDataMissingError(
-            f"only {len(series)} SAR rows available; need ≥{floor}. "
-            "Run `python -m scripts.ingest_satellite_observations --tenant <id>` "
-            "from apps/ingestion/ to populate."
+            f"Live flood detection needs at least {floor} recent Sentinel-1 SAR "
+            f"passes for this area; only {len(series)} are available so far. "
+            "Showing the modelled estimate instead — live coverage builds up as "
+            "more satellite passes are collected."
         )
     return series
 
@@ -127,8 +128,9 @@ async def load_ndvi_series(
     floor = min_points if min_points is not None else 16
     if len(series) < floor:
         raise LiveDataMissingError(
-            f"only {len(series)} NDVI rows available; need ≥{floor}. "
-            "Run `python -m scripts.ingest_satellite_observations --tenant <id>` "
-            "from apps/ingestion/ to populate."
+            f"Live vegetation analysis needs at least {floor} recent Sentinel-2 "
+            f"NDVI passes for this area; only {len(series)} are available so far. "
+            "Showing the modelled estimate instead — live coverage builds up as "
+            "more satellite passes are collected."
         )
     return series

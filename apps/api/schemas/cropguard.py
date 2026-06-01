@@ -194,6 +194,10 @@ class NdviScanData(BaseModel):
     crop: str | None
     persisted: bool
 
+    # Set when a 'live' request fell back to the modelled series (sparse
+    # satellite coverage). Null on success. UI shows it as a gentle note.
+    notice: str | None = None
+
 
 class NdviAnomalyRow(BaseModel):
     """One row from `tenant_<id>.ndvi_anomalies`."""

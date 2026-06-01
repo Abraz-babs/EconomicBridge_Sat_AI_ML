@@ -104,6 +104,7 @@ async def scan_shock(
     # now — MODIS LST ingestion is Phase B). data_source='synthetic'
     # is the default and remains the demo path.
     live_series = None
+    live_notice: str | None = None
     if body.data_source == "live" and body.event_type == "flood":
         await session.execute(
             text(f"SET search_path TO {tenant_schema_name(tenant_id)}, public"),
@@ -111,10 +112,10 @@ async def scan_shock(
         try:
             live_series = await load_flood_series(session)
         except LiveDataMissingError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=str(exc),
-            ) from exc
+            # Degrade gracefully: fall back to the modelled detector and carry
+            # a friendly notice rather than erroring the dashboard. Live SAR
+            # coverage is sparse for some ROIs (~6-day Sentinel-1 repeat).
+            live_notice = str(exc)
 
     try:
         if body.event_type == "flood":
@@ -187,6 +188,7 @@ async def scan_shock(
             flood_series=flood_pts,
             drought_series=drought_pts,
             persisted=persisted,
+            notice=live_notice,
         ),
         meta=ResponseMeta(
             tenant_id=None, trace_id=_trace_id(request),

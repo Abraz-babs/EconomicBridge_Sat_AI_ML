@@ -132,6 +132,10 @@ export default function NdviAnomalyPanel() {
 
       {scanError && <div className="fp-alert-error">{scanError}</div>}
 
+      {lastScan?.notice && (
+        <div className="fp-alert-notice">{lastScan.notice}</div>
+      )}
+
       {lastScan && (
         <>
           <ScanSummary scan={lastScan} />

@@ -262,6 +262,10 @@ export default function ShockGuardPanel() {
 
         {scanError && <div className="fp-alert-error">{scanError}</div>}
 
+        {lastScan?.notice && (
+          <div className="fp-alert-notice">{lastScan.notice}</div>
+        )}
+
         {lastScan && <ShockScanCard scan={lastScan} />}
       </div>
 

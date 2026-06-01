@@ -46,6 +46,9 @@ export interface ShockScanData {
   flood_series: FloodSeriesPoint[];
   drought_series: DroughtSeriesPoint[];
   persisted: boolean;
+  /** Set when a live request fell back to the modelled detector (sparse
+   *  satellite coverage). Shown as a gentle info note, not an error. */
+  notice?: string | null;
 }
 
 export type DataSource = 'synthetic' | 'live';
