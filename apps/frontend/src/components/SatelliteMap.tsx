@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import type { Layer } from '@deck.gl/core';
 import { KEBBI_CENTER, RISK_RGB, TENANTS, type Tenant } from '@/data/tenants';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -23,6 +24,55 @@ function sanitizeMapboxError(message: string | null | undefined): string | null 
     .replace(/Bearer\s+pk\.[^\s"']+/gi, 'Bearer [redacted]');
 }
 
+// ── Active-coverage overlay (added, mirrors the landing-page viz) ──────────
+// Green halos over the 3 covered countries + connectivity arcs converging on
+// the Abuja hub. Purely additive — sits beneath the existing tenant dots.
+const COVERAGE_GREEN: [number, number, number] = [64, 220, 130];
+const ABUJA_HUB: [number, number] = [7.49, 9.06];
+const COVERAGE_COUNTRIES: { name: string; position: [number, number] }[] = [
+  { name: 'Nigeria', position: ABUJA_HUB },
+  { name: 'Ghana', position: [-1.03, 7.95] },
+  { name: 'Senegal', position: [-14.45, 14.5] },
+];
+const COVERAGE_LINKS: { source: [number, number]; target: [number, number] }[] = [
+  { source: ABUJA_HUB, target: [-1.03, 7.95] },   // Abuja → Ghana
+  { source: ABUJA_HUB, target: [-14.45, 14.5] },  // Abuja → Senegal
+];
+
+function coverageLayers(
+  ScatterplotLayer: typeof import('@deck.gl/layers').ScatterplotLayer,
+  ArcLayer: typeof import('@deck.gl/layers').ArcLayer,
+): Layer[] {
+  return [
+    new ArcLayer({
+      id: 'coverage-links',
+      data: COVERAGE_LINKS,
+      getSourcePosition: (d: { source: [number, number] }) => d.source,
+      getTargetPosition: (d: { target: [number, number] }) => d.target,
+      getSourceColor: [...COVERAGE_GREEN, 200] as [number, number, number, number],
+      getTargetColor: [...COVERAGE_GREEN, 120] as [number, number, number, number],
+      getWidth: 2,
+      getHeight: 0.4,
+      pickable: false,
+    }),
+    new ScatterplotLayer({
+      id: 'coverage-halos',
+      data: COVERAGE_COUNTRIES,
+      getPosition: (d: { position: [number, number] }) => d.position,
+      getRadius: 170000,
+      radiusUnits: 'meters',
+      radiusMinPixels: 18,
+      radiusMaxPixels: 70,
+      getFillColor: [...COVERAGE_GREEN, 45] as [number, number, number, number],
+      getLineColor: [...COVERAGE_GREEN, 210] as [number, number, number, number],
+      lineWidthMinPixels: 1.5,
+      stroked: true,
+      filled: true,
+      pickable: false,
+    }),
+  ];
+}
+
 export default function SatelliteMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<unknown>(null);
@@ -42,7 +92,7 @@ export default function SatelliteMap() {
 
     (async () => {
       try {
-        const [{ default: mapboxgl }, { ScatterplotLayer }, { MapboxOverlay }] = await Promise.all([
+        const [{ default: mapboxgl }, { ScatterplotLayer, ArcLayer }, { MapboxOverlay }] = await Promise.all([
           import('mapbox-gl'),
           import('@deck.gl/layers'),
           import('@deck.gl/mapbox'),
@@ -71,6 +121,7 @@ export default function SatelliteMap() {
           const overlay = new MapboxOverlay({
             interleaved: false,
             layers: [
+              ...coverageLayers(ScatterplotLayer, ArcLayer),
               new ScatterplotLayer<Tenant>({
                 id: 'tenants-scatter',
                 data: filterTenants('All Layers'),
@@ -123,9 +174,10 @@ export default function SatelliteMap() {
     if (!overlay) return;
 
     (async () => {
-      const { ScatterplotLayer } = await import('@deck.gl/layers');
+      const { ScatterplotLayer, ArcLayer } = await import('@deck.gl/layers');
       overlay.setProps({
         layers: [
+          ...coverageLayers(ScatterplotLayer, ArcLayer),
           new ScatterplotLayer<Tenant>({
             id: 'tenants-scatter',
             data: filterTenants(activeLayer),
