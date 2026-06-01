@@ -31,6 +31,12 @@ function sanitizeMapboxError(message: string | null | undefined): string | null 
 const COVERAGE_HUB: [number, number] = [7.49, 9.06]; // FCT · Abuja
 const COVERAGE_BLINK = '#36d39a';
 const COVERAGE_LINK = '#3ea6ff';
+// The real covered pilots (the 3-country set). NOT t.active — Ghana & Senegal
+// are deployment-phase 2 (active:false) but ARE covered, so select by id.
+const COVERAGE_PILOT_IDS = new Set([
+  'kebbi', 'benue', 'plateau', 'kaduna', 'niger', 'zamfara', 'nasarawa', 'fct',
+  'ghana', 'senegal',
+]);
 const COVERAGE_PULSE_CSS =
   '@keyframes eb-cov-pulse{0%{box-shadow:0 0 0 0 rgba(54,211,154,.6)}' +
   '70%{box-shadow:0 0 0 14px rgba(54,211,154,0)}' +
@@ -116,7 +122,7 @@ export default function SatelliteMap() {
             css.textContent = COVERAGE_PULSE_CSS;
             document.head.appendChild(css);
           }
-          const covPilots = filterTenants('All Layers').filter((t) => t.active);
+          const covPilots = TENANTS.filter((t) => COVERAGE_PILOT_IDS.has(t.id));
           map.addSource('coverage-links', {
             type: 'geojson',
             data: {
