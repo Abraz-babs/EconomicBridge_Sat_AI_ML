@@ -72,6 +72,8 @@ export interface CropPredictionRow {
   image_source: 's3' | 'inline';
   image_s3_key: string | null;
   location: { lon: number; lat: number } | null;
+  /** LGA where the sample was captured (the target area), when known. */
+  lga: string | null;
   model_name: string;
   model_version: string;
   inference_time_ms: number | null;

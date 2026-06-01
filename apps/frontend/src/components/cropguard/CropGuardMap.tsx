@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import EBMap from '@/components/map/EBMap';
 import { haloRadiusPx, haloRows } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
+import { formatLatLon } from '@/lib/display';
 import type { CropPredictionRow } from '@/hooks/useCropPredictions';
 
 
@@ -53,16 +54,21 @@ export interface PositionedPrediction extends CropPredictionRow {
 }
 
 
-/** Hover-card text for a prediction marker (Slice 25). */
+/** Hover-card text for a prediction marker (Slice 25).
+ *  Leads with the target area (LGA + coordinates) so an authority reading the
+ *  halo knows exactly where to deploy. */
 function tooltipFor(obj: unknown): string | null {
   const p = obj as PositionedPrediction;
   if (!p?.predicted_class) return null;
+  const [lon, lat] = p.position;
   const lines = [
     p.predicted_class.replace(/_/g, ' '),
+    `Target area: ${p.lga ?? '—'}`,
+    `Coordinates: ${formatLatLon(lat, lon)}`,
     `Disease prob: ${(p.prediction * 100).toFixed(0)}% · Confidence: ${(p.confidence * 100).toFixed(0)}%`,
   ];
   if (p.requires_human_review) lines.push('Flagged for human review');
-  if (p.synthetic_location) lines.push('⚠ synthesised position');
+  if (p.synthetic_location) lines.push('⚠ synthesised position (no GPS)');
   return lines.join('\n');
 }
 
@@ -157,7 +163,9 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
           getFillColor: [255, 69, 0, 40],
           radiusUnits: 'pixels',
           stroked: false,
-          pickable: false,
+          // Pickable so hovering the halo ring (not just the centre pin)
+          // surfaces the LGA + coordinates tooltip.
+          pickable: true,
           updateTriggers: { getRadius: pulse },
         }),
         // Per-prediction pin.

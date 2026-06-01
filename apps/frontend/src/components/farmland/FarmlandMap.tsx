@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { haloRadiusPx } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
 import { formatLatLon } from '@/lib/display';
 import {
@@ -333,19 +334,18 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
       const pulseAlerts = alerts.filter(
         (a) => a.severity === 'critical' || a.severity === 'high',
       );
-      const pulseScale = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(pulse * 0.18));
       layers.push(
         new ScatterplotLayer<FarmlandAlertPoint>({
           id: 'farmland-pulse',
           data: pulseAlerts,
           getPosition: (a) => [a.longitude, a.latitude],
-          getRadius: (a) =>
-            (a.severity === 'critical' ? 34000 : 24000) * pulseScale,
+          // Uniform pixel-pulse halo — identical to Poverty Mapping and every
+          // other module (haloRadiusPx → 20–40 px). Severity is conveyed by
+          // colour, not size, so halos never balloon or block each other.
+          getRadius: () => haloRadiusPx(pulse),
           getFillColor: (a) =>
-            [...SEVERITY_RGB[a.severity], 35] as [number, number, number, number],
-          radiusUnits: 'meters',
-          radiusMinPixels: 14,
-          radiusMaxPixels: 80,
+            [...SEVERITY_RGB[a.severity], 40] as [number, number, number, number],
+          radiusUnits: 'pixels',
           stroked: false,
           pickable: false,
           updateTriggers: { getRadius: pulse },
@@ -366,7 +366,8 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
           lineWidthMinPixels: 1.5,
           radiusUnits: 'meters',
           radiusMinPixels: 6,
-          radiusMaxPixels: 26,
+          // Uniform base-dot cap (24 px) — matches Poverty Mapping.
+          radiusMaxPixels: 24,
           stroked: true,
           pickable: true,
           onHover: (info) => {
