@@ -177,6 +177,4 @@ scripts/*.tar.gz
 tfplan
 *.tfplan
 
-# Standalone landing-page preview (embeds public token; ported to Next later)
-landing-preview/
 apps/ml/.kaggle_src/
