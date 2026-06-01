@@ -39,3 +39,44 @@ export function useOverviewStats(): UseQueryResult<OverviewStatsData, ApiExcepti
     },
   });
 }
+
+// ─── Crop-health index (live, cross-tenant, mixed regions) ──────────────────
+
+export interface CropHealthRow {
+  label: string;
+  pct: number;
+  tone: string; // 'ok' | 'warn' | 'neg'
+}
+
+export function useCropHealth(): UseQueryResult<CropHealthRow[], ApiException> {
+  return useQuery<CropHealthRow[], ApiException>({
+    queryKey: ['overview-crop-health'],
+    staleTime: 60 * 1000,
+    queryFn: async ({ signal }) => {
+      const envelope: SuccessEnvelope<{ rows: CropHealthRow[] }> =
+        await apiFetch<{ rows: CropHealthRow[] }>('/overview/crop_health', { signal });
+      return envelope.data.rows;
+    },
+  });
+}
+
+// ─── Active-response events (live, cross-tenant, mixed regions) ─────────────
+
+export interface ActiveResponseRow {
+  region: string;
+  sub: string;
+  status: string;
+  tone: string; // css status suffix, e.g. 's-active'
+}
+
+export function useActiveResponse(): UseQueryResult<ActiveResponseRow[], ApiException> {
+  return useQuery<ActiveResponseRow[], ApiException>({
+    queryKey: ['overview-active-response'],
+    staleTime: 60 * 1000,
+    queryFn: async ({ signal }) => {
+      const envelope: SuccessEnvelope<{ rows: ActiveResponseRow[] }> =
+        await apiFetch<{ rows: ActiveResponseRow[] }>('/overview/active_response', { signal });
+      return envelope.data.rows;
+    },
+  });
+}

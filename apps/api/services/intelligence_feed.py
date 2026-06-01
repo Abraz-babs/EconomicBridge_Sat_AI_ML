@@ -86,18 +86,46 @@ async def gather_feed(
         return []
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=FEED_LOOKBACK_DAYS)
-    events: list[FeedEvent] = []
 
+    # Collect each tenant's events (recency-sorted) separately, then
+    # round-robin interleave so the Overview feed MIXES regions — some
+    # Nigerian states + Ghana + Senegal — instead of letting whichever
+    # tenant has the freshest rows monopolise the top of the list.
+    by_tenant: dict[str, list[FeedEvent]] = {}
     for tenant_id in sorted(targets):
         schema = tenant_schema_name(tenant_id)
         rows = await _gather_tenant_rows(session, schema=schema, cutoff=cutoff)
-        for row in rows:
-            event = _row_to_feed_event(tenant_id, row)
-            if event is not None:
-                events.append(event)
+        evs = [
+            ev
+            for row in rows
+            if (ev := _row_to_feed_event(tenant_id, row)) is not None
+        ]
+        evs.sort(key=lambda e: e.observed_at, reverse=True)
+        if evs:
+            by_tenant[tenant_id] = evs
 
-    events.sort(key=lambda e: e.observed_at, reverse=True)
-    return events[:limit]
+    # Rotate which region leads by day-of-year so the mix re-orders over time
+    # (the "feed shouldn't look identical every visit" ask) without RNG.
+    order = sorted(by_tenant)
+    if order:
+        shift = datetime.now(timezone.utc).timetuple().tm_yday % len(order)
+        order = order[shift:] + order[:shift]
+
+    mixed: list[FeedEvent] = []
+    depth = 0
+    while len(mixed) < limit:
+        progressed = False
+        for tenant_id in order:
+            pool = by_tenant[tenant_id]
+            if depth < len(pool):
+                mixed.append(pool[depth])
+                progressed = True
+                if len(mixed) >= limit:
+                    break
+        if not progressed:
+            break
+        depth += 1
+    return mixed[:limit]
 
 
 async def _gather_tenant_rows(

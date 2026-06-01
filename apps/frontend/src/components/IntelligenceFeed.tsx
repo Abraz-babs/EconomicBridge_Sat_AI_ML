@@ -6,6 +6,7 @@ import {
   type FeedSeverity,
   type FeedTag,
 } from '@/hooks/useIntelligenceFeed';
+import { useRotatingWindow } from '@/hooks/useRotatingWindow';
 
 
 const TAG_CLASS: Record<FeedTag, string> = {
@@ -37,7 +38,10 @@ function fmtAge(iso: string): string {
 
 export default function IntelligenceFeed() {
   const query = useIntelligenceFeed({ limit: 20 });
-  const events: FeedEvent[] = query.data?.events ?? [];
+  const allEvents: FeedEvent[] = query.data?.events ?? [];
+  // Rotate a window through the mixed cross-tenant pool so the feed cycles
+  // over time instead of showing the same rows on every visit.
+  const events = useRotatingWindow(allEvents, 8);
   const status = query.isError ? 'API unreachable'
     : query.isFetching ? 'Live · refreshing…'
     : 'Live · 60s refresh';

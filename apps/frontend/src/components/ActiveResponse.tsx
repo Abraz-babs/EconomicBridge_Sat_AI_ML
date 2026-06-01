@@ -1,25 +1,37 @@
-const events = [
-  { name: 'Nigeria — Flood', sub: 'Borno State · Day 3', status: 'ACTIVE', cls: 's-active' },
-  { name: 'Bangladesh — Cyclone', sub: "Cox's Bazar · 48h forecast", status: 'WATCH', cls: 's-watch' },
-  { name: 'Mozambique — Drought', sub: 'Cabo Delgado · Week 6', status: 'MONITOR', cls: 's-monitor' },
-  { name: 'Philippines — Landslide', sub: 'Mindanao · Recovery', status: 'RECOVERY', cls: 's-recovery' },
-];
+'use client';
 
+import { useActiveResponse } from '@/hooks/useOverviewStats';
+import { useRotatingWindow } from '@/hooks/useRotatingWindow';
+
+/**
+ * Live active-response events — recent shocks per region (flood/drought),
+ * MIXED across Nigerian states + Ghana + Senegal (real persisted rows, never
+ * off-plan countries). Rotates through the pool over time.
+ */
 export default function ActiveResponse() {
+  const { data, isLoading, isError } = useActiveResponse();
+  const rows = useRotatingWindow(data ?? [], 4);
+
   return (
     <div className="panel">
       <div className="panel-header">
         <span className="panel-title">Active Response</span>
-        <span className="panel-meta">7 events tracked</span>
+        <span className="panel-meta">
+          {isError ? 'API unreachable' : `${data?.length ?? 0} events · mixed regions`}
+        </span>
       </div>
       <div>
-        {events.map((e) => (
-          <div key={e.name} className="event-row">
+        {isLoading && <div className="feed-item feed-item--empty">Loading…</div>}
+        {!isLoading && rows.length === 0 && (
+          <div className="feed-item feed-item--empty">No active events.</div>
+        )}
+        {rows.map((e) => (
+          <div key={`${e.region}-${e.sub}`} className="event-row">
             <div>
-              <div>{e.name}</div>
+              <div>{e.region}</div>
               <div className="event-sub">{e.sub}</div>
             </div>
-            <span className={`status-tag ${e.cls}`}>{e.status}</span>
+            <span className={`status-tag ${e.tone}`}>{e.status}</span>
           </div>
         ))}
       </div>

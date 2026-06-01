@@ -28,3 +28,26 @@ class OverviewStatsData(BaseModel):
     live_sources: list[str]
     cards: list[OverviewStatCard]
     generated_at: datetime
+
+
+class CropHealthRow(BaseModel):
+    label: str   # e.g. "Maize — Benue"
+    pct: int     # % of detections classified healthy
+    tone: str    # "ok" | "warn" | "neg"
+
+
+class CropHealthData(BaseModel):
+    rows: list[CropHealthRow]
+    generated_at: datetime
+
+
+class ActiveResponseRow(BaseModel):
+    region: str   # e.g. "Benue — Flood"
+    sub: str      # e.g. "Logo · high"
+    status: str   # ACTIVE | WATCH | MONITOR | RECOVERY
+    tone: str     # css status class suffix
+
+
+class ActiveResponseData(BaseModel):
+    rows: list[ActiveResponseRow]
+    generated_at: datetime
