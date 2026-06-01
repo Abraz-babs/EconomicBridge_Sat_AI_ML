@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { Layer } from '@deck.gl/core';
 import { KEBBI_CENTER, RISK_RGB, TENANTS, type Tenant } from '@/data/tenants';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -25,58 +24,109 @@ function sanitizeMapboxError(message: string | null | undefined): string | null 
 }
 
 // ── Active-coverage overlay (added, mirrors the landing-page viz) ──────────
-// Green halos over the 3 covered countries + connectivity arcs converging on
-// the Abuja hub. Purely additive — sits beneath the existing tenant dots.
-const COVERAGE_GREEN: [number, number, number] = [64, 220, 130];
+// Synchronised blinking green halos over the covered pilot points + dotted
+// connectivity lines from the Abuja hub out to Ghana and Senegal. Purely
+// additive (Mapbox-native circle/line layers); sits beneath the deck.gl
+// tenant dots and never touches the existing layers/behaviour.
+const COVERAGE_HEX = '#40dc82';
 const ABUJA_HUB: [number, number] = [7.49, 9.06];
-const COVERAGE_COUNTRIES: { name: string; position: [number, number] }[] = [
-  { name: 'Nigeria', position: ABUJA_HUB },
-  { name: 'Ghana', position: [-1.03, 7.95] },
-  { name: 'Senegal', position: [-14.45, 14.5] },
-];
-const COVERAGE_LINKS: { source: [number, number]; target: [number, number] }[] = [
-  { source: ABUJA_HUB, target: [-1.03, 7.95] },   // Abuja → Ghana
-  { source: ABUJA_HUB, target: [-14.45, 14.5] },  // Abuja → Senegal
-];
+const GHANA_PT: [number, number] = [-1.03, 7.95];
+const SENEGAL_PT: [number, number] = [-14.45, 14.5];
 
-function coverageLayers(
-  ScatterplotLayer: typeof import('@deck.gl/layers').ScatterplotLayer,
-  ArcLayer: typeof import('@deck.gl/layers').ArcLayer,
-): Layer[] {
-  return [
-    new ArcLayer({
-      id: 'coverage-links',
-      data: COVERAGE_LINKS,
-      getSourcePosition: (d: { source: [number, number] }) => d.source,
-      getTargetPosition: (d: { target: [number, number] }) => d.target,
-      getSourceColor: [...COVERAGE_GREEN, 200] as [number, number, number, number],
-      getTargetColor: [...COVERAGE_GREEN, 120] as [number, number, number, number],
-      getWidth: 2,
-      getHeight: 0.4,
-      pickable: false,
-    }),
-    new ScatterplotLayer({
-      id: 'coverage-halos',
-      data: COVERAGE_COUNTRIES,
-      getPosition: (d: { position: [number, number] }) => d.position,
-      getRadius: 170000,
-      radiusUnits: 'meters',
-      radiusMinPixels: 18,
-      radiusMaxPixels: 70,
-      getFillColor: [...COVERAGE_GREEN, 45] as [number, number, number, number],
-      getLineColor: [...COVERAGE_GREEN, 210] as [number, number, number, number],
-      lineWidthMinPixels: 1.5,
-      stroked: true,
-      filled: true,
-      pickable: false,
-    }),
-  ];
+/** Minimal slice of the Mapbox GL map we touch — avoids a hard type import. */
+interface CoverageMap {
+  addSource: (id: string, src: unknown) => void;
+  addLayer: (layer: unknown) => void;
+  getLayer: (id: string) => unknown;
+  setPaintProperty: (layer: string, prop: string, value: unknown) => void;
+}
+
+/**
+ * Add the blinking-halo + dotted-link coverage overlay to a loaded map.
+ * Returns a stop() that cancels the blink animation on teardown.
+ */
+function addCoverageOverlay(map: CoverageMap): () => void {
+  const points = TENANTS.filter((t) => t.active).map((t) => ({
+    type: 'Feature' as const,
+    geometry: { type: 'Point' as const, coordinates: t.centroid },
+    properties: {},
+  }));
+  const links = [
+    [ABUJA_HUB, GHANA_PT],
+    [ABUJA_HUB, SENEGAL_PT],
+  ].map(([s, e]) => ({
+    type: 'Feature' as const,
+    geometry: { type: 'LineString' as const, coordinates: [s, e] },
+    properties: {},
+  }));
+
+  map.addSource('coverage-links', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: links },
+  });
+  map.addLayer({
+    id: 'coverage-links',
+    type: 'line',
+    source: 'coverage-links',
+    paint: {
+      'line-color': COVERAGE_HEX,
+      'line-width': 1.4,
+      'line-opacity': 0.6,
+      'line-dasharray': [2, 2], // dotted
+    },
+  });
+
+  map.addSource('coverage-points', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: points },
+  });
+  map.addLayer({
+    id: 'coverage-glow',
+    type: 'circle',
+    source: 'coverage-points',
+    paint: {
+      'circle-radius': 10,
+      'circle-color': COVERAGE_HEX,
+      'circle-opacity': 0.28,
+      'circle-blur': 0.6,
+    },
+  });
+  map.addLayer({
+    id: 'coverage-core',
+    type: 'circle',
+    source: 'coverage-points',
+    paint: {
+      'circle-radius': 3,
+      'circle-color': COVERAGE_HEX,
+      'circle-opacity': 0.95,
+    },
+  });
+
+  // Synchronised blink — every halo pulses together (one shared phase).
+  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const t0 = now();
+  let raf = 0;
+  const tick = () => {
+    const p = 0.5 + 0.5 * Math.sin((now() - t0) / 480); // 0..1, ~3s cycle
+    try {
+      if (map.getLayer('coverage-glow')) {
+        map.setPaintProperty('coverage-glow', 'circle-radius', 9 + 11 * p);
+        map.setPaintProperty('coverage-glow', 'circle-opacity', 0.12 + 0.3 * (1 - p));
+      }
+    } catch {
+      /* map torn down mid-frame — ignore */
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+  return () => cancelAnimationFrame(raf);
 }
 
 export default function SatelliteMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<unknown>(null);
   const overlayRef = useRef<unknown>(null);
+  const coverageStopRef = useRef<(() => void) | null>(null);
 
   const [activeLayer, setActiveLayer] = useState<LayerKey>('All Layers');
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
@@ -92,7 +142,7 @@ export default function SatelliteMap() {
 
     (async () => {
       try {
-        const [{ default: mapboxgl }, { ScatterplotLayer, ArcLayer }, { MapboxOverlay }] = await Promise.all([
+        const [{ default: mapboxgl }, { ScatterplotLayer }, { MapboxOverlay }] = await Promise.all([
           import('mapbox-gl'),
           import('@deck.gl/layers'),
           import('@deck.gl/mapbox'),
@@ -121,7 +171,6 @@ export default function SatelliteMap() {
           const overlay = new MapboxOverlay({
             interleaved: false,
             layers: [
-              ...coverageLayers(ScatterplotLayer, ArcLayer),
               new ScatterplotLayer<Tenant>({
                 id: 'tenants-scatter',
                 data: filterTenants('All Layers'),
@@ -143,6 +192,9 @@ export default function SatelliteMap() {
           });
           map.addControl(overlay);
           overlayRef.current = overlay;
+          // Added: blinking green coverage halos + dotted Abuja→Ghana/Senegal
+          // links. Beneath the deck tenant dots; everything else unchanged.
+          coverageStopRef.current = addCoverageOverlay(map as unknown as CoverageMap);
           setMapStatus('ready');
         });
       } catch (err) {
@@ -157,6 +209,8 @@ export default function SatelliteMap() {
 
     return () => {
       cancelled = true;
+      coverageStopRef.current?.();
+      coverageStopRef.current = null;
       const overlay = overlayRef.current as { finalize?: () => void } | null;
       overlay?.finalize?.();
       overlayRef.current = null;
@@ -174,10 +228,9 @@ export default function SatelliteMap() {
     if (!overlay) return;
 
     (async () => {
-      const { ScatterplotLayer, ArcLayer } = await import('@deck.gl/layers');
+      const { ScatterplotLayer } = await import('@deck.gl/layers');
       overlay.setProps({
         layers: [
-          ...coverageLayers(ScatterplotLayer, ArcLayer),
           new ScatterplotLayer<Tenant>({
             id: 'tenants-scatter',
             data: filterTenants(activeLayer),
