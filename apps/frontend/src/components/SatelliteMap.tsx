@@ -23,104 +23,18 @@ function sanitizeMapboxError(message: string | null | undefined): string | null 
     .replace(/Bearer\s+pk\.[^\s"']+/gi, 'Bearer [redacted]');
 }
 
-// ── Active-coverage overlay (added, mirrors the landing-page viz) ──────────
-// Synchronised blinking green halos over the covered pilot points + dotted
-// connectivity lines from the Abuja hub out to Ghana and Senegal. Purely
-// additive (Mapbox-native circle/line layers); sits beneath the deck.gl
-// tenant dots and never touches the existing layers/behaviour.
-const COVERAGE_HEX = '#40dc82';
-const ABUJA_HUB: [number, number] = [7.49, 9.06];
-const GHANA_PT: [number, number] = [-1.03, 7.95];
-const SENEGAL_PT: [number, number] = [-14.45, 14.5];
-
-/** Minimal slice of the Mapbox GL map we touch — avoids a hard type import. */
-interface CoverageMap {
-  addSource: (id: string, src: unknown) => void;
-  addLayer: (layer: unknown) => void;
-  getLayer: (id: string) => unknown;
-  setPaintProperty: (layer: string, prop: string, value: unknown) => void;
-}
-
-/**
- * Add the blinking-halo + dotted-link coverage overlay to a loaded map.
- * Returns a stop() that cancels the blink animation on teardown.
- */
-function addCoverageOverlay(map: CoverageMap): () => void {
-  const points = TENANTS.filter((t) => t.active).map((t) => ({
-    type: 'Feature' as const,
-    geometry: { type: 'Point' as const, coordinates: t.centroid },
-    properties: {},
-  }));
-  const links = [
-    [ABUJA_HUB, GHANA_PT],
-    [ABUJA_HUB, SENEGAL_PT],
-  ].map(([s, e]) => ({
-    type: 'Feature' as const,
-    geometry: { type: 'LineString' as const, coordinates: [s, e] },
-    properties: {},
-  }));
-
-  map.addSource('coverage-links', {
-    type: 'geojson',
-    data: { type: 'FeatureCollection', features: links },
-  });
-  map.addLayer({
-    id: 'coverage-links',
-    type: 'line',
-    source: 'coverage-links',
-    paint: {
-      'line-color': COVERAGE_HEX,
-      'line-width': 1.4,
-      'line-opacity': 0.6,
-      'line-dasharray': [2, 2], // dotted
-    },
-  });
-
-  map.addSource('coverage-points', {
-    type: 'geojson',
-    data: { type: 'FeatureCollection', features: points },
-  });
-  map.addLayer({
-    id: 'coverage-glow',
-    type: 'circle',
-    source: 'coverage-points',
-    paint: {
-      'circle-radius': 10,
-      'circle-color': COVERAGE_HEX,
-      'circle-opacity': 0.28,
-      'circle-blur': 0.6,
-    },
-  });
-  map.addLayer({
-    id: 'coverage-core',
-    type: 'circle',
-    source: 'coverage-points',
-    paint: {
-      'circle-radius': 3,
-      'circle-color': COVERAGE_HEX,
-      'circle-opacity': 0.95,
-    },
-  });
-
-  // Synchronised blink — every halo pulses together (one shared phase).
-  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
-  const t0 = now();
-  let raf = 0;
-  const tick = () => {
-    const p = 0.5 + 0.5 * Math.sin((now() - t0) / 480); // 0..1, ~3s cycle
-    try {
-      if (map.getLayer('coverage-glow')) {
-        map.setPaintProperty('coverage-glow', 'circle-radius', 9 + 11 * p);
-        map.setPaintProperty('coverage-glow', 'circle-opacity', 0.12 + 0.3 * (1 - p));
-      }
-    } catch {
-      /* map torn down mid-frame — ignore */
-    }
-    raf = requestAnimationFrame(tick);
-  };
-  raf = requestAnimationFrame(tick);
-  return () => cancelAnimationFrame(raf);
-}
+// ── Active-coverage overlay (added; mirrors the :8090 cover page exactly) ──
+// Green pulsing ring blinkers on every active pilot + dashed BLUE links
+// converging on the Abuja hub — the same technique used on the landing page.
+// Purely additive: HTML markers float over the base map; the deck.gl tenant
+// dots, layer toggles, zoom and behaviour are all unchanged.
+const COVERAGE_HUB: [number, number] = [7.49, 9.06]; // FCT · Abuja
+const COVERAGE_BLINK = '#36d39a';
+const COVERAGE_LINK = '#3ea6ff';
+const COVERAGE_PULSE_CSS =
+  '@keyframes eb-cov-pulse{0%{box-shadow:0 0 0 0 rgba(54,211,154,.6)}' +
+  '70%{box-shadow:0 0 0 14px rgba(54,211,154,0)}' +
+  '100%{box-shadow:0 0 0 0 rgba(54,211,154,0)}}';
 
 export default function SatelliteMap() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -192,9 +106,59 @@ export default function SatelliteMap() {
           });
           map.addControl(overlay);
           overlayRef.current = overlay;
-          // Added: blinking green coverage halos + dotted Abuja→Ghana/Senegal
-          // links. Beneath the deck tenant dots; everything else unchanged.
-          coverageStopRef.current = addCoverageOverlay(map as unknown as CoverageMap);
+
+          // Added: green pulsing coverage blinkers + dashed links converging on
+          // the Abuja hub — matches the :8090 cover page. Markers float over the
+          // base map; deck dots stay interactive. Cleaned up on teardown.
+          if (!document.getElementById('eb-cov-pulse-css')) {
+            const css = document.createElement('style');
+            css.id = 'eb-cov-pulse-css';
+            css.textContent = COVERAGE_PULSE_CSS;
+            document.head.appendChild(css);
+          }
+          const covPilots = filterTenants('All Layers').filter((t) => t.active);
+          map.addSource('coverage-links', {
+            type: 'geojson',
+            data: {
+              type: 'FeatureCollection',
+              features: covPilots.map((p) => ({
+                type: 'Feature' as const,
+                geometry: {
+                  type: 'LineString' as const,
+                  coordinates: [p.centroid, COVERAGE_HUB],
+                },
+                properties: {},
+              })),
+            },
+          });
+          map.addLayer({
+            id: 'coverage-links',
+            type: 'line',
+            source: 'coverage-links',
+            paint: {
+              'line-color': COVERAGE_LINK,
+              'line-width': 1,
+              'line-opacity': 0.35,
+              'line-dasharray': [2, 3], // dotted
+            },
+          });
+          const covMarkers = covPilots.map((p) => {
+            const el = document.createElement('div');
+            el.style.cssText =
+              `width:10px;height:10px;border-radius:50%;background:${COVERAGE_BLINK};` +
+              'box-shadow:0 0 0 0 rgba(54,211,154,.6);animation:eb-cov-pulse 2.1s infinite';
+            return new mapboxgl.Marker({ element: el }).setLngLat(p.centroid).addTo(map);
+          });
+          coverageStopRef.current = () => {
+            covMarkers.forEach((m) => m.remove());
+            try {
+              if (map.getLayer('coverage-links')) map.removeLayer('coverage-links');
+              if (map.getSource('coverage-links')) map.removeSource('coverage-links');
+            } catch {
+              /* map already torn down — ignore */
+            }
+          };
+
           setMapStatus('ready');
         });
       } catch (err) {
