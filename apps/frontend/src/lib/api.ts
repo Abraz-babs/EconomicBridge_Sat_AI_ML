@@ -37,6 +37,10 @@ export const INGESTION_BASE_URL: string =
 export const ML_BASE_URL: string =
   process.env.NEXT_PUBLIC_ML_BASE_URL ?? 'http://localhost:8002/api/v1';
 
+/** Notifications service (SMS) — same success-envelope shape as the API. */
+export const NOTIFY_BASE_URL: string =
+  process.env.NEXT_PUBLIC_NOTIFY_BASE_URL ?? 'http://localhost:8003/api/v1';
+
 /** Raw JSON fetcher for the ingestion service (no envelope unwrap). */
 export async function ingestionFetch<T>(
   path: string,
@@ -324,6 +328,67 @@ export async function mlFetch<T>(
   if (!envelope || envelope.success !== true) {
     throw new ApiException(
       'ML service returned an unexpected response shape',
+      response.status,
+      null,
+    );
+  }
+  return envelope.data;
+}
+
+
+/**
+ * Fetch the notifications service (:8003). Same success-envelope contract as
+ * the API; unwraps `.data`. Used by the SMS subscriber/preview admin card.
+ */
+export async function notifyFetch<T>(
+  path: string,
+  opts: RequestOptions = {},
+): Promise<T> {
+  const url = path.startsWith('http') ? path : `${NOTIFY_BASE_URL}${path}`;
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    ...(opts.headers ?? {}),
+  };
+  if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (opts.tenantId) headers['X-Tenant-Id'] = opts.tenantId;
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: opts.method ?? 'GET',
+      headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      signal: opts.signal,
+    });
+  } catch (err) {
+    throw new ApiException(
+      err instanceof Error ? err.message : 'Network error',
+      0,
+      null,
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch {
+    parsed = null;
+  }
+
+  if (!response.ok) {
+    let detail = `${response.status} ${response.statusText}`;
+    if (parsed && typeof parsed === 'object') {
+      const obj = parsed as { detail?: unknown; error?: { message?: string } };
+      if (typeof obj.detail === 'string') detail = obj.detail;
+      else if (obj.error?.message) detail = obj.error.message;
+    }
+    throw new ApiException(`Notifications: ${detail}`, response.status, null);
+  }
+
+  const envelope = parsed as SuccessEnvelope<T> | null;
+  if (!envelope || envelope.success !== true) {
+    throw new ApiException(
+      'Notifications service returned an unexpected response shape',
       response.status,
       null,
     );

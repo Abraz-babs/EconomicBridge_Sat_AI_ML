@@ -135,3 +135,11 @@ class NotifyConflictData(BaseModel):
     provider_chosen: str
     rendered_message: str
     dispatches: list[DispatchSummary]
+
+
+class SmsPreviewData(BaseModel):
+    """Rendered SMS preview for one language — no send, no PII, no DB."""
+    language: str
+    verified: bool   # False for DRAFT languages pending native review
+    body: str
+    chars: int

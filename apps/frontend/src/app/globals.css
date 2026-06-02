@@ -944,6 +944,57 @@ footer.app-footer {
   border-left: 3px solid #f0a830;
 }
 
+/* ── Farmer SMS language-preview card (admin) ───────────────────────────── */
+.sms-preview-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 16px;
+}
+.sms-ctl { display: flex; flex-direction: column; gap: 4px; font-size: 10px; color: var(--muted); }
+.sms-ctl select,
+.sms-ctl input {
+  font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 4px;
+  background: #fff;
+  min-width: 120px;
+}
+.sms-preview-phone {
+  margin: 0 16px 12px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #0f1b12;
+  border: 1px solid rgba(54,211,154,0.35);
+}
+.sms-preview-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #d8f5e4;
+  font-family: system-ui, sans-serif;
+  white-space: pre-wrap;
+}
+.sms-preview-body--err { color: #ffb4a2; }
+.sms-preview-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 10px;
+  color: #7fa890;
+}
+.sms-badge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.sms-badge--ok { background: rgba(54,211,154,0.18); color: #36d39a; }
+.sms-badge--draft { background: rgba(240,168,48,0.18); color: #f0a830; }
+
 .fp-alert-empty code,
 .fp-alert-error code {
   background: rgba(0,0,0,0.06);

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session, is_valid_tenant_id
@@ -19,9 +19,10 @@ from schemas.notify import (
     DispatchSummary,
     NotifyConflictData,
     NotifyConflictRequest,
+    SmsPreviewData,
 )
 from services.dispatcher import dispatch_conflict_alert
-from services.messages import RenderContext, render_conflict_sms
+from services.messages import RenderContext, is_verified, render_conflict_sms
 from services.providers import gateway_for_tenant
 
 router = APIRouter(prefix="/notify", tags=["notify"])
@@ -29,6 +30,48 @@ router = APIRouter(prefix="/notify", tags=["notify"])
 
 def _trace_id(request: Request) -> UUID:
     return getattr(request.state, "trace_id", uuid4())
+
+
+@router.get(
+    "/preview",
+    response_model=SuccessResponse[SmsPreviewData],
+    summary="Render a sample farmer SMS in a given language (no send, no PII)",
+)
+async def preview_sms(
+    request: Request,
+    lang: Annotated[str, Query()] = "en",
+    tenant_id: Annotated[str, Query()] = "benue",
+    severity: Annotated[str, Query()] = "critical",
+    alert_type: Annotated[str, Query()] = "conflict",
+    lga: Annotated[str | None, Query()] = None,
+    eta_hours: Annotated[int | None, Query()] = 18,
+    affected_area_ha: Annotated[float | None, Query()] = 120,
+) -> SuccessResponse[SmsPreviewData]:
+    """Demo/preview only — reuses the real renderer so the dashboard can show
+    exactly what a farmer would receive in each language."""
+    body = render_conflict_sms(
+        RenderContext(
+            tenant_id=tenant_id,
+            severity=severity,
+            alert_type=alert_type,
+            lga=lga,
+            zone_name=None,
+            affected_area_ha=affected_area_ha,
+            livelihoods_at_risk=None,
+            eta_hours=eta_hours,
+        ),
+        lang,
+    )
+    return SuccessResponse(
+        data=SmsPreviewData(
+            language=lang, verified=is_verified(lang), body=body, chars=len(body),
+        ),
+        meta=ResponseMeta(
+            tenant_id=None,
+            trace_id=_trace_id(request),
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
 
 
 @router.post(

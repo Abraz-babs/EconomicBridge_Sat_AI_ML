@@ -3,6 +3,7 @@
 import AidCoverageUploadCard from './AidCoverageUploadCard';
 import CropPriceUploadCard from './CropPriceUploadCard';
 import SchedulerPanel from './SchedulerPanel';
+import SmsLanguagePreviewCard from './SmsLanguagePreviewCard';
 
 
 const orgs = [
@@ -56,6 +57,7 @@ export default function AdminPanel() {
       <SchedulerPanel />
       <AidCoverageUploadCard />
       <CropPriceUploadCard />
+      <SmsLanguagePreviewCard />
 
       <div className="panel anim a1">
         <div className="panel-header">
