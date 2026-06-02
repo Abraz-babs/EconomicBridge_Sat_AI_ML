@@ -12,11 +12,23 @@ interface RoleContextValue {
 
 const RoleContext = createContext<RoleContextValue | undefined>(undefined);
 
+const ROLE_STORAGE_KEY = 'eb.activeRole';
+
+function readInitialRole(): RoleId {
+  if (typeof window === 'undefined') return 'ngo';
+  const stored = window.localStorage.getItem(ROLE_STORAGE_KEY);
+  if (stored && stored in roles) return stored as RoleId;
+  return 'ngo';
+}
+
 export function RoleProvider({ children }: { children: ReactNode }) {
-  const [currentRole, setCurrentRole] = useState<RoleId>('ngo');
+  const [currentRole, setCurrentRole] = useState<RoleId>(readInitialRole);
 
   const switchRole = useCallback((role: RoleId) => {
     setCurrentRole(role);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(ROLE_STORAGE_KEY, role);
+    }
   }, []);
 
   const value: RoleContextValue = {

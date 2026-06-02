@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { RoleProvider, useRole } from '@/context/RoleContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import RoleSwitcher from '@/components/RoleSwitcher';
@@ -26,16 +26,37 @@ import MobilityCompassPanel from '@/components/mobility/MobilityCompassPanel';
 import SkillsBridgePanel from '@/components/skills/SkillsBridgePanel';
 import AdminPanel from '@/components/admin/AdminPanel';
 
+const TAB_IDS: TabId[] = [
+  'overview', 'economic-visibility', 'aid-coordination', 'farmland',
+  'cropguard', 'shockguard', 'mobility-compass', 'skillsbridge', 'admin',
+];
+const TAB_STORAGE_KEY = 'eb.activeTab';
+
+function readInitialTab(): TabId {
+  if (typeof window === 'undefined') return 'overview';
+  const stored = window.localStorage.getItem(TAB_STORAGE_KEY);
+  return stored && (TAB_IDS as string[]).includes(stored) ? (stored as TabId) : 'overview';
+}
+
 function DashboardContent() {
-  const [activeTab, setActiveTab] = useState<TabId>('overview');
+  // Persisted across refreshes so the dashboard stays on the current module
+  // (mirrors how the active tenant is persisted in TenantContext).
+  const [activeTab, setActiveTab] = useState<TabId>(readInitialTab);
   const { currentRole } = useRole();
+
+  const handleTabChange = useCallback((tab: TabId) => {
+    setActiveTab(tab);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(TAB_STORAGE_KEY, tab);
+    }
+  }, []);
 
   return (
     <>
       <a href="#main-content" className="skip-link">Skip to main content</a>
       <RoleSwitcher />
       <Header />
-      <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
+      <Navigation activeTab={activeTab} onTabChange={handleTabChange} />
       <PermissionBanner />
 
       <main id="main-content" role="main">
