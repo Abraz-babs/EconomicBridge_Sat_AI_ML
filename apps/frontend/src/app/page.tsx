@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { RoleProvider, useRole } from '@/context/RoleContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import RoleSwitcher from '@/components/RoleSwitcher';
@@ -32,15 +32,22 @@ const TAB_IDS: TabId[] = [
 ];
 const TAB_STORAGE_KEY = 'eb.activeTab';
 
+function isTab(v: string | null): v is TabId {
+  return !!v && (TAB_IDS as string[]).includes(v);
+}
+
+/** Initial tab: URL `?tab=` (shareable/deep-link) → localStorage → overview. */
 function readInitialTab(): TabId {
   if (typeof window === 'undefined') return 'overview';
+  const fromUrl = new URLSearchParams(window.location.search).get('tab');
+  if (isTab(fromUrl)) return fromUrl;
   const stored = window.localStorage.getItem(TAB_STORAGE_KEY);
-  return stored && (TAB_IDS as string[]).includes(stored) ? (stored as TabId) : 'overview';
+  return isTab(stored) ? stored : 'overview';
 }
 
 function DashboardContent() {
-  // Persisted across refreshes so the dashboard stays on the current module
-  // (mirrors how the active tenant is persisted in TenantContext).
+  // Persisted across refreshes AND reflected in the URL (?tab=) so module
+  // views are shareable/deep-linkable. Mirrors how the active tenant persists.
   const [activeTab, setActiveTab] = useState<TabId>(readInitialTab);
   const { currentRole } = useRole();
 
@@ -48,7 +55,27 @@ function DashboardContent() {
     setActiveTab(tab);
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(TAB_STORAGE_KEY, tab);
+      // pushState so the back/forward buttons navigate between modules.
+      window.history.pushState({ tab }, '', `${window.location.pathname}?tab=${tab}`);
     }
+  }, []);
+
+  // On mount: reflect the restored tab in the URL (shareable) without adding a
+  // history entry, and keep activeTab in sync with browser back/forward.
+  useEffect(() => {
+    const cur = new URLSearchParams(window.location.search).get('tab');
+    if (cur !== activeTab) {
+      window.history.replaceState(
+        { tab: activeTab }, '', `${window.location.pathname}?tab=${activeTab}`,
+      );
+    }
+    const onPop = () => {
+      const t = new URLSearchParams(window.location.search).get('tab');
+      setActiveTab(isTab(t) ? t : 'overview');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
