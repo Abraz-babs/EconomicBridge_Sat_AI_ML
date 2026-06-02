@@ -222,22 +222,23 @@ async def dispatch_conflict_alert(
         )
         return []
 
-    message = render_conflict_sms(
-        RenderContext(
-            tenant_id=tenant_id,
-            severity=severity,
-            alert_type=alert_type,
-            lga=lga,
-            zone_name=zone_name,
-            affected_area_ha=affected_area_ha,
-            livelihoods_at_risk=livelihoods_at_risk,
-            eta_hours=eta_hours,
-        )
+    # Build the render context once; the body is rendered per subscriber in
+    # their own language (the dispatcher reads subscriber.language).
+    ctx = RenderContext(
+        tenant_id=tenant_id,
+        severity=severity,
+        alert_type=alert_type,
+        lga=lga,
+        zone_name=zone_name,
+        affected_area_ha=affected_area_ha,
+        livelihoods_at_risk=livelihoods_at_risk,
+        eta_hours=eta_hours,
     )
     gw = gateway or resolve_gateway(tenant_id)
 
     outcomes: list[DispatchOutcome] = []
     for sub in subscribers:
+        message = render_conflict_sms(ctx, sub.language)
         outbox_id = uuid4()
         inserted = await _insert_outbox_row(
             session,

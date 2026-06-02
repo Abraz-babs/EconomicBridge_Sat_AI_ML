@@ -1,10 +1,14 @@
 """Unit tests for SMS template + subscriber preference matching."""
 from __future__ import annotations
 
+import pytest
+
 from services.messages import (
     RenderContext,
+    is_verified,
     render_conflict_sms,
     should_dispatch,
+    VERIFIED_LANGUAGES,
 )
 
 
@@ -63,6 +67,46 @@ def test_render_includes_opt_out_footer() -> None:
 def test_render_clamps_to_480_chars() -> None:
     body = render_conflict_sms(_ctx(zone_name="x" * 600))
     assert len(body) <= 480
+
+
+# ─── multilingual rendering (Hausa / Yoruba / Igbo / French / Portuguese) ──
+
+
+@pytest.mark.parametrize("lang", ["en", "fr", "pt", "ha", "yo", "ig"])
+def test_render_all_six_languages_nonempty_and_localised(lang: str) -> None:
+    body = render_conflict_sms(_ctx(), lang)
+    assert body  # non-empty
+    assert "EconomicBridge" in body          # brand kept
+    assert "STOP" in body                    # opt-out kept in every language
+    assert "Argungu" in body                 # LGA interpolated
+    assert len(body) <= 480
+
+
+def test_render_languages_actually_differ() -> None:
+    en = render_conflict_sms(_ctx(), "en")
+    fr = render_conflict_sms(_ctx(), "fr")
+    ha = render_conflict_sms(_ctx(), "ig")
+    assert en != fr != ha
+    assert "livestock" in en          # English action phrase
+    assert "betail" in fr             # French action phrase (ASCII)
+
+
+def test_render_unknown_language_falls_back_to_english() -> None:
+    assert render_conflict_sms(_ctx(), "zz") == render_conflict_sms(_ctx(), "en")
+
+
+def test_default_language_is_english() -> None:
+    assert render_conflict_sms(_ctx()) == render_conflict_sms(_ctx(), "en")
+
+
+def test_verified_languages_are_en_fr_pt_only() -> None:
+    # HA/YO/IG are DRAFT pending native-speaker review — must NOT be flagged
+    # production-verified until reviewed.
+    assert VERIFIED_LANGUAGES == frozenset({"en", "fr", "pt"})
+    assert is_verified("en") and is_verified("fr") and is_verified("pt")
+    assert not is_verified("ha")
+    assert not is_verified("yo")
+    assert not is_verified("ig")
 
 
 # ─── should_dispatch ─────────────────────────────────────────────────────
