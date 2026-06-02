@@ -160,3 +160,21 @@ class OutboxRow(BaseModel):
 
 class OutboxListData(BaseModel):
     rows: list[OutboxRow]
+
+
+# ─── Bulk subscriber import ───────────────────────────────────────────────
+
+
+class BulkSubscriberRowError(BaseModel):
+    line_number: int
+    raw_row: dict[str, str]
+    error: str
+
+
+class BulkSubscriberUploadResult(BaseModel):
+    tenant_id: str
+    rows_received: int
+    rows_inserted: int
+    rows_updated: int
+    rows_skipped: int
+    errors: list[BulkSubscriberRowError]

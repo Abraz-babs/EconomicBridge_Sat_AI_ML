@@ -39,7 +39,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException  # noqa
 from config import get_settings  # noqa: E402
 from dependencies import DPAGateError, dpa_gate_exception_handler  # noqa: E402
 from errors import http_exception_handler, validation_exception_handler  # noqa: E402
-from routers import health, notify, subscribers  # noqa: E402
+from routers import health, notify, subscribers, subscribers_bulk  # noqa: E402
 
 settings = get_settings()
 
@@ -85,4 +85,5 @@ app.add_middleware(
 
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(subscribers.router, prefix="/api/v1")
+app.include_router(subscribers_bulk.router, prefix="/api/v1")
 app.include_router(notify.router, prefix="/api/v1")

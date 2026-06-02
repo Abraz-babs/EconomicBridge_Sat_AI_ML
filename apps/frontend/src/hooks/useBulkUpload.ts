@@ -6,7 +6,7 @@ import {
   type UseMutationResult,
 } from '@tanstack/react-query';
 
-import { ApiException, apiUpload, type SuccessEnvelope } from '@/lib/api';
+import { ApiException, apiUpload, notifyUpload, type SuccessEnvelope } from '@/lib/api';
 
 
 /** Shared shape of the per-row error returned by both bulk endpoints. */
@@ -14,6 +14,46 @@ export interface BulkRowError {
   line_number: number;
   raw_row: Record<string, string>;
   error: string;
+}
+
+
+/* ─── Farmer-subscriber bulk import (notifications :8003) ─────────────── */
+
+
+export interface BulkSubscriberUploadResult {
+  tenant_id: string;
+  rows_received: number;
+  rows_inserted: number;
+  rows_updated: number;
+  rows_skipped: number;
+  errors: BulkRowError[];
+}
+
+export interface BulkSubscriberUploadVariables {
+  tenantId: string;
+  file: File;
+}
+
+export function useBulkSubscriberUpload(): UseMutationResult<
+  BulkSubscriberUploadResult,
+  ApiException,
+  BulkSubscriberUploadVariables
+> {
+  const qc = useQueryClient();
+  return useMutation<BulkSubscriberUploadResult, ApiException, BulkSubscriberUploadVariables>({
+    mutationFn: async (vars) => {
+      const fd = new FormData();
+      fd.append('file', vars.file, vars.file.name);
+      const envelope: SuccessEnvelope<BulkSubscriberUploadResult> =
+        await notifyUpload<BulkSubscriberUploadResult>(
+          '/subscribers/bulk', fd, { tenantId: vars.tenantId },
+        );
+      return envelope.data;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ['sms-outbox', vars.tenantId] });
+    },
+  });
 }
 
 

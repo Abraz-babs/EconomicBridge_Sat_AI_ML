@@ -265,6 +265,42 @@ export async function apiUpload<T>(
   return parsed as SuccessEnvelope<T>;
 }
 
+/** Multipart upload to the notifications service (:8003). Mirrors apiUpload. */
+export async function notifyUpload<T>(
+  path: string,
+  formData: FormData,
+  opts: UploadOptions = {},
+): Promise<SuccessEnvelope<T>> {
+  const url = path.startsWith('http') ? path : `${NOTIFY_BASE_URL}${path}`;
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (opts.tenantId) headers['X-Tenant-Id'] = opts.tenantId;
+
+  let response: Response;
+  try {
+    response = await fetch(url, { method: 'POST', headers, body: formData, signal: opts.signal });
+  } catch (err) {
+    throw new ApiException(err instanceof Error ? err.message : 'Network error', 0, null);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch {
+    parsed = null;
+  }
+
+  if (!response.ok) {
+    let message = `Upload failed: ${response.status} ${response.statusText}`;
+    if (parsed && typeof parsed === 'object') {
+      const obj = parsed as { detail?: unknown; error?: { message?: string } };
+      if (typeof obj.detail === 'string') message = obj.detail;
+      else if (obj.error?.message) message = obj.error.message;
+    }
+    throw new ApiException(message, response.status, null);
+  }
+  return parsed as SuccessEnvelope<T>;
+}
+
 // ─── ML service helper ─────────────────────────────────────────────────────
 
 
