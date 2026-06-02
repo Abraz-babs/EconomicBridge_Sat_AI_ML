@@ -31,6 +31,7 @@ from schemas.shockguard import (
     ShockScanRequest,
 )
 from services import shock_detector
+from services.auto_notify import fire_conflict_notification
 from services.live_satellite import LiveDataMissingError, load_flood_series
 from services.shock_detector import to_utc_dt
 from services.tenants import tenant_schema_name
@@ -153,6 +154,21 @@ async def scan_shock(
             trace_id=_trace_id(request),
         )
         persisted = event_id is not None
+
+        # Auto-trigger SMS to matching subscribers (best-effort, flag-gated —
+        # off unless auto_notify_enabled + a system org with a signed DPA).
+        if persisted:
+            await fire_conflict_notification(
+                tenant_id=tenant_id,
+                severity=detection.severity,
+                alert_type=detection.event_type,  # 'flood' | 'drought'
+                lga=None,            # scan is tenant-level (no per-LGA input)
+                zone_name=None,
+                affected_area_ha=detection.affected_area_km2 * 100.0,
+                livelihoods_at_risk=detection.population_at_risk,
+                eta_hours=detection.projected_onset_hours,
+                alert_id=event_id,
+            )
 
     flood_pts = [
         FloodSeriesPoint(observed_at=to_utc_dt(p.observed_at),

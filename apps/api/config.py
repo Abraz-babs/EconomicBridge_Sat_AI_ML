@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     db_pool_size: int = 5
     db_pool_max_overflow: int = 10
 
+    # Auto-notify: when a ShockGuard/Farmland alert is persisted, fire an SMS
+    # dispatch to the notifications service. OFF by default — sending PII SMS
+    # automatically must be opted into. The system org must hold a signed DPA
+    # for the tenants it notifies (in dev, the demo org from seed_demo_dpa.py).
+    auto_notify_enabled: bool = False
+    notify_base_url: str = "http://localhost:8003/api/v1"
+    notify_system_org_id: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
