@@ -19,11 +19,14 @@ from schemas.notify import (
     DispatchSummary,
     NotifyConflictData,
     NotifyConflictRequest,
+    OutboxListData,
+    OutboxRow,
     SmsPreviewData,
 )
 from services.dispatcher import dispatch_conflict_alert
 from services.messages import RenderContext, is_verified, render_conflict_sms
 from services.providers import gateway_for_tenant
+from sqlalchemy import text
 
 router = APIRouter(prefix="/notify", tags=["notify"])
 
@@ -68,6 +71,62 @@ async def preview_sms(
         ),
         meta=ResponseMeta(
             tenant_id=None,
+            trace_id=_trace_id(request),
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
+
+
+def _mask_phone(phone: str) -> str:
+    """Show only the last 4 digits — e.g. '••••0123'."""
+    tail = phone[-4:] if len(phone) >= 4 else phone
+    return f"••••{tail}"
+
+
+@router.get(
+    "/outbox",
+    response_model=SuccessResponse[OutboxListData],
+    summary="Recent queued/sent SMS for a tenant (DPA-gated; phone masked)",
+    dependencies=[Depends(require_signed_dpa)],
+)
+async def recent_outbox(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 8,
+) -> SuccessResponse[OutboxListData]:
+    tenant_id = (request.headers.get(TENANT_HEADER) or "").strip().lower()
+    rows = (
+        await session.execute(
+            text(
+                """
+                SELECT language, status, provider, severity, alert_type,
+                       phone_e164, message, queued_at
+                  FROM public.sms_outbox
+                 WHERE tenant_id = :tenant
+                 ORDER BY queued_at DESC
+                 LIMIT :limit
+                """
+            ),
+            {"tenant": tenant_id, "limit": limit},
+        )
+    ).mappings().all()
+    out = [
+        OutboxRow(
+            language=r["language"],
+            status=r["status"],
+            provider=r["provider"],
+            severity=r["severity"],
+            alert_type=r["alert_type"],
+            phone_masked=_mask_phone(r["phone_e164"]),
+            message=r["message"],
+            queued_at=r["queued_at"],
+        )
+        for r in rows
+    ]
+    return SuccessResponse(
+        data=OutboxListData(rows=out),
+        meta=ResponseMeta(
+            tenant_id=tenant_id,
             trace_id=_trace_id(request),
             timestamp=datetime.now(timezone.utc),
         ),

@@ -1024,6 +1024,37 @@ footer.app-footer {
   border-left: 3px solid #36d39a;
 }
 
+.sms-outbox { margin: 0 16px 12px; }
+.sms-outbox-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.sms-outbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  font-size: 11px;
+}
+.sms-dot { width: 7px; height: 7px; border-radius: 50%; background: #9aa; flex: 0 0 auto; }
+.sms-dot--sent, .sms-dot--mock { background: #36d39a; }
+.sms-dot--queued { background: #f0a830; }
+.sms-dot--failed { background: #e05a2b; }
+.sms-outbox-lang { font-weight: 700; color: #2a6b4f; width: 26px; flex: 0 0 auto; }
+.sms-outbox-phone { color: var(--muted); width: 64px; flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+.sms-outbox-msg {
+  color: var(--ink, #2a2622);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+}
+
 .fp-alert-empty code,
 .fp-alert-error code {
   background: rgba(0,0,0,0.06);

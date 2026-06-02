@@ -143,3 +143,19 @@ class SmsPreviewData(BaseModel):
     verified: bool   # False for DRAFT languages pending native review
     body: str
     chars: int
+
+
+class OutboxRow(BaseModel):
+    """One recent sms_outbox row. Phone is masked (last 4 only)."""
+    language: str
+    status: str
+    provider: str
+    severity: str | None
+    alert_type: str | None
+    phone_masked: str
+    message: str
+    queued_at: datetime
+
+
+class OutboxListData(BaseModel):
+    rows: list[OutboxRow]

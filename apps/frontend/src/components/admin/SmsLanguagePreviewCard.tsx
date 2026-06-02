@@ -47,6 +47,17 @@ interface NotifyResult {
   dispatches: DispatchSummary[];
 }
 
+interface OutboxRow {
+  language: string;
+  status: string;
+  provider: string;
+  severity: string | null;
+  alert_type: string | null;
+  phone_masked: string;
+  message: string;
+  queued_at: string;
+}
+
 export default function SmsLanguagePreviewCard() {
   const { activeTenantId } = useTenant();
   const [lang, setLang] = useState('ha');
@@ -55,6 +66,7 @@ export default function SmsLanguagePreviewCard() {
   const [lga, setLga] = useState('');
   const [phone, setPhone] = useState('+2348000000001');
   const [note, setNote] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const params = new URLSearchParams({
     lang, tenant_id: activeTenantId, severity, alert_type: alertType,
@@ -82,7 +94,10 @@ export default function SmsLanguagePreviewCard() {
           channel: 'sms',
         },
       }),
-    onSuccess: () => setNote(`✓ Test subscriber created in ${lang.toUpperCase()} (threshold: all).`),
+    onSuccess: () => {
+      setNote(`✓ Test subscriber created in ${lang.toUpperCase()} (threshold: all).`);
+      setRefreshKey((k) => k + 1);
+    },
     onError: (e) => setNote(`Create failed: ${e.message}`),
   });
 
@@ -101,13 +116,26 @@ export default function SmsLanguagePreviewCard() {
           affected_area_ha: 120,
         },
       }),
-    onSuccess: (r) =>
+    onSuccess: (r) => {
       setNote(
         `✓ Dispatched via ${r.provider_chosen}: matched ${r.matched_subscribers}, ` +
           `queued/sent ${r.dispatched}, skipped ${r.skipped_duplicate}, failed ${r.failed}. ` +
           `Each subscriber gets the message in their own language.`,
-      ),
+      );
+      setRefreshKey((k) => k + 1);
+    },
     onError: (e) => setNote(`Dispatch failed: ${e.message}`),
+  });
+
+  const outbox = useQuery<{ rows: OutboxRow[] }, ApiException>({
+    queryKey: ['sms-outbox', activeTenantId, refreshKey],
+    staleTime: 10 * 1000,
+    queryFn: ({ signal }) =>
+      notifyFetch<{ rows: OutboxRow[] }>('/notify/outbox?limit=6', {
+        tenantId: activeTenantId,
+        headers: { 'X-Organisation-Id': DEMO_ORG_ID },
+        signal,
+      }),
   });
 
   const busy = createSub.isPending || dispatch.isPending;
@@ -181,6 +209,22 @@ export default function SmsLanguagePreviewCard() {
       </div>
 
       {note && <div className="sms-result">{note}</div>}
+
+      {outbox.data && outbox.data.rows.length > 0 && (
+        <div className="sms-outbox">
+          <div className="sms-outbox-title">
+            Recent queue · sms_outbox ({activeTenantId})
+          </div>
+          {outbox.data.rows.map((r, i) => (
+            <div key={i} className="sms-outbox-row">
+              <span className={`sms-dot sms-dot--${r.status}`} />
+              <span className="sms-outbox-lang">{r.language.toUpperCase()}</span>
+              <span className="sms-outbox-phone">{r.phone_masked}</span>
+              <span className="sms-outbox-msg">{r.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="admin-footer">
         End-to-end demo: create a farmer subscriber in the chosen language, then
