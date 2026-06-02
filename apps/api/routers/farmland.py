@@ -26,8 +26,13 @@ from schemas.farmland import (
     AlertType,
 )
 from services import farmland as farmland_service
+from services.auto_notify import fire_conflict_notification
 
 router = APIRouter(prefix="/farmland", tags=["farmland"])
+
+# Status that means "an officer reviewed + approved this alert" — the gate for
+# auto-dispatching farmer SMS (fire alerts are human_review_required by design).
+NOTIFY_ON_STATUS = "acknowledged"
 
 
 def _trace_id(request: Request) -> UUID:
@@ -143,6 +148,26 @@ async def patch_alert(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Alert {alert_id} not found in active tenant",
         )
+
+    # Auto-trigger farmer SMS only when an officer APPROVES the alert
+    # (acknowledged) — never on raw detection, since FIRMS fire alerts are
+    # human_review_required (legitimate ag burning looks like wildfire).
+    # Best-effort + flag-gated; deduped per alert so re-acknowledging is a no-op.
+    if updated.status == NOTIFY_ON_STATUS:
+        await fire_conflict_notification(
+            tenant_id=updated.tenant_id,
+            # str-enum members serialise to their value ('critical', 'fire') in
+            # JSON, so pass them through directly (str(enum) would give the repr).
+            severity=updated.severity,
+            alert_type=updated.alert_type,  # 'fire'
+            lga=updated.lga,
+            zone_name=updated.zone_name,
+            affected_area_ha=updated.affected_area_ha,
+            livelihoods_at_risk=updated.livelihoods_at_risk,
+            eta_hours=updated.predicted_breach_hours,
+            alert_id=updated.id,
+        )
+
     return SuccessResponse(
         data=updated,
         meta=ResponseMeta(

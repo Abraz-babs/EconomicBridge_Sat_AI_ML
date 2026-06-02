@@ -27,6 +27,7 @@ class AlertType(str, Enum):
     FLOOD = "flood"
     CROP_DISEASE = "crop_disease"
     DROUGHT = "drought"
+    FIRE = "fire"
 
 
 class Language(str, Enum):
