@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { ApiException, notifyFetch } from '@/lib/api';
 import { useTenant } from '@/context/TenantContext';
@@ -19,6 +19,12 @@ const LANGUAGES: { code: string; label: string }[] = [
 const SEVERITIES = ['critical', 'high', 'medium', 'low'];
 const ALERT_TYPES = ['conflict', 'flood', 'drought', 'fire'];
 
+// Demo-only org with a signed DPA across all pilots (see scripts/seed_demo_dpa.py).
+// The dispatch endpoint is DPA-gated; this authorises the dashboard demo. In dev
+// the gateway is the mock (no real SMS is sent).
+const DEMO_ORG_ID =
+  process.env.NEXT_PUBLIC_DEMO_ORG_ID ?? '025a16c3-4c64-4115-b320-f5dbd8d8bc03';
+
 interface SmsPreview {
   language: string;
   verified: boolean;
@@ -26,37 +32,90 @@ interface SmsPreview {
   chars: number;
 }
 
-/**
- * Demo card: pick a farmer's SMS language and see the exact message the
- * platform would send, rendered by the real notifications renderer
- * (/notify/preview). Makes the multilingual free-tier SMS visible.
- */
+interface DispatchSummary {
+  subscriber_id: string;
+  phone_e164: string;
+  provider: string;
+  status: string;
+}
+interface NotifyResult {
+  matched_subscribers: number;
+  dispatched: number;
+  skipped_duplicate: number;
+  failed: number;
+  provider_chosen: string;
+  dispatches: DispatchSummary[];
+}
+
 export default function SmsLanguagePreviewCard() {
   const { activeTenantId } = useTenant();
   const [lang, setLang] = useState('ha');
   const [severity, setSeverity] = useState('critical');
   const [alertType, setAlertType] = useState('conflict');
   const [lga, setLga] = useState('');
+  const [phone, setPhone] = useState('+2348000000001');
+  const [note, setNote] = useState<string | null>(null);
 
   const params = new URLSearchParams({
-    lang,
-    tenant_id: activeTenantId,
-    severity,
-    alert_type: alertType,
+    lang, tenant_id: activeTenantId, severity, alert_type: alertType,
   });
   if (lga.trim()) params.set('lga', lga.trim());
 
-  const { data, isLoading, isError, error } = useQuery<SmsPreview, ApiException>({
+  const preview = useQuery<SmsPreview, ApiException>({
     queryKey: ['sms-preview', lang, activeTenantId, severity, alertType, lga.trim()],
     staleTime: 30 * 1000,
     queryFn: ({ signal }) =>
       notifyFetch<SmsPreview>(`/notify/preview?${params.toString()}`, { signal }),
   });
 
+  const createSub = useMutation<{ id: string }, ApiException>({
+    mutationFn: () =>
+      notifyFetch<{ id: string }>('/subscribers', {
+        method: 'POST',
+        tenantId: activeTenantId,
+        body: {
+          full_name: 'Demo Farmer',
+          phone_e164: phone.trim(),
+          language: lang,
+          lga: lga.trim() || null,
+          severity_threshold: 'all',
+          channel: 'sms',
+        },
+      }),
+    onSuccess: () => setNote(`✓ Test subscriber created in ${lang.toUpperCase()} (threshold: all).`),
+    onError: (e) => setNote(`Create failed: ${e.message}`),
+  });
+
+  const dispatch = useMutation<NotifyResult, ApiException>({
+    mutationFn: () =>
+      notifyFetch<NotifyResult>('/notify/conflict', {
+        method: 'POST',
+        tenantId: activeTenantId,
+        headers: { 'X-Organisation-Id': DEMO_ORG_ID },
+        body: {
+          tenant_id: activeTenantId,
+          severity,
+          alert_type: alertType,
+          lga: lga.trim() || null,
+          eta_hours: 18,
+          affected_area_ha: 120,
+        },
+      }),
+    onSuccess: (r) =>
+      setNote(
+        `✓ Dispatched via ${r.provider_chosen}: matched ${r.matched_subscribers}, ` +
+          `queued/sent ${r.dispatched}, skipped ${r.skipped_duplicate}, failed ${r.failed}. ` +
+          `Each subscriber gets the message in their own language.`,
+      ),
+    onError: (e) => setNote(`Dispatch failed: ${e.message}`),
+  });
+
+  const busy = createSub.isPending || dispatch.isPending;
+
   return (
     <div className="panel anim a1">
       <div className="panel-header">
-        <span className="panel-title">Farmer SMS · Language Preview</span>
+        <span className="panel-title">Farmer SMS · Language Preview + Test Queue</span>
         <span className="panel-meta">Free-tier · 6 languages · live render</span>
       </div>
 
@@ -64,9 +123,7 @@ export default function SmsLanguagePreviewCard() {
         <label className="sms-ctl">
           <span>Language</span>
           <select value={lang} onChange={(e) => setLang(e.target.value)}>
-            {LANGUAGES.map((l) => (
-              <option key={l.code} value={l.code}>{l.label}</option>
-            ))}
+            {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
           </select>
         </label>
         <label className="sms-ctl">
@@ -83,28 +140,24 @@ export default function SmsLanguagePreviewCard() {
         </label>
         <label className="sms-ctl">
           <span>LGA (optional)</span>
-          <input
-            type="text"
-            value={lga}
-            placeholder="e.g. Logo"
-            onChange={(e) => setLga(e.target.value)}
-          />
+          <input type="text" value={lga} placeholder="e.g. Logo"
+            onChange={(e) => setLga(e.target.value)} />
         </label>
       </div>
 
       <div className="sms-preview-phone">
-        {isLoading && <div className="sms-preview-body">Rendering…</div>}
-        {isError && (
+        {preview.isLoading && <div className="sms-preview-body">Rendering…</div>}
+        {preview.isError && (
           <div className="sms-preview-body sms-preview-body--err">
-            Notifications service unreachable ({error?.message ?? 'error'}).
+            Notifications service unreachable ({preview.error?.message ?? 'error'}).
           </div>
         )}
-        {data && !isError && (
+        {preview.data && !preview.isError && (
           <>
-            <div className="sms-preview-body">{data.body}</div>
+            <div className="sms-preview-body">{preview.data.body}</div>
             <div className="sms-preview-meta">
-              <span>{data.chars} chars · {data.chars <= 160 ? '1 SMS segment' : `${Math.ceil(data.chars / 153)} segments`}</span>
-              {data.verified ? (
+              <span>{preview.data.chars} chars · {preview.data.chars <= 160 ? '1 SMS segment' : `${Math.ceil(preview.data.chars / 153)} segments`}</span>
+              {preview.data.verified ? (
                 <span className="sms-badge sms-badge--ok">REVIEW-READY</span>
               ) : (
                 <span className="sms-badge sms-badge--draft">DRAFT · needs native review</span>
@@ -114,11 +167,27 @@ export default function SmsLanguagePreviewCard() {
         )}
       </div>
 
+      <div className="sms-demo-actions">
+        <label className="sms-ctl">
+          <span>Test phone (E.164)</span>
+          <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        </label>
+        <button type="button" className="sms-btn" disabled={busy} onClick={() => { setNote(null); createSub.mutate(); }}>
+          {createSub.isPending ? 'Creating…' : '1 · Create test subscriber'}
+        </button>
+        <button type="button" className="sms-btn sms-btn--go" disabled={busy} onClick={() => { setNote(null); dispatch.mutate(); }}>
+          {dispatch.isPending ? 'Dispatching…' : '2 · Send test alert → queue'}
+        </button>
+      </div>
+
+      {note && <div className="sms-result">{note}</div>}
+
       <div className="admin-footer">
-        Push-only free-tier alerts to farmers (no app, no signup). Numbers sourced
-        via partner agencies. English/French/Portuguese are review-ready; Hausa,
-        Yorùbá and Igbo are draft translations pending native-speaker sign-off
-        before production sends.
+        End-to-end demo: create a farmer subscriber in the chosen language, then
+        dispatch an alert — the queue (sms_outbox) gets the message rendered in
+        each subscriber&apos;s language via the mock gateway (no real SMS in dev).
+        EN/FR/PT are review-ready; HA/YO/IG are drafts pending native-speaker
+        sign-off before production sends.
       </div>
     </div>
   );

@@ -995,6 +995,35 @@ footer.app-footer {
 .sms-badge--ok { background: rgba(54,211,154,0.18); color: #36d39a; }
 .sms-badge--draft { background: rgba(240,168,48,0.18); color: #f0a830; }
 
+.sms-demo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 0 16px 8px;
+}
+.sms-btn {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(0,0,0,0.15);
+  background: #fff;
+  cursor: pointer;
+}
+.sms-btn:disabled { opacity: 0.5; cursor: default; }
+.sms-btn--go { background: #36d39a; color: #06291b; border-color: #36d39a; }
+.sms-result {
+  margin: 0 16px 12px;
+  padding: 10px 14px;
+  font-size: 11px;
+  line-height: 1.5;
+  border-radius: 6px;
+  background: #eef9f2;
+  color: #1f6b4a;
+  border-left: 3px solid #36d39a;
+}
+
 .fp-alert-empty code,
 .fp-alert-error code {
   background: rgba(0,0,0,0.06);
