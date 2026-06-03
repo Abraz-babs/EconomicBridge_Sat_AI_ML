@@ -44,9 +44,17 @@ export function useTenantModules(tenantId: string): UseQueryResult<string[], Api
 
 // ─── Super-admin: registry + entitlement management ────────────────────────
 
+export interface TenantCategory {
+  key: string;
+  label: string;
+  group: string;
+  geographic: boolean;
+}
+
 interface TenantRegistryData {
   tenants: RegisteredTenant[];
   catalog: { key: string; label: string }[];
+  categories: TenantCategory[];
 }
 
 export function useAdminTenants(): UseQueryResult<TenantRegistryData, ApiException> {

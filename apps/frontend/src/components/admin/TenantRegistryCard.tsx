@@ -7,9 +7,9 @@ import {
   useRegisterTenant,
   useSetTenantModules,
   type RegisteredTenant,
+  type TenantCategory,
 } from '@/hooks/useTenantModules';
 
-const TYPES = ['ng_state', 'ng_fct', 'ecowas_country'];
 const TIERS = ['standard', 'premium', 'pilot'];
 
 /**
@@ -23,6 +23,7 @@ export default function TenantRegistryCard() {
 
   const catalog = data?.catalog ?? [];
   const tenants = data?.tenants ?? [];
+  const categories = data?.categories ?? [];
 
   function toggle(tenant: RegisteredTenant, key: string, next: boolean) {
     const enabled = new Set(tenant.modules.filter((m) => m.enabled).map((m) => m.key));
@@ -86,7 +87,7 @@ export default function TenantRegistryCard() {
           </div>
         )}
 
-        <RegisterTenantForm catalog={catalog} />
+        <RegisterTenantForm catalog={catalog} categories={categories} />
       </div>
     </div>
   );
@@ -99,11 +100,17 @@ function shortLabel(label: string): string {
   return label.split(' ')[0];
 }
 
-function RegisterTenantForm({ catalog }: { catalog: { key: string; label: string }[] }) {
+function RegisterTenantForm(
+  { catalog, categories }: {
+    catalog: { key: string; label: string }[];
+    categories: TenantCategory[];
+  },
+) {
   const register = useRegisterTenant();
+  const groups = [...new Set(categories.map((c) => c.group))];
   const [id, setId] = useState('');
   const [name, setName] = useState('');
-  const [type, setType] = useState(TYPES[0]);
+  const [type, setType] = useState(categories[0]?.key ?? 'ng_state');
   const [country, setCountry] = useState('nigeria');
   const [tier, setTier] = useState(TIERS[0]);
   const [mou, setMou] = useState('');
@@ -137,9 +144,17 @@ function RegisterTenantForm({ catalog }: { catalog: { key: string; label: string
           <input value={id} placeholder="e.g. kano" onChange={(e) => setId(e.target.value)} /></label>
         <label className="upload-field"><span className="upload-field-label">Name</span>
           <input value={name} placeholder="Kano State" onChange={(e) => setName(e.target.value)} /></label>
-        <label className="upload-field"><span className="upload-field-label">Type</span>
+        <label className="upload-field"><span className="upload-field-label">Category</span>
           <select value={type} onChange={(e) => setType(e.target.value)}>
-            {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            {groups.map((g) => (
+              <optgroup key={g} label={g}>
+                {categories.filter((c) => c.group === g).map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.label}{c.geographic ? '' : ' (access only)'}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select></label>
         <label className="upload-field"><span className="upload-field-label">Country</span>
           <input value={country} onChange={(e) => setCountry(e.target.value)} /></label>

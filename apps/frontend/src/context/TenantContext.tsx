@@ -8,7 +8,9 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { useQuery } from '@tanstack/react-query';
 
+import { apiFetch, type SuccessEnvelope } from '@/lib/api';
 import { TENANTS, type Tenant } from '@/data/tenants';
 
 /**
@@ -58,16 +60,48 @@ function readInitial(): string {
   return DEFAULT_TENANT_ID;
 }
 
+interface RegistryShape {
+  tenants: { id: string; tenant_type: string }[];
+  categories: { key: string; geographic: boolean }[];
+}
+
 export function TenantProvider({ children }: { children: ReactNode }) {
   const [activeTenantId, setId] = useState<string>(readInitial);
 
-  const pilotTenants = useMemo(
-    () =>
-      PILOT_TENANT_IDS
-        .map((id) => TENANTS.find((t) => t.id === id))
-        .filter((t): t is Tenant => Boolean(t)),
-    [],
-  );
+  // Registered tenants from the super-admin registry. Lets newly-provisioned
+  // GEOGRAPHIC tenants appear in the selectors. Fail-safe: on error/loading the
+  // selector falls back to the hardcoded pilots.
+  const { data: registry } = useQuery<RegistryShape>({
+    queryKey: ['tenant-registry-select'],
+    staleTime: 60_000,
+    retry: 0,
+    queryFn: async ({ signal }) => {
+      const env: SuccessEnvelope<RegistryShape> =
+        await apiFetch<RegistryShape>('/admin/tenants', { signal });
+      return env.data;
+    },
+  });
+
+  // Valid selectable tenant ids = pilots ∪ registered GEOGRAPHIC tenants that
+  // have static metadata (centroid etc.) in the catalogue. Org tenants (NGO /
+  // research / funder) are access entities, not data views — excluded here.
+  const validIds = useMemo(() => {
+    const ids = new Set<string>(PILOT_TENANT_IDS);
+    if (registry) {
+      const geo = new Set(registry.categories.filter((c) => c.geographic).map((c) => c.key));
+      for (const t of registry.tenants) {
+        if (geo.has(t.tenant_type) && TENANTS.some((x) => x.id === t.id)) ids.add(t.id);
+      }
+    }
+    return ids;
+  }, [registry]);
+
+  const pilotTenants = useMemo(() => {
+    const extras = [...validIds].filter((id) => !PILOT_TENANT_IDS.includes(id)).sort();
+    return [...PILOT_TENANT_IDS, ...extras]
+      .map((id) => TENANTS.find((t) => t.id === id))
+      .filter((t): t is Tenant => Boolean(t));
+  }, [validIds]);
 
   const activeTenant = useMemo(
     () => TENANTS.find((t) => t.id === activeTenantId) ?? pilotTenants[0],
@@ -75,12 +109,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   );
 
   const setActiveTenant = useCallback((id: string) => {
-    if (!PILOT_TENANT_IDS.includes(id)) return;
+    if (!validIds.has(id)) return;
     setId(id);
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(STORAGE_KEY, id);
     }
-  }, []);
+  }, [validIds]);
 
   const value = useMemo<TenantContextValue>(
     () => ({ activeTenantId, activeTenant, pilotTenants, setActiveTenant }),
