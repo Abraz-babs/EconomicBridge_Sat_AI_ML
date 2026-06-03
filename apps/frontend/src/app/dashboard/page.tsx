@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RoleProvider } from '@/context/RoleContext';
 import { useAuth } from '@/context/AuthContext';
+import { useTenant } from '@/context/TenantContext';
+import EmptyRegion from '@/components/common/EmptyRegion';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import RoleSwitcher from '@/components/RoleSwitcher';
 import Header from '@/components/Header';
@@ -71,6 +73,10 @@ function DashboardContent() {
   // views are shareable/deep-linkable. Mirrors how the active tenant persists.
   const [activeTab, setActiveTab] = useState<TabId>(readInitialTab);
   const { user, loading, isSuperAdmin } = useAuth();
+  const { activeTenant } = useTenant();
+  // A registered-but-dataless region (pilots are active:true; newly-registered
+  // tenants like Kano are active:false) → show the "no data yet" banner over modules.
+  const showEmptyRegion = isGatedModule(activeTab) && !activeTenant.active;
   // Which module an anonymous visitor just tried to open (drives the prompt).
   const [gatedModule, setGatedModule] = useState<TabId | null>(null);
 
@@ -137,6 +143,14 @@ function DashboardContent() {
       )}
 
       <main id="main-content" role="main">
+        {/* Newly-registered region with no live data yet — set the context
+            for the empty maps/stats below (shown across all module tabs). */}
+        {showEmptyRegion && (
+          <div className="tab-content" key="empty-region">
+            <EmptyRegion tenant={activeTenant} />
+          </div>
+        )}
+
         {/* OVERVIEW TAB */}
         {activeTab === 'overview' && (
           <div className="tab-content" key="overview">

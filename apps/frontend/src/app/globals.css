@@ -2860,3 +2860,14 @@ nav::-webkit-scrollbar {
 /* ─── Locked module tabs (anonymous visitors) ───────────────────────────── */
 .nav-tab--locked { opacity: 0.72; }
 .nav-lock { margin-left: 0.34rem; font-size: 0.72em; opacity: 0.8; }
+
+/* ─── Empty-region banner (newly-registered tenant, no data yet) ─────────── */
+.empty-region {
+  display: flex; gap: 1rem; align-items: flex-start;
+  background: var(--surface); border: 1px solid var(--border2);
+  border-left: 4px solid var(--gov-accent, #74a7d5);
+  border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1rem;
+}
+.empty-region-icon { font-size: 1.6rem; line-height: 1.2; }
+.empty-region-title { font-weight: 700; color: var(--ink); font-size: 0.98rem; margin-bottom: 0.25rem; }
+.empty-region-text { color: var(--ink2); font-size: 0.84rem; line-height: 1.55; margin: 0; max-width: 70ch; }
