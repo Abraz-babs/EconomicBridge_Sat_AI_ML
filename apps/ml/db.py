@@ -23,6 +23,31 @@ PILOT_TENANT_IDS: frozenset[str] = frozenset(
      "fct", "ghana", "senegal"}
 )
 
+# Runtime-registered tenants (Phase 2): super-admin-provisioned tenants beyond
+# the pilots. Loaded at startup from the provisioned tenant_<id> schemas (the
+# api service owns registration; this service just needs to accept them).
+# Per-process; a brand-new tenant reaches this service after a reload/restart.
+_DYNAMIC_TENANT_IDS: set[str] = set()
+
+
+def _known(tenant_id: str) -> bool:
+    return tenant_id in PILOT_TENANT_IDS or tenant_id in _DYNAMIC_TENANT_IDS
+
+
+async def load_runtime_tenants() -> None:
+    """Populate the valid-tenant set from existing tenant_<id> schemas."""
+    factory = get_session_factory()
+    async with factory() as session:
+        rows = await session.execute(
+            text(
+                "SELECT schema_name FROM information_schema.schemata "
+                "WHERE schema_name LIKE 'tenant\\_%' ESCAPE '\\'"
+            )
+        )
+        ids = {r[0][len("tenant_"):] for r in rows.all()}
+    _DYNAMIC_TENANT_IDS.clear()
+    _DYNAMIC_TENANT_IDS.update(ids)
+
 
 @lru_cache
 def get_engine() -> AsyncEngine:
@@ -54,10 +79,10 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
 
 
 async def set_tenant_schema(session: AsyncSession, tenant_id: str) -> None:
-    if tenant_id not in PILOT_TENANT_IDS:
+    if not _known(tenant_id):
         raise ValueError(f"Unknown tenant_id: {tenant_id!r}")
     await session.execute(text(f"SET search_path TO tenant_{tenant_id}, public"))
 
 
 def is_valid_tenant_id(tenant_id: str | None) -> bool:
-    return bool(tenant_id) and tenant_id in PILOT_TENANT_IDS
+    return bool(tenant_id) and _known(tenant_id)

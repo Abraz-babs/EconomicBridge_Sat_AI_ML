@@ -61,12 +61,27 @@ class TraceIdMiddleware(BaseHTTPMiddleware):
         return response
 
 
+import contextlib  # noqa: E402
+
+
+@contextlib.asynccontextmanager
+async def _lifespan(_app: "FastAPI"):
+    # Accept super-admin-provisioned tenants (Phase 2) without a redeploy.
+    try:
+        from db import load_runtime_tenants
+        await load_runtime_tenants()
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("startup: tenant load failed (%s)", exc)
+    yield
+
+
 app = FastAPI(
     title="EconomicBridge — ML Service",
     version=settings.app_version,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
+    lifespan=_lifespan,
 )
 
 # Error envelope (CLAUDE.md §7) — Slice 24.

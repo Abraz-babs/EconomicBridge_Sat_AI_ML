@@ -27,6 +27,7 @@ class RegisteredTenant(BaseModel):
 class TenantRegistryData(BaseModel):
     tenants: list[RegisteredTenant]
     catalog: list[dict[str, str]]   # [{key,label}, …]
+    categories: list[dict] = []     # [{key,label,group,geographic}, …]
 
 
 class TenantModulesPatch(BaseModel):

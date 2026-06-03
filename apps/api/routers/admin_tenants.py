@@ -39,6 +39,11 @@ from services.modules import (
     enabled_modules_for,
     invalidate_modules_cache,
 )
+from services.tenant_categories import (
+    catalog as category_catalog,
+    is_geographic,
+    is_known_category,
+)
 from services.tenant_provision import provision_tenant_schema, schema_exists
 from services.tenants import register_runtime_tenant
 
@@ -91,7 +96,9 @@ async def list_tenants(
         for r in regs
     ]
     return SuccessResponse(
-        data=TenantRegistryData(tenants=tenants, catalog=_catalog()),
+        data=TenantRegistryData(
+            tenants=tenants, catalog=_catalog(), categories=category_catalog(),
+        ),
         meta=ResponseMeta(tenant_id=None, trace_id=_trace_id(request),
                           timestamp=datetime.now(timezone.utc)),
     )
@@ -108,12 +115,18 @@ async def register_tenant(
     if unknown:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             detail=f"unknown module key(s): {sorted(unknown)}")
+    if not is_known_category(body.tenant_type):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            detail=f"unknown tenant category: {body.tenant_type!r}")
 
-    # Phase 2: provision the data schema for a brand-new tenant (clone the
-    # template schema). Existing pilot schemas are left untouched.
-    if not await schema_exists(session, body.id):
-        await provision_tenant_schema(session, body.id)
-    register_runtime_tenant(body.id)  # accept it in is_valid_tenant_id now
+    # Geographic tenants (State/FCT/Country) hold data: auto-provision their
+    # tenant_<id> schema and mark them a valid data tenant. Organization
+    # tenants (NGO/Research/Funder/Federal) are access entities — registered +
+    # entitled, but no geographic schema and not a data X-Tenant-Id.
+    if is_geographic(body.tenant_type):
+        if not await schema_exists(session, body.id):
+            await provision_tenant_schema(session, body.id)
+        register_runtime_tenant(body.id)
 
     await session.execute(
         text(
