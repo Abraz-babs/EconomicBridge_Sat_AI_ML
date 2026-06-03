@@ -46,6 +46,7 @@ data "aws_iam_policy_document" "ecs_execution_secrets" {
     actions = ["secretsmanager:GetSecretValue"]
     resources = concat(
       [aws_secretsmanager_secret.rds_password.arn],
+      [aws_secretsmanager_secret.jwt.arn],
       [for s in aws_secretsmanager_secret.external : s.arn],
     )
   }
@@ -99,6 +100,25 @@ resource "aws_iam_role_policy" "ecs_task_base" {
   name   = "${local.name_prefix}-${each.key}-task-base"
   role   = aws_iam_role.ecs_task[each.key].id
   policy = data.aws_iam_policy_document.ecs_task_base[each.key].json
+}
+
+# api-only: send invite/activation emails via SES. Scoped to the verified
+# sender identity when one is configured; no-op policy otherwise so a deploy
+# without SES (console email fallback) still plans/applies cleanly.
+data "aws_iam_policy_document" "ecs_task_api_ses" {
+  statement {
+    sid     = "SendInviteEmail"
+    actions = ["ses:SendEmail", "ses:SendRawEmail"]
+    resources = var.ses_sender_email != "" ? [
+      aws_ses_email_identity.sender[0].arn
+    ] : ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_task_api_ses" {
+  name   = "${local.name_prefix}-api-task-ses"
+  role   = aws_iam_role.ecs_task["api"].id
+  policy = data.aws_iam_policy_document.ecs_task_api_ses.json
 }
 
 # ─── RDS enhanced monitoring role ────────────────────────────────────

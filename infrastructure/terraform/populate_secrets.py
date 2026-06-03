@@ -40,6 +40,9 @@ PATH_TO_ENV_VAR: dict[str, str] = {
     "twilio/auth_token": "TWILIO_AUTH_TOKEN",
     "giga/api_key": "GIGA_API_KEY",
     "earthdata/token": "EARTHDATA_TOKEN",
+    # Super-admin bootstrap password (read once by the seed_super_admin task).
+    # The JWT signing key is NOT here — Terraform generates + owns it.
+    "auth/super_admin_password": "SUPER_ADMIN_PASSWORD",
 }
 
 # SNS (Nigerian SMS) uses the ECS task role, not a stored secret — nothing here.

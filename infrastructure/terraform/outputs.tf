@@ -81,6 +81,11 @@ output "redis_primary_endpoint" {
   value       = aws_elasticache_replication_group.main.primary_endpoint_address
 }
 
+output "ecs_tasks_security_group_id" {
+  description = "Security group for ECS tasks — used by one-off `aws ecs run-task` (migrations, super-admin seed)."
+  value       = aws_security_group.ecs_tasks.id
+}
+
 # ─── Secrets ───────────────────────────────────────────────────────────
 
 output "external_secret_arns" {

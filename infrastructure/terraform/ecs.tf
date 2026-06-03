@@ -48,6 +48,24 @@ locals {
   database_url = "postgresql+asyncpg://${aws_db_instance.main.username}:${random_password.rds.result}@${aws_db_instance.main.endpoint}/${aws_db_instance.main.db_name}"
   redis_url    = "rediss://${aws_elasticache_replication_group.main.primary_endpoint_address}:6379/0"
 
+  # Public dashboard origin used to build invite/activation links. Defaults to
+  # the ALB DNS over HTTPS; override with var.public_app_url once a custom
+  # domain is in front.
+  public_app_url = var.public_app_url != "" ? var.public_app_url : "https://${aws_lb.main.dns_name}"
+
+  # Invite email goes out via SES only when a verified sender is configured;
+  # otherwise the API falls back to 'console' (logs the link) so a deploy
+  # without SES set up still works (invites just aren't emailed).
+  email_backend = var.ses_sender_email != "" ? "ses" : "console"
+
+  # api-only env: auth onboarding (invite email + super-admin bootstrap).
+  api_extra_env = [
+    { name = "EMAIL_BACKEND", value = local.email_backend },
+    { name = "EMAIL_FROM", value = var.ses_sender_email },
+    { name = "PUBLIC_APP_URL", value = local.public_app_url },
+    { name = "SUPER_ADMIN_EMAIL", value = var.super_admin_email },
+  ]
+
   # Plain (non-secret) env vars per service. We use a function-style
   # local so each container definition stays terse below.
   service_env = {
@@ -60,6 +78,7 @@ locals {
       ],
       v.needs_db ? [{ name = "DATABASE_URL", value = local.database_url }] : [],
       v.needs_redis ? [{ name = "REDIS_URL", value = local.redis_url }] : [],
+      k == "api" ? local.api_extra_env : [],
     )
   }
 
@@ -69,7 +88,10 @@ locals {
   # every service that touches external APIs (api, ingestion, notifications).
   # frontend + ml don't need third-party API keys yet.
   service_secrets = {
-    api           = [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn }]
+    api = concat(
+      [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn }],
+      [{ name = "JWT_SECRET_KEY", valueFrom = aws_secretsmanager_secret.jwt.arn }],
+    )
     ingestion     = [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn } if can(regex("^(copernicus|nasa_firms|n2yo|earth_engine|giga|earthdata)/", path))]
     ml            = [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn } if can(regex("^claude/", path))]
     notifications = [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn } if can(regex("^(termii|twilio)/", path))]

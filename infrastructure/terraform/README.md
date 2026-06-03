@@ -90,8 +90,32 @@ aws secretsmanager put-secret-value \
 # claude/api_key, termii/api_key, twilio/account_sid, twilio/auth_token
 ```
 
+Or push everything from your local `.env` at once:
+
+```bash
+python populate_secrets.py --env staging --profile economicbridge
+```
+
 A `lifecycle.ignore_changes` on the secret version means Terraform won't
 fight the operator on subsequent applies.
+
+### Auth secrets
+
+- **`auth/jwt_secret_key`** — *generated and owned by Terraform* (random 64-char
+  string). Nothing to populate. Tainting + re-applying rotates it and
+  invalidates all live sessions.
+- **`auth/super_admin_password`** — operator-populated (above, or via
+  `populate_secrets.py` from `SUPER_ADMIN_PASSWORD` in `.env`). Read once by the
+  super-admin seed task below.
+
+### SES (tenant invite emails)
+
+Set `ses_sender_email` + `super_admin_email` in `terraform.tfvars` before apply.
+Terraform creates an SES email identity; **AWS emails a verification link to that
+address — click it** before invites can send. A new SES account is sandboxed
+(only verified recipients) until you request production access. With
+`ses_sender_email` unset, the API runs `EMAIL_BACKEND=console` (logs the
+activation link instead of emailing it) so the stack still works.
 
 ---
 
@@ -116,6 +140,40 @@ docker push \
 
 ECS services will pull `:latest` on next deploy. Set `image_tag` to a
 git SHA in CI/CD to make rollbacks possible.
+
+---
+
+## Database migrations + super-admin bootstrap
+
+Run once after the first image is pushed (and after any migration-bearing
+deploy). Both reuse the **api** task definition — `run-task` with a command
+override — so they get the same `DATABASE_URL` + secrets the service has. Run
+them in the private subnets with the ECS task security group:
+
+```bash
+CLUSTER=economicbridge-staging-cluster
+TASKDEF=economicbridge-staging-api
+SUBNET=$(terraform output -json private_subnet_ids | jq -r '.[0]')
+SG=$(terraform output -raw ecs_tasks_security_group_id)   # see outputs.tf
+NET="awsvpcConfiguration={subnets=[$SUBNET],securityGroups=[$SG],assignPublicIp=DISABLED}"
+
+# 1) Apply migrations (alembic upgrade head — includes 0028 auth tables)
+aws ecs run-task --cluster $CLUSTER --launch-type FARGATE \
+  --task-definition $TASKDEF --network-configuration "$NET" \
+  --overrides '{"containerOverrides":[{"name":"api","command":["python","-m","alembic","upgrade","head"]}]}' \
+  --region eu-west-1
+
+# 2) Seed the platform super-admin (reads SUPER_ADMIN_EMAIL + the
+#    auth/super_admin_password secret already injected into the api task)
+aws ecs run-task --cluster $CLUSTER --launch-type FARGATE \
+  --task-definition $TASKDEF --network-configuration "$NET" \
+  --overrides '{"containerOverrides":[{"name":"api","command":["python","-m","scripts.seed_super_admin"]}]}' \
+  --region eu-west-1
+```
+
+Watch the task in CloudWatch Logs (`/ecs/economicbridge-staging/api`). After
+this, sign in at the dashboard with `super_admin_email` + the password you set —
+that's the only account that can reach the admin panel and register tenants.
 
 ---
 

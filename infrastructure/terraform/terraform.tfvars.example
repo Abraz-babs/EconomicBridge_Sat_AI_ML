@@ -44,6 +44,20 @@ image_tag = "latest"
 # Alarms — fill in to receive CloudWatch alarm emails.
 alarm_email = ""
 
+# ─── Auth / tenant onboarding ─────────────────────────────────────────
+# Verified SES sender for tenant invite emails. Leave empty to log the
+# activation link instead (EMAIL_BACKEND=console). After apply, click the
+# verification link AWS sends to this address.
+ses_sender_email = "" # e.g. "no-reply@economicbridge.org"
+
+# Platform operator login email (super-admin). Password lives in the
+# auth/super_admin_password secret (populate after apply).
+super_admin_email = "admin@economicbridge.app"
+
+# Public dashboard origin for invite links. Empty → derived from the ALB DNS.
+# Set once a custom domain fronts the ALB.
+public_app_url = "" # e.g. "https://app.economicbridge.org"
+
 # ─── PRODUCTION OVERRIDES (uncomment in a separate prod.tfvars) ───────
 #
 # aws_region                 = "af-south-1"

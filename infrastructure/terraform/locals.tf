@@ -27,59 +27,59 @@ locals {
   # Any service-shape change ripples consistently through everything.
   services = {
     api = {
-      port          = 8000
-      cpu           = 512
-      memory        = 1024
-      path_pattern  = "/api/v1/*"
-      health_path   = "/api/v1/health"
-      priority      = 100
-      public        = true
-      needs_db      = true
-      needs_redis   = true
+      port         = 8000
+      cpu          = 512
+      memory       = 1024
+      path_pattern = "/api/v1/*"
+      health_path  = "/api/v1/health"
+      priority     = 100
+      public       = true
+      needs_db     = true
+      needs_redis  = true
     }
     ingestion = {
-      port          = 8001
-      cpu           = 512
-      memory        = 1024
-      path_pattern  = "/ingestion/*"
-      health_path   = "/api/v1/health"
-      priority      = 200
-      public        = false  # internal-only; called by api / cron
-      needs_db      = true
-      needs_redis   = true
+      port         = 8001
+      cpu          = 512
+      memory       = 1024
+      path_pattern = "/ingestion/*"
+      health_path  = "/api/v1/health"
+      priority     = 200
+      public       = false # internal-only; called by api / cron
+      needs_db     = true
+      needs_redis  = true
     }
     ml = {
-      port          = 8002
-      cpu           = 1024  # sklearn + shap need more CPU
-      memory        = 2048
-      path_pattern  = "/ml/*"
-      health_path   = "/api/v1/health"
-      priority      = 300
-      public        = false  # internal-only; called by api
-      needs_db      = false
-      needs_redis   = false
+      port         = 8002
+      cpu          = 1024 # sklearn + shap need more CPU
+      memory       = 2048
+      path_pattern = "/ml/*"
+      health_path  = "/api/v1/health"
+      priority     = 300
+      public       = false # internal-only; called by api
+      needs_db     = false
+      needs_redis  = false
     }
     notifications = {
-      port          = 8003
-      cpu           = 512
-      memory        = 1024
-      path_pattern  = "/notifications/*"
-      health_path   = "/api/v1/health"
-      priority      = 400
-      public        = true   # /api/v1/subscribers is open-access for opt-in
-      needs_db      = true
-      needs_redis   = false
+      port         = 8003
+      cpu          = 512
+      memory       = 1024
+      path_pattern = "/notifications/*"
+      health_path  = "/api/v1/health"
+      priority     = 400
+      public       = true # /api/v1/subscribers is open-access for opt-in
+      needs_db     = true
+      needs_redis  = false
     }
     frontend = {
-      port          = 3000
-      cpu           = 256
-      memory        = 512
-      path_pattern  = "/*"      # catch-all — must be lowest priority
-      health_path   = "/"
-      priority      = 1000
-      public        = true
-      needs_db      = false
-      needs_redis   = false
+      port         = 3000
+      cpu          = 256
+      memory       = 512
+      path_pattern = "/*" # catch-all — must be lowest priority
+      health_path  = "/"
+      priority     = 1000
+      public       = true
+      needs_db     = false
+      needs_redis  = false
     }
   }
 
@@ -101,6 +101,10 @@ locals {
     # Added for the live open-data feeds (Skills + Poverty/VIIRS).
     "giga/api_key",
     "earthdata/token",
+    # Super-admin bootstrap password — operator populates, read once by the
+    # seed_super_admin one-off task (see README). NOT the JWT key (that's
+    # Terraform-generated in secrets.tf).
+    "auth/super_admin_password",
   ]
 
   # Secret path → the ENV VAR NAME each service's config actually reads.
@@ -120,5 +124,6 @@ locals {
     "twilio/auth_token"            = "TWILIO_AUTH_TOKEN"
     "giga/api_key"                 = "GIGA_API_KEY"
     "earthdata/token"              = "EARTHDATA_TOKEN"
+    "auth/super_admin_password"    = "SUPER_ADMIN_PASSWORD"
   }
 }

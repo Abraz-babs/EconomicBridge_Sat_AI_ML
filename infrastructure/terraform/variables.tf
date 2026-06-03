@@ -160,6 +160,26 @@ variable "image_tag" {
   default     = "latest"
 }
 
+# ─── Auth / onboarding ────────────────────────────────────────────────
+
+variable "ses_sender_email" {
+  description = "Verified SES sender for tenant invite/activation emails. Leave empty to fall back to EMAIL_BACKEND=console (link logged, not emailed)."
+  type        = string
+  default     = ""
+}
+
+variable "super_admin_email" {
+  description = "Platform operator (super-admin) login email — set as SUPER_ADMIN_EMAIL on the api task; the password is the auth/super_admin_password secret."
+  type        = string
+  default     = "admin@economicbridge.app"
+}
+
+variable "public_app_url" {
+  description = "Public dashboard origin for invite links (e.g. https://app.economicbridge.org). Empty → derived from the ALB DNS name."
+  type        = string
+  default     = ""
+}
+
 # ─── Observability ────────────────────────────────────────────────────
 
 variable "alarm_email" {
