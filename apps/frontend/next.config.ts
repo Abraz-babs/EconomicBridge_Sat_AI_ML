@@ -48,7 +48,11 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+              // api.mapbox.com is in script-src for the landing page, which loads
+              // mapbox-gl from the CDN (the dashboard bundles it from npm, so
+              // 'self' covers that one). Without it the landing's globe/coverage
+              // maps are silently CSP-blocked.
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://api.mapbox.com",
               "worker-src 'self' blob:",
               "child-src 'self' blob:",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://api.mapbox.com",
