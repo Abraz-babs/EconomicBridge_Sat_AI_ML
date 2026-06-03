@@ -217,11 +217,10 @@ function countUp(){document.querySelectorAll('.stat .v').forEach(el=>{
   const html=items.map(i=>`<span><span class="pin">●</span> ${i}</span>`).join('');
   document.getElementById('run').innerHTML=html+html;})();
 
-// Where the "Explore" button sends visitors. In dev that's the local Next
-// dashboard; in production set this to the deployed dashboard origin (or '/'
-// if the dashboard is served from the same domain as this landing page).
-const DASHBOARD_URL = "http://localhost:3001/?tab=overview";
-function enterApp(){ window.location.href = DASHBOARD_URL; }
+// This page is served at /landing.html and embedded by the app root (/), so
+// "Explore" navigates the TOP window into the dashboard Overview. Same-origin,
+// so window.top works; falls back to window.location when opened directly.
+function enterApp(){ (window.top || window).location.href = "/dashboard?tab=overview"; }
 
 // ---- maps ----
 function spin(map){let on=true;map.on('mousedown',()=>on=false);
