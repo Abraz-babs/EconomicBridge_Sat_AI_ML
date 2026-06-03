@@ -39,6 +39,8 @@ from services.modules import (
     enabled_modules_for,
     invalidate_modules_cache,
 )
+from services.tenant_provision import provision_tenant_schema, schema_exists
+from services.tenants import register_runtime_tenant
 
 router = APIRouter(tags=["admin-tenants"])
 _LABELS = {m["key"]: m["label"] for m in MODULE_CATALOG}
@@ -106,6 +108,12 @@ async def register_tenant(
     if unknown:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             detail=f"unknown module key(s): {sorted(unknown)}")
+
+    # Phase 2: provision the data schema for a brand-new tenant (clone the
+    # template schema). Existing pilot schemas are left untouched.
+    if not await schema_exists(session, body.id):
+        await provision_tenant_schema(session, body.id)
+    register_runtime_tenant(body.id)  # accept it in is_valid_tenant_id now
 
     await session.execute(
         text(

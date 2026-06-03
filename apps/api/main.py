@@ -13,6 +13,7 @@ Middleware stack (outer-first as the request flows in):
 Starlette runs middleware in REVERSE addition order, so `add_middleware` calls
 below are written in the opposite (inner-first) order.
 """
+import contextlib
 import logging
 
 from fastapi import FastAPI
@@ -57,12 +58,34 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
+@contextlib.asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Load runtime-registered tenants (Phase 2) so super-admin-provisioned
+    # tenants are accepted by is_valid_tenant_id without a redeploy.
+    try:
+        from sqlalchemy import text as _text
+
+        from db.engine import get_session_factory
+        from services.tenants import set_runtime_tenants
+
+        factory = get_session_factory()
+        async with factory() as session:
+            rows = await session.execute(_text("SELECT id FROM public.tenant_registry"))
+            set_runtime_tenants({r[0] for r in rows})
+    except Exception as exc:  # noqa: BLE001 — never block startup on this
+        logging.getLogger(__name__).warning(
+            "startup: could not load tenant registry (%s)", exc,
+        )
+    yield
+
+
 app = FastAPI(
     title="EconomicBridge API",
     version=settings.app_version,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 
 # Error envelope (CLAUDE.md §7). Order of specificity matters — Starlette

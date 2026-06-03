@@ -36,12 +36,30 @@ PILOT_TENANT_IDS: frozenset[str] = frozenset(
 _SAFE_ID = re.compile(r"^[a-z][a-z0-9_]{1,49}$")
 
 
-def is_valid_tenant_id(tenant_id: str | None) -> bool:
-    """Return True iff `tenant_id` is in the allowlist."""
+# Tenants registered at runtime (Phase 2): a super-admin can provision tenants
+# beyond the hardcoded pilots. Populated at startup from public.tenant_registry
+# and on registration. Per-process (dev = single worker); a multi-worker
+# deployment should reload this periodically.
+_DYNAMIC_TENANT_IDS: set[str] = set()
 
+
+def is_valid_tenant_id(tenant_id: str | None) -> bool:
+    """True iff `tenant_id` is a pilot OR a runtime-registered tenant."""
     if not tenant_id:
         return False
-    return tenant_id in PILOT_TENANT_IDS
+    return tenant_id in PILOT_TENANT_IDS or tenant_id in _DYNAMIC_TENANT_IDS
+
+
+def register_runtime_tenant(tenant_id: str) -> None:
+    """Mark a newly-registered tenant id as valid for this process."""
+    if _SAFE_ID.match(tenant_id):
+        _DYNAMIC_TENANT_IDS.add(tenant_id)
+
+
+def set_runtime_tenants(tenant_ids) -> None:
+    """Replace the runtime-registered set (called at startup from the DB)."""
+    _DYNAMIC_TENANT_IDS.clear()
+    _DYNAMIC_TENANT_IDS.update(t for t in tenant_ids if _SAFE_ID.match(t))
 
 
 def tenant_schema_name(tenant_id: str) -> str:
@@ -55,4 +73,10 @@ def tenant_schema_name(tenant_id: str) -> str:
     return f"tenant_{tenant_id}"
 
 
-__all__ = ["PILOT_TENANT_IDS", "is_valid_tenant_id", "tenant_schema_name"]
+__all__ = [
+    "PILOT_TENANT_IDS",
+    "is_valid_tenant_id",
+    "tenant_schema_name",
+    "register_runtime_tenant",
+    "set_runtime_tenants",
+]
