@@ -1,30 +1,88 @@
 """FastAPI dependencies (auth, tenant context, DPA enforcement).
 
 Per CLAUDE.md §4.1 and §4.2:
-  - `require_authenticated_user` — JWT bearer check; placeholder for now.
+  - `get_current_user` — decode the Bearer access token into a CurrentUser.
+  - `require_super_admin` — 403 unless the caller is the platform operator;
+    gates every `/admin/*` route so tenants can never reach the admin panel.
   - `require_signed_dpa` — DPA enforcement gate (Slice 14). Blocks
     PII-bearing routes until the organisation calling has a signed,
     unexpired DataProcessingAgreement covering the requested tenant.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, Request, status
 from fastapi.responses import JSONResponse
+from jose import JWTError
 from sqlalchemy import text
 
+from core.security import decode_access_token
 from db.engine import get_session_factory
 
+# Role constants. `super_admin` is the platform operator (Bizra Farms);
+# `tenant_admin` is a registered tenant's account — never allowed into /admin/*.
+ROLE_SUPER_ADMIN = "super_admin"
+ROLE_TENANT_ADMIN = "tenant_admin"
 
-async def require_authenticated_user() -> None:
-    """Placeholder that rejects until JWT auth is implemented."""
 
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Authentication not yet implemented",
+@dataclass(frozen=True)
+class CurrentUser:
+    """Identity decoded from a verified access token (no DB hit)."""
+
+    user_id: UUID
+    role: str
+    org_id: UUID
+    permitted_tenants: list[str]
+
+    @property
+    def is_super_admin(self) -> bool:
+        return self.role == ROLE_SUPER_ADMIN
+
+
+def _bearer_token(request: Request) -> str:
+    auth = request.headers.get("Authorization", "")
+    scheme, _, token = auth.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "UNAUTHENTICATED", "message": "Missing bearer token."},
+        )
+    return token.strip()
+
+
+async def get_current_user(request: Request) -> CurrentUser:
+    """Decode + verify the access token. 401 on missing/invalid/expired."""
+    token = _bearer_token(request)
+    try:
+        claims = decode_access_token(token)
+    except JWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "UNAUTHENTICATED", "message": "Invalid or expired token."},
+        ) from exc
+    return CurrentUser(
+        user_id=UUID(claims["sub"]),
+        role=str(claims.get("role", "")),
+        org_id=UUID(claims["org"]),
+        permitted_tenants=list(claims.get("tenants", [])),
     )
+
+
+async def require_super_admin(request: Request) -> CurrentUser:
+    """Allow only the platform operator. 401 if unauthenticated, 403 otherwise."""
+    user = await get_current_user(request)
+    if not user.is_super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "FORBIDDEN",
+                "message": "Super-admin access required.",
+            },
+        )
+    return user
 
 
 # ─── DPA enforcement gate (Slice 14) ─────────────────────────────────────

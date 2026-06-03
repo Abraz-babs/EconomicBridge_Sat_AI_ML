@@ -114,11 +114,15 @@ function RegisterTenantForm(
   const [country, setCountry] = useState('nigeria');
   const [tier, setTier] = useState(TIERS[0]);
   const [mou, setMou] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminName, setAdminName] = useState('');
   const [enabled, setEnabled] = useState<Set<string>>(new Set(catalog.map((m) => m.key)));
   const [note, setNote] = useState<string | null>(null);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
 
   function submit() {
     setNote(null);
+    setInviteUrl(null);
     register.mutate(
       {
         id: id.trim().toLowerCase(),
@@ -127,10 +131,21 @@ function RegisterTenantForm(
         country,
         subscription_tier: tier,
         mou_reference: mou.trim() || null,
+        admin_email: adminEmail.trim() || null,
+        admin_name: adminName.trim() || null,
         enabled_keys: [...enabled],
       },
       {
-        onSuccess: (t) => { setNote(`✓ Registered ${t.name} with ${t.modules.filter((m) => m.enabled).length} modules.`); setId(''); setName(''); setMou(''); },
+        onSuccess: (t) => {
+          const n = t.modules.filter((m) => m.enabled).length;
+          setNote(
+            t.admin_email
+              ? `✓ Registered ${t.name} (${n} modules). Activation invite sent to ${t.admin_email}.`
+              : `✓ Registered ${t.name} (${n} modules).`,
+          );
+          setInviteUrl(t.invite_url ?? null);
+          setId(''); setName(''); setMou(''); setAdminEmail(''); setAdminName('');
+        },
         onError: (e) => setNote(`Failed: ${e.message}`),
       },
     );
@@ -162,8 +177,12 @@ function RegisterTenantForm(
           <select value={tier} onChange={(e) => setTier(e.target.value)}>
             {TIERS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select></label>
-        <label className="upload-field upload-field--grow"><span className="upload-field-label">MoU reference</span>
+        <label className="upload-field"><span className="upload-field-label">MoU reference</span>
           <input value={mou} placeholder="MoU-2026-KN-001" onChange={(e) => setMou(e.target.value)} /></label>
+        <label className="upload-field"><span className="upload-field-label">Admin email (gets activation invite)</span>
+          <input type="email" value={adminEmail} placeholder="lead@kano.gov.ng" onChange={(e) => setAdminEmail(e.target.value)} /></label>
+        <label className="upload-field"><span className="upload-field-label">Admin name</span>
+          <input value={adminName} placeholder="Aisha Bello" onChange={(e) => setAdminName(e.target.value)} /></label>
       </div>
       <div className="tr-modpick">
         {catalog.map((m) => (
@@ -185,10 +204,18 @@ function RegisterTenantForm(
         </button>
       </div>
       {note && <div className="sms-result">{note}</div>}
+      {inviteUrl && (
+        <div className="tr-invite">
+          <span className="tr-invite-label">Dev activation link (email not sent in dev — copy &amp; share):</span>
+          <code className="tr-invite-url">{inviteUrl}</code>
+        </div>
+      )}
       <p className="tr-note">
-        Note: this records the registry + module entitlements. Provisioning a brand-new
-        tenant&apos;s data schema (CREATE SCHEMA + migrate + seed) is a Phase-2 step —
-        existing pilot schemas work immediately.
+        Registering creates the tenant&apos;s account and emails an activation invite to
+        the admin email so they can set their password. Geographic tenants (State / FCT /
+        Country) also get a data schema provisioned automatically; organisation tenants
+        (NGO / Research / Funder) are access-only. In dev, the activation link is shown
+        above instead of emailed.
       </p>
     </details>
   );

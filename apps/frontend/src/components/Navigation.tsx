@@ -1,5 +1,6 @@
 'use client';
 
+import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
 import { useTenant } from '@/context/TenantContext';
 import { useTenantModules } from '@/hooks/useTenantModules';
@@ -40,19 +41,24 @@ const tabs: { id: TabId; label: string; navId: string }[] = [
 
 export default function Navigation({ activeTab, onTabChange }: NavigationProps) {
   const { roleConfig } = useRole();
+  const { isSuperAdmin } = useAuth();
   const { activeTenantId } = useTenant();
   const { data: enabledModules } = useTenantModules(activeTenantId);
 
   const isLocked = (navId: string) => roleConfig.navLocked.includes(navId);
 
   // A module tab shows only if the active tenant is entitled to it. While
-  // entitlements load (undefined), show all (fail-open UI). overview/admin
-  // are never module-gated.
+  // entitlements load (undefined), show all (fail-open UI). overview is never
+  // module-gated; the admin tab is gated by REAL super-admin auth (not the demo
+  // role) so a tenant can never reach the admin panel.
   const entitled = (id: TabId) =>
     !MODULE_TAB_IDS.has(id) || enabledModules === undefined || enabledModules.includes(id);
 
-  // The tabs actually shown: role-allowed AND tenant-entitled.
-  const shownTabs = tabs.filter((t) => !isLocked(t.navId) && entitled(t.id));
+  // The tabs actually shown: role-allowed AND tenant-entitled; admin only when
+  // signed in as super-admin.
+  const shownTabs = tabs.filter((t) =>
+    t.id === 'admin' ? isSuperAdmin : !isLocked(t.navId) && entitled(t.id),
+  );
 
   return (
     <nav role="tablist" aria-label="Dashboard modules">

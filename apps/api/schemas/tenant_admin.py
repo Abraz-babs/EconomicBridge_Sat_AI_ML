@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class ModuleState(BaseModel):
@@ -20,8 +20,13 @@ class RegisteredTenant(BaseModel):
     status: str
     subscription_tier: str
     mou_reference: str | None = None
+    admin_email: str | None = None
     created_at: datetime | None = None
     modules: list[ModuleState]
+    # Populated ONLY on a fresh registration when email_backend='console' — the
+    # raw activation link, so the operator can copy it in dev. Never persisted,
+    # null in prod (the link goes out by email instead).
+    invite_url: str | None = None
 
 
 class TenantRegistryData(BaseModel):
@@ -42,6 +47,11 @@ class TenantRegisterRequest(BaseModel):
     country: str = "nigeria"
     subscription_tier: str = "standard"
     mou_reference: str | None = Field(default=None, max_length=200)
+    # The tenant's admin contact — an activation invite is emailed here so they
+    # can set their password. Optional only to preserve back-compat with callers
+    # that pre-date onboarding; the UI requires it.
+    admin_email: EmailStr | None = None
+    admin_name: str | None = Field(default=None, max_length=200)
     enabled_keys: list[str] = Field(default_factory=list)
 
 

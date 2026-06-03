@@ -2812,3 +2812,47 @@ nav::-webkit-scrollbar {
   font-variant-numeric: tabular-nums;
   mix-blend-mode: multiply;
 }
+
+/* ─── Auth control (header) + sign-in modal ─────────────────────────────── */
+.auth-control { display: flex; align-items: center; gap: 0.5rem; }
+.auth-who {
+  display: flex; flex-direction: column; line-height: 1.1; text-align: right;
+  font-size: 0.74rem; color: var(--ink2); font-weight: 600;
+}
+.auth-role { font-size: 0.62rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.auth-btn {
+  border: 1px solid var(--border2); background: var(--surface); color: var(--ink);
+  border-radius: 6px; padding: 0.34rem 0.7rem; font-size: 0.76rem; font-weight: 600;
+  cursor: pointer; transition: background 0.15s, border-color 0.15s;
+}
+.auth-btn:hover:not(:disabled) { background: var(--surface2); border-color: var(--ink2); }
+.auth-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.auth-btn--go { background: #36d39a; color: #06291b; border-color: #36d39a; }
+.auth-btn--ghost { background: transparent; }
+
+.auth-overlay {
+  position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center;
+  justify-content: center; background: rgba(26, 23, 20, 0.45); backdrop-filter: blur(2px);
+}
+.auth-modal {
+  width: min(380px, 92vw); background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 12px; padding: 1.4rem; box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+}
+.auth-modal-title { font-size: 1.1rem; font-weight: 700; color: var(--ink); margin: 0 0 0.2rem; }
+.auth-modal-sub { font-size: 0.76rem; color: var(--muted); margin: 0 0 1rem; }
+.auth-modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem; }
+.auth-error { color: var(--alert); font-size: 0.78rem; margin: 0.5rem 0; font-weight: 600; }
+.auth-hint { color: var(--warn); font-size: 0.74rem; margin: 0.3rem 0; }
+
+/* ─── Activation page ───────────────────────────────────────────────────── */
+.activate-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg); padding: 1.5rem; }
+.activate-card { width: min(440px, 94vw); background: var(--surface); border: 1px solid var(--border2); border-radius: 12px; padding: 1.8rem; box-shadow: 0 8px 30px rgba(0,0,0,0.12); }
+.activate-title { font-size: 1.25rem; font-weight: 700; color: var(--ink); margin: 0 0 0.4rem; }
+.activate-sub { font-size: 0.82rem; color: var(--muted); margin: 0 0 1.1rem; }
+.activate-ok { color: var(--ok); font-weight: 700; font-size: 0.95rem; }
+.activate-submit { margin-top: 0.8rem; width: 100%; padding: 0.6rem; font-size: 0.9rem; }
+
+/* ─── Tenant registry: dev invite link ──────────────────────────────────── */
+.tr-invite { margin-top: 0.7rem; padding: 0.6rem 0.7rem; background: var(--surface2); border: 1px dashed var(--border2); border-radius: 8px; }
+.tr-invite-label { display: block; font-size: 0.72rem; color: var(--muted); font-weight: 600; margin-bottom: 0.3rem; }
+.tr-invite-url { display: block; font-size: 0.72rem; color: var(--ink2); word-break: break-all; font-family: var(--font-mono, monospace); }

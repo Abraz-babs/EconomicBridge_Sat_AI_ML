@@ -53,6 +53,31 @@ class Settings(BaseSettings):
     notify_base_url: str = "http://localhost:8003/api/v1"
     notify_system_org_id: str = ""
 
+    # ─── Auth / JWT (CLAUDE.md §4.1) ─────────────────────────────────────
+    # In production `jwt_secret_key` MUST come from AWS Secrets Manager, never
+    # this default. The default exists only so local dev boots without config.
+    jwt_secret_key: str = "dev-insecure-change-me-via-secrets-manager"
+    jwt_algorithm: str = "HS256"
+    jwt_access_ttl_min: int = 15          # access token lifetime (CLAUDE.md §4.1)
+    jwt_refresh_ttl_days: int = 7         # refresh token lifetime
+    invite_ttl_hours: int = 48            # tenant activation-link validity
+
+    # Public base URL of the dashboard — used to build activation links in
+    # invite emails. In prod this is the deployed frontend origin.
+    public_app_url: str = "http://localhost:3001"
+
+    # Email delivery for invites. 'console' just logs the message + link (dev,
+    # no spend) ; 'ses' sends via AWS SES (prod). When not 'console' we also
+    # stop echoing the raw activation link back in the API response.
+    email_backend: str = "console"
+    email_from: str = "no-reply@economicbridge.app"
+    aws_region: str = "eu-west-1"
+
+    # Super-admin bootstrap — read ONLY by scripts/seed_super_admin.py to create
+    # the platform operator account. Never referenced at request time.
+    super_admin_email: str = "admin@economicbridge.app"
+    super_admin_password: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -68,16 +68,16 @@ interface RegistryShape {
 export function TenantProvider({ children }: { children: ReactNode }) {
   const [activeTenantId, setId] = useState<string>(readInitial);
 
-  // Registered tenants from the super-admin registry. Lets newly-provisioned
-  // GEOGRAPHIC tenants appear in the selectors. Fail-safe: on error/loading the
-  // selector falls back to the hardcoded pilots.
+  // Registered tenants from the PUBLIC registry (no auth — the admin view is
+  // gated). Lets newly-provisioned GEOGRAPHIC tenants appear in the selectors.
+  // Fail-safe: on error/loading the selector falls back to the hardcoded pilots.
   const { data: registry } = useQuery<RegistryShape>({
     queryKey: ['tenant-registry-select'],
     staleTime: 60_000,
     retry: 0,
     queryFn: async ({ signal }) => {
       const env: SuccessEnvelope<RegistryShape> =
-        await apiFetch<RegistryShape>('/admin/tenants', { signal });
+        await apiFetch<RegistryShape>('/public-tenants', { signal });
       return env.data;
     },
   });

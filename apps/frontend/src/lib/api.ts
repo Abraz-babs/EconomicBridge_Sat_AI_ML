@@ -123,6 +123,27 @@ export class ApiException extends Error {
   }
 }
 
+// ─── Auth token plumbing ────────────────────────────────────────────────────
+//
+// AuthContext registers the current access token (and a refresh callback) here
+// so apiFetch can attach `Authorization: Bearer …` to every call and transparently
+// retry once on a 401 after refreshing. Module-level state, set once on login and
+// cleared on logout — the public dashboard works with no token set.
+
+let _accessToken: string | null = null;
+let _refreshHandler: (() => Promise<string | null>) | null = null;
+
+/** Set/clear the bearer token attached to subsequent requests. */
+export function setAccessToken(token: string | null): void {
+  _accessToken = token;
+}
+
+/** Register the handler that mints a fresh access token on 401 (returns the new
+ *  token, or null if refresh failed → the original 401 stands). */
+export function setRefreshHandler(fn: (() => Promise<string | null>) | null): void {
+  _refreshHandler = fn;
+}
+
 // ─── Core fetch ────────────────────────────────────────────────────────────
 
 export interface RequestOptions {
@@ -134,6 +155,10 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** Extra headers (rarely needed). */
   headers?: Record<string, string>;
+  /** Skip the bearer-token attach (used by /auth/login etc.). */
+  noAuth?: boolean;
+  /** Internal: set after a refresh-retry so we don't loop. */
+  _retried?: boolean;
 }
 
 /** Issue a request and return the parsed envelope. Throws ApiException on 4xx/5xx. */
@@ -145,6 +170,7 @@ export async function apiFetch<T>(
   const headers: Record<string, string> = { Accept: 'application/json', ...(opts.headers ?? {}) };
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
   if (opts.tenantId) headers['X-Tenant-Id'] = opts.tenantId;
+  if (!opts.noAuth && _accessToken) headers['Authorization'] = `Bearer ${_accessToken}`;
 
   let response: Response;
   try {
@@ -161,6 +187,17 @@ export async function apiFetch<T>(
       0,
       null,
     );
+  }
+
+  // 401 with a token in play → try a one-shot refresh, then replay the request.
+  if (
+    response.status === 401 && !opts.noAuth && !opts._retried &&
+    _accessToken && _refreshHandler
+  ) {
+    const fresh = await _refreshHandler();
+    if (fresh) {
+      return apiFetch<T>(path, { ...opts, _retried: true });
+    }
   }
 
   if (response.status === 204) {

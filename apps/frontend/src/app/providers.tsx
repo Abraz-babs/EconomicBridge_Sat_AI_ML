@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode, useState } from 'react';
 
+import { AuthProvider } from '@/context/AuthContext';
 import { TenantProvider } from '@/context/TenantContext';
 
 /**
@@ -30,7 +31,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TenantProvider>{children}</TenantProvider>
+      <AuthProvider>
+        <TenantProvider>{children}</TenantProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

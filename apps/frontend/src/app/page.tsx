@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { RoleProvider, useRole } from '@/context/RoleContext';
+import { RoleProvider } from '@/context/RoleContext';
+import { useAuth } from '@/context/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import RoleSwitcher from '@/components/RoleSwitcher';
 import Header from '@/components/Header';
@@ -49,7 +50,7 @@ function DashboardContent() {
   // Persisted across refreshes AND reflected in the URL (?tab=) so module
   // views are shareable/deep-linkable. Mirrors how the active tenant persists.
   const [activeTab, setActiveTab] = useState<TabId>(readInitialTab);
-  const { currentRole } = useRole();
+  const { isSuperAdmin } = useAuth();
 
   const handleTabChange = useCallback((tab: TabId) => {
     setActiveTab(tab);
@@ -132,8 +133,8 @@ function DashboardContent() {
           </div>
         )}
 
-        {/* ADMIN PANEL */}
-        {activeTab === 'admin' && currentRole === 'admin' && (
+        {/* ADMIN PANEL — gated by real super-admin auth, not the demo role */}
+        {activeTab === 'admin' && isSuperAdmin && (
           <div className="tab-content" key="admin">
             <ErrorBoundary fallbackModule="Admin Panel">
               <AdminPanel />

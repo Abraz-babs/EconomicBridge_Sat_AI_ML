@@ -19,7 +19,11 @@ export interface RegisteredTenant {
   status: string;
   subscription_tier: string;
   mou_reference: string | null;
+  admin_email?: string | null;
   modules: ModuleState[];
+  /** Set only on a fresh registration in dev (console email) — the raw
+   *  activation link, so the operator can copy it. */
+  invite_url?: string | null;
 }
 
 interface TenantModulesData {
@@ -95,6 +99,8 @@ export interface RegisterTenantVars {
   country: string;
   subscription_tier: string;
   mou_reference: string | null;
+  admin_email: string | null;
+  admin_name: string | null;
   enabled_keys: string[];
 }
 

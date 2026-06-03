@@ -2,6 +2,7 @@
 
 import { useRole } from '@/context/RoleContext';
 import { useState, useEffect } from 'react';
+import AuthControl from '@/components/auth/AuthControl';
 
 export default function Header() {
   const { roleConfig } = useRole();
@@ -42,6 +43,7 @@ export default function Header() {
         <time className="clock" aria-label="Current UTC time" suppressHydrationWarning>
           {time || '—'}
         </time>
+        <AuthControl />
       </div>
     </header>
   );

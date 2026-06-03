@@ -32,6 +32,7 @@ from middleware.tenant import TenantContextMiddleware
 from middleware.trace import TraceIdMiddleware
 from routers import (
     admin_tenants,
+    auth,
     aid_coordination,
     aid_coordination_bulk,
     cropguard,
@@ -114,6 +115,7 @@ app.add_middleware(
 
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(health_db.router, prefix="/api/v1")
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(tenants.router, prefix="/api/v1")
 app.include_router(farmland.router, prefix="/api/v1")
 app.include_router(cropguard.router, prefix="/api/v1")
