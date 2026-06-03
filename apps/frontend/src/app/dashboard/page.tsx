@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { RoleProvider } from '@/context/RoleContext';
 import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
+import { useTenantModules } from '@/hooks/useTenantModules';
 import EmptyRegion from '@/components/common/EmptyRegion';
+import NotSubscribed from '@/components/common/NotSubscribed';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import RoleSwitcher from '@/components/RoleSwitcher';
 import Header from '@/components/Header';
@@ -73,10 +75,21 @@ function DashboardContent() {
   // views are shareable/deep-linkable. Mirrors how the active tenant persists.
   const [activeTab, setActiveTab] = useState<TabId>(readInitialTab);
   const { user, loading, isSuperAdmin } = useAuth();
-  const { activeTenant } = useTenant();
-  // A registered-but-dataless region (pilots are active:true; newly-registered
-  // tenants like Kano are active:false) → show the "no data yet" banner over modules.
-  const showEmptyRegion = isGatedModule(activeTab) && !activeTenant.active;
+  const { activeTenant, activeTenantId } = useTenant();
+  // The active tenant's entitled modules (same query the nav uses; React Query
+  // dedupes). undefined while loading → fail-open (render the module).
+  const { data: enabledModules } = useTenantModules(activeTenantId);
+  const subscribed =
+    enabledModules === undefined || enabledModules.includes(activeTab);
+  // Tenant exists but its plan doesn't include this module → clean "not
+  // subscribed" state instead of letting the panel hit a 403.
+  const showNotSubscribed = isGatedModule(activeTab) && !subscribed;
+  // Registered-but-dataless region (pilots active:true; new tenants active:false)
+  // → "no data yet" banner. Only when the module IS subscribed.
+  const showEmptyRegion =
+    isGatedModule(activeTab) && subscribed && !activeTenant.active;
+  // A module tab renders only when the tenant is subscribed to it.
+  const showModule = (tab: TabId) => activeTab === tab && subscribed;
   // Which module an anonymous visitor just tried to open (drives the prompt).
   const [gatedModule, setGatedModule] = useState<TabId | null>(null);
 
@@ -143,6 +156,17 @@ function DashboardContent() {
       )}
 
       <main id="main-content" role="main">
+        {/* Tenant not entitled to this module — clean state instead of a 403. */}
+        {showNotSubscribed && (
+          <div className="tab-content" key="not-subscribed">
+            <NotSubscribed
+              tenant={activeTenant}
+              moduleLabel={TAB_LABELS[activeTab]}
+              isSuperAdmin={isSuperAdmin}
+            />
+          </div>
+        )}
+
         {/* Newly-registered region with no live data yet — set the context
             for the empty maps/stats below (shown across all module tabs). */}
         {showEmptyRegion && (
@@ -188,7 +212,7 @@ function DashboardContent() {
         )}
 
         {/* MODULE 03 — FARMLAND PROTECTION */}
-        {activeTab === 'farmland' && (
+        {showModule('farmland') && (
           <div className="tab-content" key="farmland">
             <ErrorBoundary fallbackModule="Farmland Protection">
               <FarmlandPanel />
@@ -206,7 +230,7 @@ function DashboardContent() {
         )}
 
         {/* MODULE 01 — POVERTY MAPPING (ECONOMIC VISIBILITY) */}
-        {activeTab === 'economic-visibility' && (
+        {showModule('economic-visibility') && (
           <div className="tab-content" key="econ-vis">
             <ErrorBoundary fallbackModule="Economic Visibility">
               <EconomicVisibilityPanel />
@@ -215,7 +239,7 @@ function DashboardContent() {
         )}
 
         {/* MODULE 02 — AID COORDINATION BRIDGE */}
-        {activeTab === 'aid-coordination' && (
+        {showModule('aid-coordination') && (
           <div className="tab-content" key="aid-coord">
             <ErrorBoundary fallbackModule="Aid Coordination Bridge">
               <AidCoordinationPanel />
@@ -224,7 +248,7 @@ function DashboardContent() {
         )}
 
         {/* MODULE 04 — AGRICULTURE (CROPGUARD) */}
-        {activeTab === 'cropguard' && (
+        {showModule('cropguard') && (
           <div className="tab-content" key="cropguard">
             <ErrorBoundary fallbackModule="CropGuard">
               <CropGuardPanel />
@@ -233,7 +257,7 @@ function DashboardContent() {
         )}
 
         {/* MODULE 05 — DISASTER RELIEF (SHOCKGUARD) */}
-        {activeTab === 'shockguard' && (
+        {showModule('shockguard') && (
           <div className="tab-content" key="shockguard">
             <ErrorBoundary fallbackModule="ShockGuard">
               <ShockGuardPanel />
@@ -242,7 +266,7 @@ function DashboardContent() {
         )}
 
         {/* MODULE 06 — ECONOMIC MOBILITY COMPASS */}
-        {activeTab === 'mobility-compass' && (
+        {showModule('mobility-compass') && (
           <div className="tab-content" key="mobility">
             <ErrorBoundary fallbackModule="Economic Mobility Compass">
               <MobilityCompassPanel />
@@ -251,7 +275,7 @@ function DashboardContent() {
         )}
 
         {/* MODULE 07 — SKILLSBRIDGE */}
-        {activeTab === 'skillsbridge' && (
+        {showModule('skillsbridge') && (
           <div className="tab-content" key="skillsbridge">
             <ErrorBoundary fallbackModule="SkillsBridge">
               <SkillsBridgePanel />

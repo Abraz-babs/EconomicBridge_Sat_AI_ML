@@ -2871,3 +2871,14 @@ nav::-webkit-scrollbar {
 .empty-region-icon { font-size: 1.6rem; line-height: 1.2; }
 .empty-region-title { font-weight: 700; color: var(--ink); font-size: 0.98rem; margin-bottom: 0.25rem; }
 .empty-region-text { color: var(--ink2); font-size: 0.84rem; line-height: 1.55; margin: 0; max-width: 70ch; }
+
+/* ─── Not-subscribed banner (tenant lacks this module's entitlement) ─────── */
+.not-subscribed {
+  display: flex; gap: 1rem; align-items: flex-start;
+  background: var(--surface); border: 1px solid var(--border2);
+  border-left: 4px solid var(--warn, #c97d00);
+  border-radius: 10px; padding: 1rem 1.2rem; margin-bottom: 1rem;
+}
+.not-subscribed-icon { font-size: 1.5rem; line-height: 1.2; }
+.not-subscribed-title { font-weight: 700; color: var(--ink); font-size: 0.98rem; margin-bottom: 0.25rem; }
+.not-subscribed-text { color: var(--ink2); font-size: 0.84rem; line-height: 1.55; margin: 0; max-width: 70ch; }
