@@ -26,6 +26,7 @@ import ShockGuardPanel from '@/components/shockguard/ShockGuardPanel';
 import MobilityCompassPanel from '@/components/mobility/MobilityCompassPanel';
 import SkillsBridgePanel from '@/components/skills/SkillsBridgePanel';
 import AdminPanel from '@/components/admin/AdminPanel';
+import RegisterPrompt from '@/components/auth/RegisterPrompt';
 
 const TAB_IDS: TabId[] = [
   'overview', 'economic-visibility', 'aid-coordination', 'farmland',
@@ -33,8 +34,27 @@ const TAB_IDS: TabId[] = [
 ];
 const TAB_STORAGE_KEY = 'eb.activeTab';
 
+// Human labels for the "registration required" prompt.
+const TAB_LABELS: Record<TabId, string> = {
+  'overview': 'Overview',
+  'economic-visibility': 'Poverty Mapping',
+  'aid-coordination': 'Aid Coordination Bridge',
+  'farmland': 'Farmland Protection',
+  'cropguard': 'CropGuard',
+  'shockguard': 'ShockGuard',
+  'mobility-compass': 'Mobility Compass',
+  'skillsbridge': 'SkillsBridge',
+  'admin': 'Admin Panel',
+};
+
 function isTab(v: string | null): v is TabId {
   return !!v && (TAB_IDS as string[]).includes(v);
+}
+
+// Overview is open-access; every other tab needs an account (admin is gated
+// separately by super-admin role). Anonymous visitors get a register prompt.
+function isGatedModule(tab: TabId): boolean {
+  return tab !== 'overview' && tab !== 'admin';
 }
 
 /** Initial tab: URL `?tab=` (shareable/deep-link) → localStorage → overview. */
@@ -50,16 +70,38 @@ function DashboardContent() {
   // Persisted across refreshes AND reflected in the URL (?tab=) so module
   // views are shareable/deep-linkable. Mirrors how the active tenant persists.
   const [activeTab, setActiveTab] = useState<TabId>(readInitialTab);
-  const { isSuperAdmin } = useAuth();
+  const { user, loading, isSuperAdmin } = useAuth();
+  // Which module an anonymous visitor just tried to open (drives the prompt).
+  const [gatedModule, setGatedModule] = useState<TabId | null>(null);
 
   const handleTabChange = useCallback((tab: TabId) => {
+    // Gate modules for anonymous visitors — overview stays open.
+    if (!user && isGatedModule(tab)) {
+      setGatedModule(tab);
+      return;
+    }
     setActiveTab(tab);
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(TAB_STORAGE_KEY, tab);
       // pushState so the back/forward buttons navigate between modules.
       window.history.pushState({ tab }, '', `${window.location.pathname}?tab=${tab}`);
     }
-  }, []);
+  }, [user]);
+
+  // Deep-link / restored-tab guard: once auth resolves, an anonymous visitor
+  // landing on a gated module (?tab=farmland or a stored tab) is bounced to
+  // overview and shown the prompt. This is a genuine sync-with-external-state
+  // effect (auth resolves async; it also rewrites URL history), so the
+  // set-state-in-effect lint rule is intentionally disabled here.
+  useEffect(() => {
+    if (loading || user || !isGatedModule(activeTab)) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setGatedModule(activeTab);
+    setActiveTab('overview');
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({ tab: 'overview' }, '', `${window.location.pathname}?tab=overview`);
+    }
+  }, [loading, user, activeTab]);
 
   // On mount: reflect the restored tab in the URL (shareable) without adding a
   // history entry, and keep activeTab in sync with browser back/forward.
@@ -84,8 +126,15 @@ function DashboardContent() {
       <a href="#main-content" className="skip-link">Skip to main content</a>
       <RoleSwitcher />
       <Header />
-      <Navigation activeTab={activeTab} onTabChange={handleTabChange} />
+      <Navigation activeTab={activeTab} onTabChange={handleTabChange} lockModules={!user} />
       <PermissionBanner />
+
+      {gatedModule && (
+        <RegisterPrompt
+          moduleLabel={TAB_LABELS[gatedModule]}
+          onClose={() => setGatedModule(null)}
+        />
+      )}
 
       <main id="main-content" role="main">
         {/* OVERVIEW TAB */}

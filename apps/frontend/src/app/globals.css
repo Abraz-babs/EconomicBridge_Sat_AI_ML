@@ -2856,3 +2856,7 @@ nav::-webkit-scrollbar {
 .tr-invite { margin-top: 0.7rem; padding: 0.6rem 0.7rem; background: var(--surface2); border: 1px dashed var(--border2); border-radius: 8px; }
 .tr-invite-label { display: block; font-size: 0.72rem; color: var(--muted); font-weight: 600; margin-bottom: 0.3rem; }
 .tr-invite-url { display: block; font-size: 0.72rem; color: var(--ink2); word-break: break-all; font-family: var(--font-mono, monospace); }
+
+/* ─── Locked module tabs (anonymous visitors) ───────────────────────────── */
+.nav-tab--locked { opacity: 0.72; }
+.nav-lock { margin-left: 0.34rem; font-size: 0.72em; opacity: 0.8; }

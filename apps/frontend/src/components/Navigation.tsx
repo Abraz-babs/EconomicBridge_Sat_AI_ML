@@ -25,6 +25,8 @@ export type TabId =
 interface NavigationProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
+  /** Anonymous visitor — show a lock on the (gated) module tabs. */
+  lockModules?: boolean;
 }
 
 const tabs: { id: TabId; label: string; navId: string }[] = [
@@ -39,7 +41,7 @@ const tabs: { id: TabId; label: string; navId: string }[] = [
   { id: 'admin', label: 'Admin Panel', navId: 'navAdmin' },
 ];
 
-export default function Navigation({ activeTab, onTabChange }: NavigationProps) {
+export default function Navigation({ activeTab, onTabChange, lockModules = false }: NavigationProps) {
   const { roleConfig } = useRole();
   const { isSuperAdmin } = useAuth();
   const { activeTenantId } = useTenant();
@@ -64,14 +66,17 @@ export default function Navigation({ activeTab, onTabChange }: NavigationProps) 
     <nav role="tablist" aria-label="Dashboard modules">
       {shownTabs.map(({ id, label }) => {
         const active = activeTab === id;
+        const locked = lockModules && MODULE_TAB_IDS.has(id);
         return (
           <button
             key={id}
             id={`tab-${id}`}
             role="tab"
+            type="button"
             aria-selected={active ? 'true' : 'false'}
             aria-controls={`panel-${id}`}
-            className={`nav-tab ${active ? 'active' : ''}`}
+            className={`nav-tab ${active ? 'active' : ''}${locked ? ' nav-tab--locked' : ''}`}
+            title={locked ? 'Sign in or register to open this module' : undefined}
             onClick={() => onTabChange(id)}
             tabIndex={active ? 0 : -1}
             onKeyDown={(e) => {
@@ -101,6 +106,7 @@ export default function Navigation({ activeTab, onTabChange }: NavigationProps) 
             }}
           >
             {label}
+            {locked && <span className="nav-lock" aria-hidden="true">🔒</span>}
           </button>
         );
       })}
