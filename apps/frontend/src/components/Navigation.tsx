@@ -1,6 +1,14 @@
 'use client';
 
 import { useRole } from '@/context/RoleContext';
+import { useTenant } from '@/context/TenantContext';
+import { useTenantModules } from '@/hooks/useTenantModules';
+
+// Tabs that ARE modules (gated per tenant). overview + admin are always-on.
+const MODULE_TAB_IDS = new Set<string>([
+  'economic-visibility', 'aid-coordination', 'farmland', 'cropguard',
+  'shockguard', 'mobility-compass', 'skillsbridge',
+]);
 
 export type TabId =
   | 'overview'
@@ -32,29 +40,36 @@ const tabs: { id: TabId; label: string; navId: string }[] = [
 
 export default function Navigation({ activeTab, onTabChange }: NavigationProps) {
   const { roleConfig } = useRole();
+  const { activeTenantId } = useTenant();
+  const { data: enabledModules } = useTenantModules(activeTenantId);
 
   const isLocked = (navId: string) => roleConfig.navLocked.includes(navId);
 
+  // A module tab shows only if the active tenant is entitled to it. While
+  // entitlements load (undefined), show all (fail-open UI). overview/admin
+  // are never module-gated.
+  const entitled = (id: TabId) =>
+    !MODULE_TAB_IDS.has(id) || enabledModules === undefined || enabledModules.includes(id);
+
+  // The tabs actually shown: role-allowed AND tenant-entitled.
+  const shownTabs = tabs.filter((t) => !isLocked(t.navId) && entitled(t.id));
+
   return (
     <nav role="tablist" aria-label="Dashboard modules">
-      {tabs.map(({ id, label, navId }) => {
-        const locked = isLocked(navId);
+      {shownTabs.map(({ id, label }) => {
         const active = activeTab === id;
         return (
           <button
             key={id}
             id={`tab-${id}`}
             role="tab"
-            aria-selected={active}
-            aria-disabled={locked}
+            aria-selected={active ? 'true' : 'false'}
             aria-controls={`panel-${id}`}
-            className={`nav-tab ${active ? 'active' : ''} ${locked ? 'locked' : ''}`}
-            onClick={() => {
-              if (!locked) onTabChange(id);
-            }}
+            className={`nav-tab ${active ? 'active' : ''}`}
+            onClick={() => onTabChange(id)}
             tabIndex={active ? 0 : -1}
             onKeyDown={(e) => {
-              const visibleTabs = tabs.filter((t) => !isLocked(t.navId));
+              const visibleTabs = shownTabs;
               const currentIdx = visibleTabs.findIndex((t) => t.id === id);
               if (e.key === 'ArrowRight' && currentIdx < visibleTabs.length - 1) {
                 e.preventDefault();

@@ -25,10 +25,12 @@ from config import get_settings
 from dependencies import DPAGateError, dpa_gate_exception_handler
 from errors import http_exception_handler, validation_exception_handler
 from middleware.audit import AuditLogMiddleware
+from middleware.module_access import ModuleAccessMiddleware
 from middleware.security import SecurityHeadersMiddleware
 from middleware.tenant import TenantContextMiddleware
 from middleware.trace import TraceIdMiddleware
 from routers import (
+    admin_tenants,
     aid_coordination,
     aid_coordination_bulk,
     cropguard,
@@ -74,6 +76,7 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 # Inner-first add order (Starlette wraps in reverse):
 app.add_middleware(AuditLogMiddleware)
+app.add_middleware(ModuleAccessMiddleware)
 app.add_middleware(TenantContextMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(TraceIdMiddleware)
@@ -102,4 +105,5 @@ app.include_router(shockguard.router, prefix="/api/v1")
 app.include_router(skills.router, prefix="/api/v1")
 app.include_router(intelligence.router, prefix="/api/v1")
 app.include_router(overview.router, prefix="/api/v1")
+app.include_router(admin_tenants.router, prefix="/api/v1")
 app.include_router(dpa.router, prefix="/api/v1")

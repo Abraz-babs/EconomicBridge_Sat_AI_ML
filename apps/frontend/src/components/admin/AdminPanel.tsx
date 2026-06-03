@@ -5,6 +5,7 @@ import CropPriceUploadCard from './CropPriceUploadCard';
 import SchedulerPanel from './SchedulerPanel';
 import SmsLanguagePreviewCard from './SmsLanguagePreviewCard';
 import SubscriberBulkUploadCard from './SubscriberBulkUploadCard';
+import TenantRegistryCard from './TenantRegistryCard';
 
 
 const orgs = [
@@ -55,6 +56,7 @@ const orgs = [
 export default function AdminPanel() {
   return (
     <div className="admin-stack">
+      <TenantRegistryCard />
       <SchedulerPanel />
       <AidCoverageUploadCard />
       <CropPriceUploadCard />
