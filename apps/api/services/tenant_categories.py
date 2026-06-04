@@ -21,6 +21,7 @@ TENANT_CATEGORIES: list[dict] = [
     {"key": "ng_fct", "label": "FCT (Abuja)", "group": "Government", "geographic": True},
     {"key": "ecowas_country", "label": "ECOWAS Country", "group": "Government", "geographic": True},
     {"key": "ng_federal", "label": "Federal Ministry / Agency (Nigeria)", "group": "Government", "geographic": False},
+    {"key": "regional_body", "label": "Regional / International Body (ECOWAS, AU, UN…)", "group": "Government", "geographic": False},
     {"key": "ngo", "label": "NGO / Aid Organization", "group": "Organization", "geographic": False},
     {"key": "research", "label": "Research Institute", "group": "Organization", "geographic": False},
     {"key": "funder", "label": "Funding Organization", "group": "Organization", "geographic": False},
