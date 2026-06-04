@@ -58,6 +58,10 @@ super_admin_email = "admin@economicbridge.app"
 # Set once a custom domain fronts the ALB.
 public_app_url = "" # e.g. "https://app.economicbridge.org"
 
+# Scheduled report emails (EventBridge → daily ECS task). Needs SES live to send.
+enable_scheduled_reports   = true
+scheduled_reports_schedule = "rate(1 day)" # or e.g. "cron(0 6 * * ? *)" for 06:00 UTC daily
+
 # ─── PRODUCTION OVERRIDES (uncomment in a separate prod.tfvars) ───────
 #
 # aws_region                 = "af-south-1"

@@ -180,6 +180,18 @@ variable "public_app_url" {
   default     = ""
 }
 
+variable "enable_scheduled_reports" {
+  description = "Provision an EventBridge schedule that runs scripts.send_scheduled_reports (emails due report PDFs) on the api task. Needs SES live to actually send."
+  type        = bool
+  default     = true
+}
+
+variable "scheduled_reports_schedule" {
+  description = "EventBridge Scheduler expression for the report-emailer (it only sends what's due, so daily is safe)."
+  type        = string
+  default     = "rate(1 day)"
+}
+
 # ─── Observability ────────────────────────────────────────────────────
 
 variable "alarm_email" {

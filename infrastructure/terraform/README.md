@@ -194,22 +194,27 @@ pilots + partners are already in the registry; partners just need an Invite.
 ## Scheduled report emails
 
 Subscriptions are created in the dashboard (Admin → Scheduled Reports). The
-sending is a **recurring one-off task** — schedule it with EventBridge Scheduler
-(or a cron rule) firing `ecs run-task` daily; each run only sends the
-subscriptions that have come due, so a daily trigger is safe (needs SES live —
-`ses_sender_email` set + verified).
+sending is **provisioned by Terraform** (`scheduler.tf`): an EventBridge
+Scheduler fires daily and runs the api task with a `scripts.send_scheduled_reports`
+command override. Each run only sends subscriptions that have come due, so daily
+is safe + cheap (one short Fargate task/day). It needs SES live to actually send
+(`ses_sender_email` set + verified); without it the job runs and logs but emails
+nothing.
+
+Toggle/cadence: `enable_scheduled_reports` (default true) and
+`scheduled_reports_schedule` (default `rate(1 day)`) in tfvars.
+
+To run it **manually** (ad-hoc resend / testing) — same task def + network as the
+migration tasks:
 
 ```bash
-# What the scheduled task runs (same api task def + network as the migrations):
 aws ecs run-task --cluster $CLUSTER --launch-type FARGATE \
   --task-definition $TASKDEF --network-configuration "$NET" \
-  --overrides '{"containerOverrides":[{"name":"api","command":["python","-m","scripts.send_scheduled_reports"]}]}' \
+  --overrides '{"containerOverrides":[{"name":"api","command":["python","-m","scripts.send_scheduled_reports","--force"]}]}' \
   --region eu-west-1
 ```
 
-Wire it via an EventBridge Scheduler schedule (rate: 1 day) with an ECS RunTask
-target pointing at the api task definition + the above command override. `--force`
-ignores the due check (manual resend); `--dry-run` builds without emailing.
+`--force` ignores the due check (resend now); `--dry-run` builds without emailing.
 
 ---
 
