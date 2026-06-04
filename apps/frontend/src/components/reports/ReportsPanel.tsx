@@ -96,12 +96,14 @@ export default function ReportsPanel() {
           </label>
           <div className="rep-dl-group">
             <button type="button" className="sms-btn sms-btn--go"
-              disabled={busy !== null || isLoading || empty} onClick={() => dl('csv')}>
-              {busy === 'csv' ? 'Preparing…' : 'Download CSV'}
+              title="Formatted report with charts (trend + breakdown)"
+              disabled={busy !== null || isLoading || empty} onClick={() => dl('pdf')}>
+              {busy === 'pdf' ? 'Preparing…' : '📊 PDF report (charts)'}
             </button>
             <button type="button" className="sms-btn"
-              disabled={busy !== null || isLoading || empty} onClick={() => dl('pdf')}>
-              {busy === 'pdf' ? 'Preparing…' : 'Download PDF'}
+              title="Raw data rows — opens in Excel / Google Sheets"
+              disabled={busy !== null || isLoading || empty} onClick={() => dl('csv')}>
+              {busy === 'csv' ? 'Preparing…' : '⤓ CSV data (Excel)'}
             </button>
           </div>
         </div>
@@ -134,8 +136,9 @@ export default function ReportsPanel() {
             ) : null}
             <p className="rep-note">
               {data.label} · {data.date_from} → {data.date_to} · {data.total_rows.toLocaleString()} records.
-              CSV gives one row per record; PDF is a formatted summary. Exports are
-              scoped to tenants you’re permitted to view.
+              <strong> PDF</strong> = formatted report with trend &amp; breakdown charts;
+              <strong> CSV</strong> = one row per record (opens in Excel / Sheets). Exports
+              are scoped to tenants you’re permitted to view.
             </p>
           </>
         )}
