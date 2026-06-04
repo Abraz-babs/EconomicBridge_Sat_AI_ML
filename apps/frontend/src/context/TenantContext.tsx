@@ -5,11 +5,13 @@ import {
   ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
+import { useAuth } from '@/context/AuthContext';
 import { apiFetch, type SuccessEnvelope } from '@/lib/api';
 import { TENANTS, type Tenant } from '@/data/tenants';
 
@@ -96,12 +98,22 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     return ids;
   }, [registry]);
 
+  // Per-tenant access scoping: a signed-in tenant account only sees the tenants
+  // in its permitted_tenants. Anonymous (public overview) and super-admin see
+  // everything. Mirrors the server-side enforcement in TenantContextMiddleware.
+  const { user, isSuperAdmin } = useAuth();
+  const scopedIds = useMemo(() => {
+    if (!user || isSuperAdmin) return validIds;
+    const permitted = new Set(user.permitted_tenants);
+    return new Set([...validIds].filter((id) => permitted.has(id)));
+  }, [validIds, user, isSuperAdmin]);
+
   const pilotTenants = useMemo(() => {
-    const extras = [...validIds].filter((id) => !PILOT_TENANT_IDS.includes(id)).sort();
-    return [...PILOT_TENANT_IDS, ...extras]
+    const extras = [...scopedIds].filter((id) => !PILOT_TENANT_IDS.includes(id)).sort();
+    return [...PILOT_TENANT_IDS.filter((id) => scopedIds.has(id)), ...extras]
       .map((id) => TENANTS.find((t) => t.id === id))
       .filter((t): t is Tenant => Boolean(t));
-  }, [validIds]);
+  }, [scopedIds]);
 
   const activeTenant = useMemo(
     () => TENANTS.find((t) => t.id === activeTenantId) ?? pilotTenants[0],
@@ -109,12 +121,24 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   );
 
   const setActiveTenant = useCallback((id: string) => {
-    if (!validIds.has(id)) return;
+    if (!scopedIds.has(id)) return;
     setId(id);
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(STORAGE_KEY, id);
     }
-  }, [validIds]);
+  }, [scopedIds]);
+
+  // If the current tenant falls outside the signed-in account's scope (e.g. a
+  // state admin whose stored tenant was a different region), snap to one they
+  // can actually see. Runs when auth/scope resolves.
+  useEffect(() => {
+    if (scopedIds.size === 0 || scopedIds.has(activeTenantId)) return;
+    const first = pilotTenants[0];
+    if (!first) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setId(first.id);
+    if (typeof window !== 'undefined') window.localStorage.setItem(STORAGE_KEY, first.id);
+  }, [scopedIds, activeTenantId, pilotTenants]);
 
   const value = useMemo<TenantContextValue>(
     () => ({ activeTenantId, activeTenant, pilotTenants, setActiveTenant }),

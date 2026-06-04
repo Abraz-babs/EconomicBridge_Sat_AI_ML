@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.security import create_invite_token
 from dependencies import ROLE_TENANT_ADMIN
+from services.tenants import PILOT_TENANT_IDS
 
 
 @dataclass
@@ -48,9 +49,12 @@ async def onboard_tenant_admin(
     """
     email = admin_email.strip().lower()
 
-    # 1) Organisation (upsert by the unique org_id slug). Geographic tenants are
-    #    scoped to their own data; org tenants get data access via DPA later.
-    permitted = [tenant_id] if geographic else []
+    # 1) Organisation (upsert by the unique org_id slug). Access scope = which
+    #    tenants this org may view (enforced by TenantContextMiddleware):
+    #      * Geographic tenant (a State/Country) → scoped to ITSELF only.
+    #      * Org partner (ECOWAS/NEMA/NGO…) → full access to all pilot regions.
+    #    Finer per-partner region grants are a future enhancement.
+    permitted = [tenant_id] if geographic else sorted(PILOT_TENANT_IDS)
     org_row = (await session.execute(
         text(
             """
