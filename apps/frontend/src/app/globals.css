@@ -2910,3 +2910,7 @@ nav::-webkit-scrollbar {
 .rep-bd-title { font-size: 0.72rem; font-weight: 700; color: var(--ink2); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.3rem; }
 .rep-bd-row { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--ink2); padding: 0.15rem 0; border-bottom: 1px dotted var(--border); text-transform: capitalize; }
 .rep-note { font-size: 0.72rem; color: var(--muted); margin-top: 0.8rem; line-height: 1.5; max-width: 72ch; }
+
+/* Reports panel: module select + dual download buttons */
+.rep-date select { border: 1px solid var(--border2); border-radius: 6px; padding: 0.3rem 0.4rem; font-size: 0.78rem; background: var(--surface); color: var(--ink); }
+.rep-dl-group { display: inline-flex; gap: 0.4rem; margin-left: auto; }

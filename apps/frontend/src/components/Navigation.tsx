@@ -20,6 +20,7 @@ export type TabId =
   | 'shockguard'
   | 'mobility-compass'
   | 'skillsbridge'
+  | 'reports'
   | 'admin';
 
 interface NavigationProps {
@@ -38,12 +39,13 @@ const tabs: { id: TabId; label: string; navId: string }[] = [
   { id: 'shockguard', label: 'Disaster Relief (ShockGuard)', navId: 'navShockGuard' },
   { id: 'mobility-compass', label: 'Mobility Compass', navId: 'navMobility' },
   { id: 'skillsbridge', label: 'SkillsBridge', navId: 'navSkills' },
+  { id: 'reports', label: 'Reports', navId: 'navReports' },
   { id: 'admin', label: 'Admin Panel', navId: 'navAdmin' },
 ];
 
 export default function Navigation({ activeTab, onTabChange, lockModules = false }: NavigationProps) {
   const { roleConfig } = useRole();
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, user } = useAuth();
   const { activeTenantId } = useTenant();
   const { data: enabledModules } = useTenantModules(activeTenantId);
 
@@ -56,10 +58,13 @@ export default function Navigation({ activeTab, onTabChange, lockModules = false
   const entitled = (id: TabId) =>
     !MODULE_TAB_IDS.has(id) || enabledModules === undefined || enabledModules.includes(id);
 
-  // The tabs actually shown: role-allowed AND tenant-entitled; admin only when
-  // signed in as super-admin.
+  // The tabs actually shown: admin only for super-admin; Reports for any
+  // signed-in account (it's login-gated, not subscription-gated); everything
+  // else role-allowed AND tenant-entitled.
   const shownTabs = tabs.filter((t) =>
-    t.id === 'admin' ? isSuperAdmin : !isLocked(t.navId) && entitled(t.id),
+    t.id === 'admin' ? isSuperAdmin
+      : t.id === 'reports' ? Boolean(user)
+      : !isLocked(t.navId) && entitled(t.id),
   );
 
   return (

@@ -30,11 +30,12 @@ import ShockGuardPanel from '@/components/shockguard/ShockGuardPanel';
 import MobilityCompassPanel from '@/components/mobility/MobilityCompassPanel';
 import SkillsBridgePanel from '@/components/skills/SkillsBridgePanel';
 import AdminPanel from '@/components/admin/AdminPanel';
+import ReportsPanel from '@/components/reports/ReportsPanel';
 import RegisterPrompt from '@/components/auth/RegisterPrompt';
 
 const TAB_IDS: TabId[] = [
   'overview', 'economic-visibility', 'aid-coordination', 'farmland',
-  'cropguard', 'shockguard', 'mobility-compass', 'skillsbridge', 'admin',
+  'cropguard', 'shockguard', 'mobility-compass', 'skillsbridge', 'reports', 'admin',
 ];
 const TAB_STORAGE_KEY = 'eb.activeTab';
 
@@ -48,15 +49,23 @@ const TAB_LABELS: Record<TabId, string> = {
   'shockguard': 'ShockGuard',
   'mobility-compass': 'Mobility Compass',
   'skillsbridge': 'SkillsBridge',
+  'reports': 'Reports',
   'admin': 'Admin Panel',
 };
+
+// The 7 paid modules — subscription-gated + tenant-data-bearing.
+const MODULE_TABS: ReadonlySet<TabId> = new Set<TabId>([
+  'economic-visibility', 'aid-coordination', 'farmland', 'cropguard',
+  'shockguard', 'mobility-compass', 'skillsbridge',
+]);
+const isModuleTab = (tab: TabId): boolean => MODULE_TABS.has(tab);
 
 function isTab(v: string | null): v is TabId {
   return !!v && (TAB_IDS as string[]).includes(v);
 }
 
-// Overview is open-access; every other tab needs an account (admin is gated
-// separately by super-admin role). Anonymous visitors get a register prompt.
+// Overview is open-access; every other tab (modules + reports) needs an account
+// (admin is gated separately by super-admin role). Anonymous → register prompt.
 function isGatedModule(tab: TabId): boolean {
   return tab !== 'overview' && tab !== 'admin';
 }
@@ -80,15 +89,16 @@ function DashboardContent() {
   // dedupes). undefined while loading → fail-open (render the module).
   const { data: enabledModules } = useTenantModules(activeTenantId);
   const subscribed =
-    enabledModules === undefined || enabledModules.includes(activeTab);
+    !isModuleTab(activeTab) || enabledModules === undefined || enabledModules.includes(activeTab);
   // Tenant exists but its plan doesn't include this module → clean "not
-  // subscribed" state instead of letting the panel hit a 403.
-  const showNotSubscribed = isGatedModule(activeTab) && !subscribed;
+  // subscribed" state instead of letting the panel hit a 403. (Reports isn't a
+  // paid module, so it's never "not subscribed".)
+  const showNotSubscribed = isModuleTab(activeTab) && !subscribed;
   // "No data yet" banner for a registered region with no seeded/ingested data.
   // The signal is pilot membership, NOT tenant.active (that's a map ACTIVE/
   // PLANNED display flag — Ghana & Senegal are pilots with data but active:false).
   const showEmptyRegion =
-    isGatedModule(activeTab) && subscribed && !PILOT_TENANT_IDS.includes(activeTenantId);
+    isModuleTab(activeTab) && subscribed && !PILOT_TENANT_IDS.includes(activeTenantId);
   // A module tab renders only when the tenant is subscribed to it.
   const showModule = (tab: TabId) => activeTab === tab && subscribed;
   // Which module an anonymous visitor just tried to open (drives the prompt).
@@ -280,6 +290,15 @@ function DashboardContent() {
           <div className="tab-content" key="skillsbridge">
             <ErrorBoundary fallbackModule="SkillsBridge">
               <SkillsBridgePanel />
+            </ErrorBoundary>
+          </div>
+        )}
+
+        {/* REPORTS — historical summary + CSV/PDF export (signed-in only) */}
+        {activeTab === 'reports' && user && (
+          <div className="tab-content" key="reports">
+            <ErrorBoundary fallbackModule="Reports">
+              <ReportsPanel />
             </ErrorBoundary>
           </div>
         )}
