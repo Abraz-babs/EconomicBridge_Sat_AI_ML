@@ -310,10 +310,12 @@ async def report_export_pdf(
     cols = [m.column for m in spec.metrics if m.column]
     if spec.breakdown_col:
         cols.append(spec.breakdown_col)
-    rows = await _fetch(session, spec, cols or [spec.date_col], start, end)
+    cols.append(spec.date_col)
+    rows = await _fetch(session, spec, cols, start, end)
     summary = _summary(module, spec, rows, start, end)
+    monthly = _monthly(rows, spec.date_col)
 
-    pdf = _build_pdf(tenant_id, summary)
+    pdf = _build_pdf(tenant_id, summary, monthly)
     fname = f"{tenant_id}_{module}_{start.date().isoformat()}_{end.date().isoformat()}.pdf"
     return StreamingResponse(
         iter([pdf]), media_type="application/pdf",
@@ -321,7 +323,69 @@ async def report_export_pdf(
     )
 
 
-def _build_pdf(tenant_id: str, s: ReportSummary) -> bytes:
+def _monthly(rows: list[dict], date_col: str) -> list[tuple[str, int]]:
+    """Records per calendar month (YYYY-MM) over the window, sorted ascending."""
+    counts: dict[str, int] = {}
+    for r in rows:
+        d = r.get(date_col)
+        if d is None:
+            continue
+        key = f"{d.year}-{d.month:02d}"
+        counts[key] = counts.get(key, 0) + 1
+    return sorted(counts.items())
+
+
+_CHART_PALETTE = ["#2d6a4f", "#c1440e", "#c97d00", "#1d3557", "#6b2d5e",
+                  "#52b788", "#74a7d5", "#f4a832"]
+
+
+def _bar_drawing(data: list[tuple[str, int]]):
+    """Vertical bar chart of (label, value) — used for the monthly trend."""
+    from reportlab.graphics.charts.barcharts import VerticalBarChart
+    from reportlab.graphics.shapes import Drawing
+    from reportlab.lib.colors import HexColor
+
+    d = Drawing(440, 170)
+    bc = VerticalBarChart()
+    bc.x, bc.y, bc.width, bc.height = 35, 30, 390, 120
+    bc.data = [[v for _, v in data]]
+    bc.categoryAxis.categoryNames = [k for k, _ in data]
+    bc.categoryAxis.labels.angle = 30
+    bc.categoryAxis.labels.dy = -8
+    bc.categoryAxis.labels.fontSize = 7
+    bc.valueAxis.valueMin = 0
+    bc.bars[0].fillColor = HexColor("#2d6a4f")
+    d.add(bc)
+    return d
+
+
+def _pie_drawing(data: list[tuple[str, int]]):
+    """Pie chart of (label, value) — used for the categorical breakdown."""
+    from reportlab.graphics.charts.legends import Legend
+    from reportlab.graphics.charts.piecharts import Pie
+    from reportlab.graphics.shapes import Drawing
+    from reportlab.lib.colors import HexColor
+
+    d = Drawing(440, 170)
+    pie = Pie()
+    pie.x, pie.y, pie.width, pie.height = 20, 20, 130, 130
+    pie.data = [v for _, v in data]
+    pie.slices.strokeWidth = 0.5
+    colors_ = [HexColor(_CHART_PALETTE[i % len(_CHART_PALETTE)]) for i in range(len(data))]
+    for i in range(len(data)):
+        pie.slices[i].fillColor = colors_[i]
+    d.add(pie)
+    legend = Legend()
+    legend.x, legend.y = 180, 140
+    legend.fontSize = 8
+    legend.dxTextSpace = 5
+    legend.deltay = 12
+    legend.colorNamePairs = [(colors_[i], f"{k} ({v})") for i, (k, v) in enumerate(data)]
+    d.add(legend)
+    return d
+
+
+def _build_pdf(tenant_id: str, s: ReportSummary, monthly: list[tuple[str, int]]) -> bytes:
     # Imported lazily so the rest of the service doesn't pay for reportlab.
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -356,10 +420,21 @@ def _build_pdf(tenant_id: str, s: ReportSummary) -> bytes:
     ]))
     flow.append(t)
 
+    # Monthly trend chart — the historical shape over the window.
+    if len(monthly) >= 2:
+        flow.append(Spacer(1, 8 * mm))
+        flow.append(Paragraph("<b>Records per month</b>", styles["Normal"]))
+        flow.append(Spacer(1, 2 * mm))
+        flow.append(_bar_drawing(monthly))
+
     if s.breakdown and s.breakdown.rows:
         flow.append(Spacer(1, 8 * mm))
         flow.append(Paragraph(f"<b>{s.breakdown.title}</b>", styles["Normal"]))
         flow.append(Spacer(1, 2 * mm))
+        # Pie for ≤8 categories; the table below always lists exact counts.
+        if 2 <= len(s.breakdown.rows) <= 8:
+            flow.append(_pie_drawing([(r.key, r.count) for r in s.breakdown.rows]))
+            flow.append(Spacer(1, 2 * mm))
         bd = [["Category", "Count"]] + [[r.key, str(r.count)] for r in s.breakdown.rows]
         bt = Table(bd, colWidths=[90 * mm, 70 * mm])
         bt.setStyle(TableStyle([
