@@ -11,6 +11,7 @@ import {
   type AlertSeverity,
 } from '@/hooks/useFarmlandAlerts';
 import FarmlandMap, { type FarmlandAlertPoint } from './FarmlandMap';
+import ReportsCard from '@/components/reports/ReportsCard';
 
 type MapLayerKey = 'heat' | 'ndvi' | 'sar' | 'boundary';
 
@@ -681,6 +682,9 @@ export default function FarmlandPanel() {
           </div>
         </div>
       </div>
+
+      {/* HISTORICAL REPORT + CSV EXPORT — month/quarter/year, access-scoped */}
+      <ReportsCard tenantId={activeTenantId} tenantName={stateLabel} />
     </div>
   );
 }

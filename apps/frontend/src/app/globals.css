@@ -2892,3 +2892,21 @@ nav::-webkit-scrollbar {
   border-radius: 5px; padding: 0.12rem 0.5rem; font-size: 0.68rem; font-weight: 600; cursor: pointer;
 }
 .tr-invite-btn:hover { background: var(--surface2); border-color: var(--ink2); }
+
+/* ─── Reports & Export card ──────────────────────────────────────────────── */
+.rep-card { margin-top: 1rem; }
+.rep-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.6rem; margin-bottom: 0.9rem; }
+.rep-presets { display: inline-flex; gap: 0.3rem; }
+.rep-preset { border: 1px solid var(--border2); background: var(--surface); color: var(--ink2); border-radius: 6px; padding: 0.34rem 0.7rem; font-size: 0.76rem; font-weight: 600; cursor: pointer; }
+.rep-preset.is-active { background: var(--active, #2d6a4f); color: #fff; border-color: var(--active, #2d6a4f); }
+.rep-date { display: flex; flex-direction: column; font-size: 0.68rem; color: var(--muted); font-weight: 600; gap: 0.2rem; }
+.rep-date input { border: 1px solid var(--border2); border-radius: 6px; padding: 0.3rem 0.4rem; font-size: 0.78rem; background: var(--surface); color: var(--ink); }
+.rep-download { margin-left: auto; }
+.rep-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.6rem; margin-bottom: 0.9rem; }
+.rep-stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem 0.7rem; }
+.rep-stat-v { font-size: 1.3rem; font-weight: 700; color: var(--ink); }
+.rep-stat-k { font-size: 0.68rem; color: var(--muted); margin-top: 0.15rem; }
+.rep-breakdown { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 420px; }
+.rep-bd-title { font-size: 0.72rem; font-weight: 700; color: var(--ink2); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.3rem; }
+.rep-bd-row { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--ink2); padding: 0.15rem 0; border-bottom: 1px dotted var(--border); text-transform: capitalize; }
+.rep-note { font-size: 0.72rem; color: var(--muted); margin-top: 0.8rem; line-height: 1.5; max-width: 72ch; }

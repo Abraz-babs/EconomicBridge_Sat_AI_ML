@@ -47,6 +47,7 @@ from routers import (
     health_db,
     intelligence,
     overview,
+    reports,
     shockguard,
     skills,
     tenants,
@@ -130,5 +131,6 @@ app.include_router(shockguard.router, prefix="/api/v1")
 app.include_router(skills.router, prefix="/api/v1")
 app.include_router(intelligence.router, prefix="/api/v1")
 app.include_router(overview.router, prefix="/api/v1")
+app.include_router(reports.router, prefix="/api/v1")
 app.include_router(admin_tenants.router, prefix="/api/v1")
 app.include_router(dpa.router, prefix="/api/v1")

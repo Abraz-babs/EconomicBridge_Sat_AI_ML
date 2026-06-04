@@ -233,6 +233,43 @@ export async function apiFetch<T>(
   return parsed as SuccessEnvelope<T>;
 }
 
+/**
+ * Fetch a file (e.g. a CSV report) with the auth + tenant headers attached, and
+ * trigger a browser download. Plain <a href> can't carry the Bearer token or
+ * X-Tenant-Id, so we fetch → blob → object URL → click.
+ */
+export async function downloadFile(
+  path: string,
+  filename: string,
+  opts: { tenantId?: string | null } = {},
+): Promise<void> {
+  const url = path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
+  const headers: Record<string, string> = { Accept: 'text/csv' };
+  if (opts.tenantId) headers['X-Tenant-Id'] = opts.tenantId;
+  if (_accessToken) headers['Authorization'] = `Bearer ${_accessToken}`;
+
+  const response = await fetch(url, { headers });
+  if (!response.ok) {
+    let message = `Download failed: ${response.status} ${response.statusText}`;
+    try {
+      const body = await response.json();
+      message = body?.error?.message ?? message;
+    } catch {
+      // non-JSON (e.g. the CSV itself on success path) — keep status text
+    }
+    throw new ApiException(message, response.status, null);
+  }
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
 /** Convenience: unwrap to `data` only. */
 export async function apiGet<T>(
   path: string,
