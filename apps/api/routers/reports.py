@@ -28,12 +28,15 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.engine import get_session
+from dependencies import CurrentUser, require_super_admin
 from schemas.envelope import SuccessResponse, build_meta
 from schemas.reports import (
     ReportBreakdown,
     ReportBreakdownRow,
     ReportMetric,
     ReportModuleInfo,
+    ReportSubscription,
+    ReportSubscriptionCreate,
     ReportSummary,
 )
 
@@ -252,6 +255,68 @@ async def report_modules() -> SuccessResponse[list[ReportModuleInfo]]:
     )
 
 
+# ─── Scheduled report subscriptions (super-admin) ─────────────────────────
+
+async def _list_subs(session: AsyncSession) -> list[ReportSubscription]:
+    rows = (await session.execute(text(
+        "SELECT id, tenant_id, module, frequency, recipient_email, enabled, "
+        "last_sent_at, created_at FROM public.report_subscriptions "
+        "ORDER BY tenant_id, module"
+    ))).mappings().all()
+    return [ReportSubscription(**r) for r in rows]
+
+
+@router.get("/subscriptions", response_model=SuccessResponse[list[ReportSubscription]])
+async def list_subscriptions(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    _admin: Annotated[CurrentUser, Depends(require_super_admin)],
+) -> SuccessResponse[list[ReportSubscription]]:
+    return SuccessResponse(data=await _list_subs(session), meta=build_meta())
+
+
+@router.post("/subscriptions", response_model=SuccessResponse[ReportSubscription],
+             status_code=status.HTTP_201_CREATED)
+async def create_subscription(
+    body: ReportSubscriptionCreate,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    _admin: Annotated[CurrentUser, Depends(require_super_admin)],
+) -> SuccessResponse[ReportSubscription]:
+    if body.module not in REPORT_SPECS:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            detail={"code": "UNKNOWN_MODULE",
+                                    "message": f"No report for module {body.module!r}."})
+    row = (await session.execute(
+        text(
+            """
+            INSERT INTO public.report_subscriptions
+                (tenant_id, module, frequency, recipient_email)
+            VALUES (:t, :m, :f, :e)
+            ON CONFLICT (tenant_id, module, recipient_email, frequency)
+              DO UPDATE SET enabled = TRUE
+            RETURNING id, tenant_id, module, frequency, recipient_email, enabled,
+                      last_sent_at, created_at
+            """
+        ),
+        {"t": body.tenant_id, "m": body.module, "f": body.frequency,
+         "e": str(body.recipient_email).strip().lower()},
+    )).mappings().first()
+    await session.commit()
+    return SuccessResponse(data=ReportSubscription(**row), meta=build_meta())
+
+
+@router.delete("/subscriptions/{sub_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_subscription(
+    sub_id: str,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    _admin: Annotated[CurrentUser, Depends(require_super_admin)],
+) -> None:
+    await session.execute(
+        text("DELETE FROM public.report_subscriptions WHERE id = CAST(:id AS uuid)"),
+        {"id": sub_id},
+    )
+    await session.commit()
+
+
 @router.get("/summary", response_model=SuccessResponse[ReportSummary])
 async def report_summary(
     request: Request,
@@ -305,8 +370,24 @@ async def report_export_pdf(
     to: Annotated[str | None, Query()] = None,
 ) -> StreamingResponse:
     tenant_id = _require_tenant(request)
-    spec = _spec(module)
+    _spec(module)  # validate
     start, end = _window(from_, to)
+    _, pdf = await render_report(session, tenant_id, module, start, end)
+    fname = f"{tenant_id}_{module}_{start.date().isoformat()}_{end.date().isoformat()}.pdf"
+    return StreamingResponse(
+        iter([pdf]), media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+async def render_report(
+    session: AsyncSession, tenant_id: str, module: str,
+    start: datetime, end: datetime,
+) -> tuple[ReportSummary, bytes]:
+    """Build (summary, pdf_bytes) for a tenant+module over a window. Shared by the
+    HTTP export endpoint and the scheduled-report job. The caller is responsible
+    for the session's search_path being pinned to the tenant."""
+    spec = REPORT_SPECS[module]
     cols = [m.column for m in spec.metrics if m.column]
     if spec.breakdown_col:
         cols.append(spec.breakdown_col)
@@ -314,13 +395,7 @@ async def report_export_pdf(
     rows = await _fetch(session, spec, cols, start, end)
     summary = _summary(module, spec, rows, start, end)
     monthly = _monthly(rows, spec.date_col)
-
-    pdf = _build_pdf(tenant_id, summary, monthly)
-    fname = f"{tenant_id}_{module}_{start.date().isoformat()}_{end.date().isoformat()}.pdf"
-    return StreamingResponse(
-        iter([pdf]), media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
-    )
+    return summary, _build_pdf(tenant_id, summary, monthly)
 
 
 def _monthly(rows: list[dict], date_col: str) -> list[tuple[str, int]]:

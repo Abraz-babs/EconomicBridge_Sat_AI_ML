@@ -33,3 +33,29 @@ class ReportModuleInfo(BaseModel):
     """A reportable module (for the frontend's module picker)."""
     key: str
     label: str
+
+
+# ─── Scheduled report subscriptions (super-admin) ─────────────────────────
+
+from datetime import datetime  # noqa: E402
+from uuid import UUID  # noqa: E402
+
+from pydantic import EmailStr, Field  # noqa: E402
+
+
+class ReportSubscription(BaseModel):
+    id: UUID
+    tenant_id: str
+    module: str
+    frequency: str
+    recipient_email: str
+    enabled: bool
+    last_sent_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class ReportSubscriptionCreate(BaseModel):
+    tenant_id: str = Field(pattern=r"^[a-z][a-z0-9_]{1,49}$")
+    module: str
+    frequency: str = Field(pattern=r"^(monthly|quarterly)$")
+    recipient_email: EmailStr

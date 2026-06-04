@@ -1,6 +1,12 @@
 'use client';
 
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 
 import { ApiException, apiFetch, downloadFile, type SuccessEnvelope } from '@/lib/api';
 
@@ -61,4 +67,60 @@ export function downloadReportCsv(tenantId: string, module: string, from: string
 export function downloadReportPdf(tenantId: string, module: string, from: string, to: string): Promise<void> {
   return downloadFile(`/reports/export.pdf${qs(module, from, to)}`,
     `${tenantId}_${module}_${from || 'all'}_${to || 'now'}.pdf`, { tenantId });
+}
+
+// ─── Scheduled report subscriptions (super-admin) ───────────────────────────
+
+export interface ReportSubscription {
+  id: string;
+  tenant_id: string;
+  module: string;
+  frequency: string;
+  recipient_email: string;
+  enabled: boolean;
+  last_sent_at: string | null;
+  created_at: string | null;
+}
+
+export interface NewSubscription {
+  tenant_id: string;
+  module: string;
+  frequency: string;
+  recipient_email: string;
+}
+
+export function useReportSubscriptions(): UseQueryResult<ReportSubscription[], ApiException> {
+  return useQuery<ReportSubscription[], ApiException>({
+    queryKey: ['report-subscriptions'],
+    staleTime: 15 * 1000,
+    queryFn: async ({ signal }) => {
+      const env: SuccessEnvelope<ReportSubscription[]> =
+        await apiFetch<ReportSubscription[]>('/reports/subscriptions', { signal });
+      return env.data;
+    },
+  });
+}
+
+export function useCreateReportSubscription(): UseMutationResult<
+  ReportSubscription, ApiException, NewSubscription
+> {
+  const qc = useQueryClient();
+  return useMutation<ReportSubscription, ApiException, NewSubscription>({
+    mutationFn: async (body) => {
+      const env: SuccessEnvelope<ReportSubscription> =
+        await apiFetch<ReportSubscription>('/reports/subscriptions', { method: 'POST', body });
+      return env.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['report-subscriptions'] }),
+  });
+}
+
+export function useDeleteReportSubscription(): UseMutationResult<void, ApiException, string> {
+  const qc = useQueryClient();
+  return useMutation<void, ApiException, string>({
+    mutationFn: async (id) => {
+      await apiFetch(`/reports/subscriptions/${id}`, { method: 'DELETE' });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['report-subscriptions'] }),
+  });
 }

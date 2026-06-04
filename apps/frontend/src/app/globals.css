@@ -2914,3 +2914,7 @@ nav::-webkit-scrollbar {
 /* Reports panel: module select + dual download buttons */
 .rep-date select { border: 1px solid var(--border2); border-radius: 6px; padding: 0.3rem 0.4rem; font-size: 0.78rem; background: var(--surface); color: var(--ink); }
 .rep-dl-group { display: inline-flex; gap: 0.4rem; margin-left: auto; }
+
+/* Scheduled reports card */
+.srep-form { margin-top: 0.5rem; }
+.srep-email { font-size: 0.74rem; color: var(--ink2); max-width: 20ch; overflow: hidden; text-overflow: ellipsis; }

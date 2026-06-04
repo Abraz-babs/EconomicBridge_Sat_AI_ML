@@ -66,3 +66,57 @@ def _send_ses(*, to: str, subject: str, body: str) -> bool:
     except Exception as exc:  # noqa: BLE001 — email failure must not break onboarding
         logger.warning("[email:ses] send to %s failed: %s", to, exc)
         return False
+
+
+def send_report_email(
+    *, to: str, tenant_name: str, module_label: str, period: str,
+    pdf: bytes, filename: str,
+) -> bool:
+    """Email a generated report PDF (scheduled reports). Returns True if a real
+    send was accepted. Console backend logs a stub (no attachment in dev)."""
+    s = get_settings()
+    subject = f"EconomicBridge — {module_label} report · {tenant_name} ({period})"
+    body = (
+        f"Attached is your scheduled {module_label} report for {tenant_name}, "
+        f"covering {period}.\n\n— EconomicBridge (operated by Bizra Farms "
+        f"Integrated Nigeria Ltd)\n"
+    )
+    if s.email_backend == "ses":
+        return _send_ses_with_attachment(
+            to=to, subject=subject, body=body, pdf=pdf, filename=filename,
+        )
+    logger.info(
+        "[email:console] report to=%s subject=%r (%d-byte PDF '%s' — not sent in dev)",
+        to, subject, len(pdf), filename,
+    )
+    return False
+
+
+def _send_ses_with_attachment(
+    *, to: str, subject: str, body: str, pdf: bytes, filename: str,
+) -> bool:
+    s = get_settings()
+    try:
+        import boto3
+        from email.mime.application import MIMEApplication
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+
+        msg = MIMEMultipart()
+        msg["Subject"] = subject
+        msg["From"] = s.email_from
+        msg["To"] = to
+        msg.attach(MIMEText(body))
+        part = MIMEApplication(pdf, _subtype="pdf")
+        part.add_header("Content-Disposition", "attachment", filename=filename)
+        msg.attach(part)
+
+        client = boto3.client("ses", region_name=s.aws_region)
+        client.send_raw_email(
+            Source=s.email_from, Destinations=[to],
+            RawMessage={"Data": msg.as_string()},
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001 — never let a send failure crash the job
+        logger.warning("[email:ses] report to %s failed: %s", to, exc)
+        return False
