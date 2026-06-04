@@ -117,3 +117,22 @@ export function useRegisterTenant(): UseMutationResult<
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-tenants'] }),
   });
 }
+
+export interface InviteTenantVars { tenantId: string; admin_email: string; admin_name: string | null }
+
+/** Send (or re-send) an activation invite to a registered tenant's admin. */
+export function useInviteTenant(): UseMutationResult<
+  RegisteredTenant, ApiException, InviteTenantVars
+> {
+  const qc = useQueryClient();
+  return useMutation<RegisteredTenant, ApiException, InviteTenantVars>({
+    mutationFn: async ({ tenantId, admin_email, admin_name }) => {
+      const env: SuccessEnvelope<RegisteredTenant> = await apiFetch<RegisteredTenant>(
+        `/admin/tenants/${tenantId}/invite`,
+        { method: 'POST', body: { admin_email, admin_name } },
+      );
+      return env.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-tenants'] }),
+  });
+}

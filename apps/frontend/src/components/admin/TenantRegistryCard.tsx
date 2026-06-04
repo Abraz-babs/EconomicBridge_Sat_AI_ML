@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import {
   useAdminTenants,
+  useInviteTenant,
   useRegisterTenant,
   useSetTenantModules,
   type RegisteredTenant,
@@ -20,6 +21,7 @@ const TIERS = ['standard', 'premium', 'pilot'];
 export default function TenantRegistryCard() {
   const { data, isLoading, isError } = useAdminTenants();
   const setModules = useSetTenantModules();
+  const [inviting, setInviting] = useState<RegisteredTenant | null>(null);
 
   const catalog = data?.catalog ?? [];
   const tenants = data?.tenants ?? [];
@@ -65,6 +67,18 @@ export default function TenantRegistryCard() {
                     <td className="tr-sticky">
                       <span className="tr-name">{t.name}</span>
                       <span className="tr-sub">{t.tenant_type} · {t.status}</span>
+                      <span className="tr-account">
+                        {t.admin_email
+                          ? <span className="tr-account-email" title={t.admin_email}>✉ {t.admin_email}</span>
+                          : <span className="tr-account-none">no account yet</span>}
+                        <button
+                          type="button"
+                          className="tr-invite-btn"
+                          onClick={() => setInviting(t)}
+                        >
+                          {t.admin_email ? 'Re-invite' : 'Invite'}
+                        </button>
+                      </span>
                     </td>
                     {catalog.map((m) => {
                       const on = t.modules.find((x) => x.key === m.key)?.enabled ?? false;
@@ -88,6 +102,76 @@ export default function TenantRegistryCard() {
         )}
 
         <RegisterTenantForm catalog={catalog} categories={categories} />
+      </div>
+
+      {inviting && (
+        <InviteModal tenant={inviting} onClose={() => setInviting(null)} />
+      )}
+    </div>
+  );
+}
+
+function InviteModal({ tenant, onClose }: { tenant: RegisteredTenant; onClose: () => void }) {
+  const invite = useInviteTenant();
+  const [email, setEmail] = useState(tenant.admin_email ?? '');
+  const [name, setName] = useState('');
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  function submit() {
+    setNote(null);
+    setInviteUrl(null);
+    invite.mutate(
+      { tenantId: tenant.id, admin_email: email.trim(), admin_name: name.trim() || null },
+      {
+        onSuccess: (t) => {
+          setInviteUrl(t.invite_url ?? null);
+          setNote(
+            t.invite_url
+              ? `Invite ready for ${t.admin_email}. In dev the link isn’t emailed — copy it below.`
+              : `Invite sent to ${t.admin_email}.`,
+          );
+        },
+        onError: (e) => setNote(`Failed: ${e.message}`),
+      },
+    );
+  }
+
+  return (
+    <div className="auth-overlay" role="dialog" aria-modal="true" aria-label="Invite tenant admin" onClick={onClose}>
+      <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
+        <h2 className="auth-modal-title">
+          {tenant.admin_email ? 'Re-invite' : 'Invite'} — {tenant.name}
+        </h2>
+        <p className="auth-modal-sub">
+          Send an activation link so this partner can set a password and sign in
+          with the access you’ve granted. No data setup needed — they’re a viewer.
+        </p>
+        <label className="upload-field">
+          <span className="upload-field-label">Admin email</span>
+          <input type="email" value={email} autoFocus placeholder="liaison@partner.org"
+            onChange={(e) => setEmail(e.target.value)} />
+        </label>
+        <label className="upload-field">
+          <span className="upload-field-label">Admin name (optional)</span>
+          <input value={name} placeholder="Full name" onChange={(e) => setName(e.target.value)} />
+        </label>
+        {note && <div className="sms-result">{note}</div>}
+        {inviteUrl && (
+          <div className="tr-invite">
+            <span className="tr-invite-label">Dev activation link (copy &amp; share):</span>
+            <code className="tr-invite-url">{inviteUrl}</code>
+          </div>
+        )}
+        <div className="auth-modal-actions">
+          <button type="button" className="auth-btn auth-btn--ghost" onClick={onClose} disabled={invite.isPending}>
+            Close
+          </button>
+          <button type="button" className="auth-btn auth-btn--go" onClick={submit}
+            disabled={invite.isPending || !email.trim()}>
+            {invite.isPending ? 'Sending…' : 'Send invite'}
+          </button>
+        </div>
       </div>
     </div>
   );

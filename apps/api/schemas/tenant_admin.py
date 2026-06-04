@@ -40,6 +40,12 @@ class TenantModulesPatch(BaseModel):
     enabled_keys: list[str]
 
 
+class TenantInviteRequest(BaseModel):
+    """Invite (or re-invite) a registered tenant's admin to set up their login."""
+    admin_email: EmailStr
+    admin_name: str | None = Field(default=None, max_length=200)
+
+
 class TenantRegisterRequest(BaseModel):
     id: str = Field(pattern=r"^[a-z][a-z0-9_]{1,49}$")
     name: str = Field(min_length=1, max_length=200)

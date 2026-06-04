@@ -31,6 +31,7 @@ from schemas.envelope import ResponseMeta, SuccessResponse
 from schemas.tenant_admin import (
     ModuleState,
     RegisteredTenant,
+    TenantInviteRequest,
     TenantModulesData,
     TenantModulesPatch,
     TenantRegisterRequest,
@@ -237,6 +238,52 @@ async def set_tenant_modules(
     await session.commit()
     invalidate_modules_cache(tenant_id)
     return await _one_tenant(session, request, tenant_id)
+
+
+@router.post("/admin/tenants/{tenant_id}/invite",
+             response_model=SuccessResponse[RegisteredTenant])
+async def invite_tenant_admin(
+    tenant_id: str,
+    body: TenantInviteRequest,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    _admin: Annotated[CurrentUser, Depends(require_super_admin)],
+) -> SuccessResponse[RegisteredTenant]:
+    """Send (or re-send) an activation invite to a registered tenant's admin.
+
+    Decouples account onboarding from registration: a tenant can be registered +
+    entitled now (no email), then invited later when the deal closes. Creates the
+    org + a pending tenant_admin user and emails the activation link.
+    """
+    reg = (await session.execute(text(
+        "SELECT id, name, tenant_type, country FROM public.tenant_registry WHERE id = :t"
+    ), {"t": tenant_id})).mappings().first()
+    if reg is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=f"unknown tenant {tenant_id!r}")
+
+    admin_email = str(body.admin_email).strip().lower()
+    onboard = await onboard_tenant_admin(
+        session,
+        tenant_id=reg["id"], tenant_name=reg["name"], tenant_type=reg["tenant_type"],
+        country=reg["country"], admin_email=admin_email, admin_name=body.admin_name,
+        geographic=is_geographic(reg["tenant_type"]),
+    )
+    # Record the contact on the registry row so the matrix shows it.
+    await session.execute(
+        text("UPDATE public.tenant_registry SET admin_email = :e, admin_name = :n, "
+             "updated_at = NOW() WHERE id = :t"),
+        {"e": admin_email, "n": body.admin_name, "t": tenant_id},
+    )
+    await session.commit()
+
+    invite_url: str | None = None
+    if onboard.invite_token:
+        settings = get_settings()
+        invite_url = f"{settings.public_app_url}/activate?token={onboard.invite_token}"
+        send_invite_email(to=onboard.email, tenant_name=reg["name"], activate_url=invite_url)
+        if settings.email_backend != "console":
+            invite_url = None
+    return await _one_tenant(session, request, tenant_id, invite_url=invite_url)
 
 
 @router.get("/tenant-modules", response_model=SuccessResponse[TenantModulesData])
