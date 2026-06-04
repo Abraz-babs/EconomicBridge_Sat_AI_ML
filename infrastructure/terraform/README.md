@@ -169,11 +169,25 @@ aws ecs run-task --cluster $CLUSTER --launch-type FARGATE \
   --task-definition $TASKDEF --network-configuration "$NET" \
   --overrides '{"containerOverrides":[{"name":"api","command":["python","-m","scripts.seed_super_admin"]}]}' \
   --region eu-west-1
+
+# 3) Seed the 10 pilot regions + their module entitlements
+aws ecs run-task --cluster $CLUSTER --launch-type FARGATE \
+  --task-definition $TASKDEF --network-configuration "$NET" \
+  --overrides '{"containerOverrides":[{"name":"api","command":["python","-m","scripts.seed_tenant_registry"]}]}' \
+  --region eu-west-1
+
+# 4) Seed the pilot PARTNER orgs (ECOWAS, NEMA — full access, no account yet;
+#    invite them from Admin → Tenant Registry when the deal closes)
+aws ecs run-task --cluster $CLUSTER --launch-type FARGATE \
+  --task-definition $TASKDEF --network-configuration "$NET" \
+  --overrides '{"containerOverrides":[{"name":"api","command":["python","-m","scripts.seed_partners"]}]}' \
+  --region eu-west-1
 ```
 
 Watch the task in CloudWatch Logs (`/ecs/economicbridge-staging/api`). After
 this, sign in at the dashboard with `super_admin_email` + the password you set —
-that's the only account that can reach the admin panel and register tenants.
+that's the only account that can reach the admin panel and register tenants. The
+pilots + partners are already in the registry; partners just need an Invite.
 
 ---
 

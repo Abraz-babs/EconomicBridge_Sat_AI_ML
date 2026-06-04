@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { RoleProvider } from '@/context/RoleContext';
 import { useAuth } from '@/context/AuthContext';
-import { useTenant } from '@/context/TenantContext';
+import { useTenant, PILOT_TENANT_IDS } from '@/context/TenantContext';
 import { useTenantModules } from '@/hooks/useTenantModules';
 import EmptyRegion from '@/components/common/EmptyRegion';
 import NotSubscribed from '@/components/common/NotSubscribed';
@@ -84,10 +84,11 @@ function DashboardContent() {
   // Tenant exists but its plan doesn't include this module → clean "not
   // subscribed" state instead of letting the panel hit a 403.
   const showNotSubscribed = isGatedModule(activeTab) && !subscribed;
-  // Registered-but-dataless region (pilots active:true; new tenants active:false)
-  // → "no data yet" banner. Only when the module IS subscribed.
+  // "No data yet" banner for a registered region with no seeded/ingested data.
+  // The signal is pilot membership, NOT tenant.active (that's a map ACTIVE/
+  // PLANNED display flag — Ghana & Senegal are pilots with data but active:false).
   const showEmptyRegion =
-    isGatedModule(activeTab) && subscribed && !activeTenant.active;
+    isGatedModule(activeTab) && subscribed && !PILOT_TENANT_IDS.includes(activeTenantId);
   // A module tab renders only when the tenant is subscribed to it.
   const showModule = (tab: TabId) => activeTab === tab && subscribed;
   // Which module an anonymous visitor just tried to open (drives the prompt).
