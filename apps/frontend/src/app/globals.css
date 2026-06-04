@@ -271,6 +271,11 @@ main {
 
 /* ─── TWO COL ─── */
 .two-col { display: grid; grid-template-columns: 1fr 320px; gap: 18px; }
+/* The overview map panel fills its column so it matches the taller sidebar —
+   no empty white space under the map. SatelliteMap's ResizeObserver keeps the
+   canvas sized as the column grows. */
+.two-col > .panel { display: flex; flex-direction: column; }
+.two-col > .panel .map-area { flex: 1 1 auto; height: auto; min-height: 380px; }
 
 /* ─── PANEL ─── */
 .panel {
@@ -2832,7 +2837,8 @@ nav::-webkit-scrollbar {
 
 .auth-overlay {
   position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center;
-  justify-content: center; background: rgba(26, 23, 20, 0.45); backdrop-filter: blur(2px);
+  justify-content: center; background: rgba(26, 23, 20, 0.45);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
 }
 .auth-modal {
   width: min(380px, 92vw); background: var(--surface); border: 1px solid var(--border2);

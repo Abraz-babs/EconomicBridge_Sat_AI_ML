@@ -9,9 +9,13 @@ export default function Header() {
   const [time, setTime] = useState('');
 
   useEffect(() => {
-    const tick = () => {
-      setTime(new Date().toUTCString().replace(' GMT', '') + ' UTC');
-    };
+    // West Africa Time (Lagos, UTC+1, no DST) — the operating region.
+    const fmt = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Lagos',
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    });
+    const tick = () => setTime(fmt.format(new Date()) + ' WAT');
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);

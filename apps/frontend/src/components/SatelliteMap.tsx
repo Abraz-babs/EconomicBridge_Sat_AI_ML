@@ -59,6 +59,7 @@ export default function SatelliteMap() {
     if (!MAPBOX_TOKEN || !containerRef.current) return;
 
     let cancelled = false;
+    let resizeObserver: ResizeObserver | null = null;
 
     (async () => {
       try {
@@ -79,6 +80,13 @@ export default function SatelliteMap() {
           attributionControl: false,
         });
         mapRef.current = map;
+
+        // Keep the canvas filling its (flex) container — the overview map grows
+        // to match the sidebar height, and the sidebar grows as data loads.
+        resizeObserver = new ResizeObserver(() => {
+          try { map.resize(); } catch { /* torn down */ }
+        });
+        resizeObserver.observe(containerRef.current);
 
         map.on('error', (e) => {
           if (cancelled) return;
@@ -179,6 +187,8 @@ export default function SatelliteMap() {
 
     return () => {
       cancelled = true;
+      resizeObserver?.disconnect();
+      resizeObserver = null;
       coverageStopRef.current?.();
       coverageStopRef.current = null;
       const overlay = overlayRef.current as { finalize?: () => void } | null;
@@ -284,7 +294,6 @@ export default function SatelliteMap() {
           {detailTenant.conflict_risk.toUpperCase()} RISK
         </span>
         &nbsp;·&nbsp;
-        Phase {detailTenant.deployment_phase} · Priority {detailTenant.priority} ·{' '}
         <span className={detailTenant.active ? 'map-detail-active' : 'map-detail-planned'}>
           {detailTenant.active ? 'ACTIVE' : 'PLANNED'}
         </span>
