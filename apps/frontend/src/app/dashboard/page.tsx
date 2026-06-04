@@ -70,8 +70,9 @@ function isGatedModule(tab: TabId): boolean {
   return tab !== 'overview' && tab !== 'admin';
 }
 
-/** Initial tab: URL `?tab=` (shareable/deep-link) → localStorage → overview. */
-function readInitialTab(): TabId {
+/** The deep-linked / persisted tab, read on the CLIENT only (after mount).
+ *  Returns 'overview' on the server so SSR + first client render match. */
+function readPersistedTab(): TabId {
   if (typeof window === 'undefined') return 'overview';
   const fromUrl = new URLSearchParams(window.location.search).get('tab');
   if (isTab(fromUrl)) return fromUrl;
@@ -80,9 +81,9 @@ function readInitialTab(): TabId {
 }
 
 function DashboardContent() {
-  // Persisted across refreshes AND reflected in the URL (?tab=) so module
-  // views are shareable/deep-linkable. Mirrors how the active tenant persists.
-  const [activeTab, setActiveTab] = useState<TabId>(readInitialTab);
+  // Start on 'overview' (the SSR default) so hydration matches; the persisted /
+  // deep-linked tab is restored after mount in the effect below.
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
   const { user, loading, isSuperAdmin } = useAuth();
   const { activeTenant, activeTenantId } = useTenant();
   // The active tenant's entitled modules (same query the nav uses; React Query
@@ -133,22 +134,25 @@ function DashboardContent() {
     }
   }, [loading, user, activeTab]);
 
-  // On mount: reflect the restored tab in the URL (shareable) without adding a
-  // history entry, and keep activeTab in sync with browser back/forward.
+  // On mount (client only): restore the deep-linked / persisted tab — done here
+  // rather than in useState so SSR + first client render both start on
+  // 'overview' (no hydration mismatch). Also keep activeTab in sync with
+  // browser back/forward.
   useEffect(() => {
-    const cur = new URLSearchParams(window.location.search).get('tab');
-    if (cur !== activeTab) {
-      window.history.replaceState(
-        { tab: activeTab }, '', `${window.location.pathname}?tab=${activeTab}`,
-      );
+    const initial = readPersistedTab();
+    if (initial !== 'overview') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setActiveTab(initial);
     }
+    window.history.replaceState(
+      { tab: initial }, '', `${window.location.pathname}?tab=${initial}`,
+    );
     const onPop = () => {
       const t = new URLSearchParams(window.location.search).get('tab');
       setActiveTab(isTab(t) ? t : 'overview');
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

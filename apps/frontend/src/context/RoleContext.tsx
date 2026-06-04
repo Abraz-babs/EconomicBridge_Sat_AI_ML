@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { RoleId, RoleConfig, roles, roleColors } from '@/data/roles';
 
 interface RoleContextValue {
@@ -13,16 +13,20 @@ interface RoleContextValue {
 const RoleContext = createContext<RoleContextValue | undefined>(undefined);
 
 const ROLE_STORAGE_KEY = 'eb.activeRole';
-
-function readInitialRole(): RoleId {
-  if (typeof window === 'undefined') return 'ngo';
-  const stored = window.localStorage.getItem(ROLE_STORAGE_KEY);
-  if (stored && stored in roles) return stored as RoleId;
-  return 'ngo';
-}
+const DEFAULT_ROLE: RoleId = 'ngo';
 
 export function RoleProvider({ children }: { children: ReactNode }) {
-  const [currentRole, setCurrentRole] = useState<RoleId>(readInitialRole);
+  // Start from the SSR default so the server and first client render match;
+  // restore the persisted role AFTER mount to avoid a hydration mismatch.
+  const [currentRole, setCurrentRole] = useState<RoleId>(DEFAULT_ROLE);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(ROLE_STORAGE_KEY);
+    if (stored && stored in roles && stored !== DEFAULT_ROLE) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCurrentRole(stored as RoleId);
+    }
+  }, []);
 
   const switchRole = useCallback((role: RoleId) => {
     setCurrentRole(role);

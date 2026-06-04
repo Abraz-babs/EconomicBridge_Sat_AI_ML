@@ -15,12 +15,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import JWTError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_settings
+from core.ratelimit import record_failure, reset as reset_ratelimit, too_many_failures
 from core.security import (
     create_access_token,
     decode_invite_token,
@@ -97,19 +98,41 @@ async def _issue_tokens(session: AsyncSession, user) -> TokenData:
     )
 
 
+def _client_key(request: Request) -> str:
+    """IP-based rate-limit key. Behind the ALB the real client is the first hop
+    in X-Forwarded-For; fall back to the socket peer."""
+    xff = request.headers.get("x-forwarded-for", "")
+    ip = xff.split(",")[0].strip() if xff else (
+        request.client.host if request.client else "unknown")
+    return f"login:{ip}"
+
+
 @router.post("/login", response_model=SuccessResponse[TokenData])
 async def login(
     body: LoginRequest,
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessResponse[TokenData]:
+    # Brute-force guard: too many recent failures from this IP → 429.
+    key = _client_key(request)
+    blocked, retry = too_many_failures(key)
+    if blocked:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "RATE_LIMITED",
+                    "message": f"Too many failed sign-in attempts. Try again in {retry}s."},
+        )
+
     user = await _load_user(session, email=str(body.email).strip().lower())
     # Same 401 whether the email is unknown or the password is wrong — never
     # leak which accounts exist. verify_password is run regardless to keep the
     # timing roughly constant.
     ok = user is not None and verify_password(body.password, user["password_hash"])
     if not ok or not user["is_active"]:
+        record_failure(key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=_UNAUTH)
 
+    reset_ratelimit(key)
     data = await _issue_tokens(session, user)
     await session.execute(
         text("UPDATE public.users SET last_login_at = NOW() WHERE id = :id"),

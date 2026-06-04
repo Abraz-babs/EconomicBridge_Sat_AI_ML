@@ -55,20 +55,23 @@ interface TenantContextValue {
 
 const TenantContext = createContext<TenantContextValue | undefined>(undefined);
 
-function readInitial(): string {
-  if (typeof window === 'undefined') return DEFAULT_TENANT_ID;
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored && PILOT_TENANT_IDS.includes(stored)) return stored;
-  return DEFAULT_TENANT_ID;
-}
-
 interface RegistryShape {
   tenants: { id: string; tenant_type: string }[];
   categories: { key: string; geographic: boolean }[];
 }
 
 export function TenantProvider({ children }: { children: ReactNode }) {
-  const [activeTenantId, setId] = useState<string>(readInitial);
+  // SSR default first (matches the server render); restore the persisted tenant
+  // after mount to avoid a hydration mismatch.
+  const [activeTenantId, setId] = useState<string>(DEFAULT_TENANT_ID);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored && stored !== DEFAULT_TENANT_ID && PILOT_TENANT_IDS.includes(stored)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setId(stored);
+    }
+  }, []);
 
   // Registered tenants from the PUBLIC registry (no auth — the admin view is
   // gated). Lets newly-provisioned GEOGRAPHIC tenants appear in the selectors.
