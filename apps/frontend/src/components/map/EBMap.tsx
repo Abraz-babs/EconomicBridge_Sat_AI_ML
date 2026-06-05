@@ -126,6 +126,10 @@ export default function EBMap(props: EBMapProps) {
           if (cancelled) return;
           const overlay = new MapboxOverlay({
             interleaved: false,
+            // Cap deck rendering to CSS pixels (not device pixels). On hi-DPI /
+            // 4K screens a full-DPR deck canvas + HeatmapLayer can exhaust GPU
+            // memory and make the browser's GPU process drop/blank on scroll.
+            useDevicePixels: false,
             layers: [],
             // Hover card — reads the current module formatter via ref.
             // Returns deck.gl's {text} shape (no innerHTML → no XSS).

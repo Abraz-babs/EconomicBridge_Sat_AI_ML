@@ -173,7 +173,9 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
 
         map.on('load', () => {
           if (cancelled) return;
-          const overlay = new MapboxOverlay({ interleaved: false, layers: [] });
+          // useDevicePixels:false caps deck to CSS pixels — a full-DPR canvas on
+          // 4K screens can exhaust GPU memory and blank on scroll.
+          const overlay = new MapboxOverlay({ interleaved: false, useDevicePixels: false, layers: [] });
           map.addControl(overlay);
           overlayRef.current = overlay;
           setMapStatus('ready');

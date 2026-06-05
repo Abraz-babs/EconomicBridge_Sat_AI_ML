@@ -101,6 +101,9 @@ export default function SatelliteMap() {
           if (cancelled) return;
           const overlay = new MapboxOverlay({
             interleaved: false,
+            // Cap deck rendering to CSS pixels — a full-DPR canvas on 4K screens
+            // can exhaust GPU memory and blank on scroll.
+            useDevicePixels: false,
             layers: [
               new ScatterplotLayer<Tenant>({
                 id: 'tenants-scatter',
