@@ -52,7 +52,7 @@ export default function SkillsMap({ tenant, indicators }: Props) {
   const hasAttention = indicators.length > 0;
   useEffect(() => {
     if (!hasAttention) return;
-    const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
+    const id = window.setInterval(() => setPulse((p) => (p + 2) % 1000), 120);
     return () => window.clearInterval(id);
   }, [hasAttention]);
 

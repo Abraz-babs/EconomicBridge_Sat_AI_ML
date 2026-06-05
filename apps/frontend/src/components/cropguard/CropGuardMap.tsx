@@ -118,7 +118,7 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
   const hasAttention = positioned.length > 0;
   useEffect(() => {
     if (!hasAttention) return;
-    const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
+    const id = window.setInterval(() => setPulse((p) => (p + 2) % 1000), 120);
     return () => window.clearInterval(id);
   }, [hasAttention]);
 

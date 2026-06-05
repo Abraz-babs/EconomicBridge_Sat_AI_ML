@@ -234,6 +234,19 @@ function fmtNgn(value: number, isEcowas: boolean): string {
   return `₦${value.toLocaleString()}`;
 }
 
+/** Estimated economic value at risk per affected smallholder livelihood, in USD.
+ *  Used for ECOWAS countries where the NGN value column isn't populated — a
+ *  transparent first-order estimate (≈ a season's smallholder farm income). */
+const USD_PER_LIVELIHOOD = 450;
+
+/** Format a USD figure ≥ 0 into $X.XM / $XK / "—". */
+function fmtUsd(value: number): string {
+  if (value <= 0) return '—';
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${Math.round(value / 1_000)}K`;
+  return `$${value.toLocaleString()}`;
+}
+
 // Provenance buckets — derived from alert_events.model_name. Live rows
 // come from real pipeline runs (conflict_predictor, ndvi_anomaly_detector,
 // flood_detector, …); seed rows come from `scripts/seed_farmland_alerts.py`
@@ -640,11 +653,13 @@ export default function FarmlandPanel() {
               <div>
                 <div className="fp-impact-label">Economic Value at Risk</div>
                 <div className="fp-impact-val fp-impact-val--small">
-                  {fmtNgn(liveStats.economicValueAtRisk, isEcowas)}
+                  {isEcowas
+                    ? fmtUsd(liveStats.livelihoodsAtRisk * USD_PER_LIVELIHOOD)
+                    : fmtNgn(liveStats.economicValueAtRisk, isEcowas)}
                 </div>
                 <div className="fp-impact-desc">
                   {isEcowas
-                    ? 'Currency not tracked outside Nigeria yet'
+                    ? `Est. ~$${USD_PER_LIVELIHOOD}/livelihood across ${liveStats.livelihoodsAtRisk.toLocaleString()} at risk`
                     : `Aggregated across ${liveStats.activeCount} active alert${liveStats.activeCount === 1 ? '' : 's'}`}
                 </div>
               </div>

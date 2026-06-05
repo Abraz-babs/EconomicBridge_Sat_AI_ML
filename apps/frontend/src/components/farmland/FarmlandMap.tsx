@@ -138,7 +138,7 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
   // halo expand/shrink while keeping deck.gl re-renders cheap.
   useEffect(() => {
     if (mapStatus !== 'ready') return;
-    const id = window.setInterval(() => setPulse((p) => (p + 1) % 1000), 60);
+    const id = window.setInterval(() => setPulse((p) => (p + 2) % 1000), 120);
     return () => window.clearInterval(id);
   }, [mapStatus]);
 
