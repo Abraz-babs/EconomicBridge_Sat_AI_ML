@@ -39,13 +39,18 @@ function nextTimestamp(): string {
 }
 
 export default function SystemStatus() {
-  const [feeds, setFeeds] = useState<FeedStatus[]>(INITIAL_FEEDS);
-  // Initialise lazily so we don't need a setState-in-effect on first render.
-  const [lastIngestion, setLastIngestion] = useState<string>(nextTimestamp);
-  const [uptime, setUptime] = useState('99.7%');
+  const feeds = INITIAL_FEEDS;
+  // Stable placeholder for SSR + first client render — nextTimestamp() uses
+  // Date.now()/Math.random(), which differ server↔client and would cause a
+  // hydration mismatch (and a full client-side tree regeneration). The real
+  // value is set after mount, client-side only.
+  const [lastIngestion, setLastIngestion] = useState<string>('—');
+  const uptime = '99.7%';
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLastIngestion(nextTimestamp());
     const interval = setInterval(
       () => setLastIngestion(nextTimestamp()),
       30000,
