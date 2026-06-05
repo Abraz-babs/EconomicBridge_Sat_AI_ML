@@ -64,18 +64,12 @@ function store(access: string | null, refresh: string | null): void {
   else window.localStorage.removeItem(REFRESH_KEY);
 }
 
-function hasStoredSession(): boolean {
-  if (typeof window === 'undefined') return false;
-  return Boolean(
-    window.localStorage.getItem(ACCESS_KEY) && window.localStorage.getItem(REFRESH_KEY),
-  );
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  // Start "loading" only when there's a session to restore — otherwise the
-  // anonymous dashboard renders immediately (no synchronous setState in effect).
-  const [loading, setLoading] = useState<boolean>(hasStoredSession);
+  // Always start "loading" so the SSR render and the first client render agree
+  // (reading localStorage during the initial render causes a hydration
+  // mismatch — AuthControl would differ). The mount effect resolves it below.
+  const [loading, setLoading] = useState<boolean>(true);
   // Refresh token kept in a ref so the (stable) refresh handler always reads the
   // latest value without being re-registered.
   const refreshTokenRef = useRef<string | null>(null);
@@ -111,12 +105,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setRefreshHandler(null);
   }, [doRefresh]);
 
-  // On mount: restore a session from localStorage and re-hydrate the user.
+  // On mount (client only): restore a session from localStorage and re-hydrate
+  // the user, then clear the loading flag. Runs after the first render so SSR +
+  // hydration match. setState here is the intended post-mount resolution.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const access = window.localStorage.getItem(ACCESS_KEY);
     const refresh = window.localStorage.getItem(REFRESH_KEY);
-    if (!access || !refresh) return;  // loading already false (no session)
+    if (!access || !refresh) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false);
+      return;
+    }
     refreshTokenRef.current = refresh;
     setAccessToken(access);
     apiFetch<AuthUser>('/auth/me')
