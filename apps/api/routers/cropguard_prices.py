@@ -154,7 +154,7 @@ async def get_correlation_matrix(
             SELECT crop, observed_at, price_ngn_per_kg
               FROM public.crop_prices
              WHERE region = :region
-               AND observed_at >= (CURRENT_DATE - (:months || ' months')::interval)
+               AND observed_at >= (CURRENT_DATE - make_interval(months => :months))
              ORDER BY observed_at ASC
             """
         ),
