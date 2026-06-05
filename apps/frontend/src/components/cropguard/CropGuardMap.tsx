@@ -109,19 +109,12 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
     [predictions, tenant.centroid],
   );
 
-  const [layers, setLayers] = useState<unknown[]>([]);
-  const [pulse, setPulse] = useState(0);
-
-  // Heartbeat — pulses high-severity disease detections (prob >= 0.80),
-  // falling back to the most-likely-diseased few so every tenant with
-  // predictions shows a uniform halo (Slice 25).
-  const hasAttention = positioned.length > 0;
-  useEffect(() => {
-    if (!hasAttention) return;
-    const id = window.setInterval(() => setPulse((p) => (p + 2) % 1000), 120);
-    return () => window.clearInterval(id);
-  }, [hasAttention]);
-
+  // deck.gl layer classes are code-split — load them ONCE, not on every
+  // pulse tick (the old effect re-imported them 8×/second).
+  const [layerKit, setLayerKit] = useState<{
+    ScatterplotLayer: typeof import('@deck.gl/layers').ScatterplotLayer;
+    HeatmapLayer: typeof import('@deck.gl/aggregation-layers').HeatmapLayer;
+  } | null>(null);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -129,68 +122,96 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
         import('@deck.gl/layers'),
         import('@deck.gl/aggregation-layers'),
       ]);
-      if (cancelled) return;
-
-      const diseasePoints = positioned.filter(
-        (p) => !p.predicted_class.endsWith('_healthy'),
-      );
-      const pulseRows = haloRows(positioned, isHighSeverity, severityFor);
-
-      const built: unknown[] = [
-        // Disease-density heatmap.
-        new HeatmapLayer<PositionedPrediction>({
-          id: 'cropguard-disease-heat',
-          data: diseasePoints,
-          getPosition: (p) => p.position,
-          getWeight: (p) => p.prediction * 2,
-          radiusPixels: 70,
-          intensity: 1.4,
-          threshold: 0.05,
-          colorRange: [
-            [82, 183, 136, 0],
-            [240, 175, 60],
-            [255, 140, 0],
-            [255, 69, 0],
-          ],
-        }),
-        // Pulse halo on high-severity disease.
-        new ScatterplotLayer<PositionedPrediction>({
-          id: 'cropguard-pulse',
-          data: pulseRows,
-          getPosition: (p) => p.position,
-          // Uniform pixel-pulse halo (Slice 25 fix): matches Poverty.
-          getRadius: () => haloRadiusPx(pulse),
-          getFillColor: [255, 69, 0, 40],
-          radiusUnits: 'pixels',
-          stroked: false,
-          // Pickable so hovering the halo ring (not just the centre pin)
-          // surfaces the LGA + coordinates tooltip.
-          pickable: true,
-          updateTriggers: { getRadius: pulse },
-        }),
-        // Per-prediction pin.
-        new ScatterplotLayer<PositionedPrediction>({
-          id: 'cropguard-predictions',
-          data: positioned,
-          getPosition: (p) => p.position,
-          // Tidy meter scale (Slice 25): comparable band to Poverty.
-          getRadius: (p) => 4000 + p.confidence * 8000,
-          getFillColor: (p) => colourFor(p),
-          getLineColor: (p) =>
-            p.synthetic_location ? [180, 180, 180, 220] : [255, 255, 255, 220],
-          lineWidthMinPixels: 1.5,
-          radiusUnits: 'meters',
-          radiusMinPixels: 6,
-          // Uniform base-dot cap (Slice 25): 24px, matches Poverty.
-          radiusMaxPixels: 24,
-          stroked: true,
-          pickable: true,
-        }),
-      ];
-      setLayers(built);
+      if (!cancelled) setLayerKit({ ScatterplotLayer, HeatmapLayer });
     })();
     return () => { cancelled = true; };
-  }, [positioned, pulse]);
+  }, []);
+
+  const [pulse, setPulse] = useState(0);
+
+  // Heartbeat — pulses high-severity disease detections (prob >= 0.80),
+  // falling back to the most-likely-diseased few so every tenant with
+  // predictions shows a uniform halo (Slice 25). Only the halo radius
+  // rides this tick; the heatmap + pins are referentially stable below.
+  const hasAttention = positioned.length > 0;
+  useEffect(() => {
+    if (!hasAttention) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setPulse((p) => (p + 2) % 1000);
+    }, 120);
+    return () => window.clearInterval(id);
+  }, [hasAttention]);
+
+  // Stable data slices — recomputed only when predictions change, NOT on
+  // every pulse. A stable `data` *reference* is what stops deck.gl from
+  // re-aggregating the GPU-heavy HeatmapLayer on each heartbeat (the cause
+  // of the Edge slowdown + Firefox blank-on-scroll).
+  const diseasePoints = useMemo(
+    () => positioned.filter((p) => !p.predicted_class.endsWith('_healthy')),
+    [positioned],
+  );
+  const pulseRows = useMemo(
+    () => haloRows(positioned, isHighSeverity, severityFor),
+    [positioned],
+  );
+
+  const layers = useMemo<unknown[]>(() => {
+    if (!layerKit) return [];
+    const { ScatterplotLayer, HeatmapLayer } = layerKit;
+    return [
+      // Disease-density heatmap. `data` (diseasePoints) is referentially
+      // stable across pulses → deck.gl reuses the aggregation, no GPU churn.
+      new HeatmapLayer<PositionedPrediction>({
+        id: 'cropguard-disease-heat',
+        data: diseasePoints,
+        getPosition: (p) => p.position,
+        getWeight: (p) => p.prediction * 2,
+        radiusPixels: 70,
+        intensity: 1.4,
+        threshold: 0.05,
+        colorRange: [
+          [82, 183, 136, 0],
+          [240, 175, 60],
+          [255, 140, 0],
+          [255, 69, 0],
+        ],
+      }),
+      // Pulse halo on high-severity disease — the ONLY layer whose accessor
+      // rides the heartbeat (cheap: a few rows, pixel-radius only).
+      new ScatterplotLayer<PositionedPrediction>({
+        id: 'cropguard-pulse',
+        data: pulseRows,
+        getPosition: (p) => p.position,
+        // Uniform pixel-pulse halo (Slice 25 fix): matches Poverty.
+        getRadius: () => haloRadiusPx(pulse),
+        getFillColor: [255, 69, 0, 40],
+        radiusUnits: 'pixels',
+        stroked: false,
+        // Pickable so hovering the halo ring (not just the centre pin)
+        // surfaces the LGA + coordinates tooltip.
+        pickable: true,
+        updateTriggers: { getRadius: pulse },
+      }),
+      // Per-prediction pin.
+      new ScatterplotLayer<PositionedPrediction>({
+        id: 'cropguard-predictions',
+        data: positioned,
+        getPosition: (p) => p.position,
+        // Tidy meter scale (Slice 25): comparable band to Poverty.
+        getRadius: (p) => 4000 + p.confidence * 8000,
+        getFillColor: (p) => colourFor(p),
+        getLineColor: (p) =>
+          p.synthetic_location ? [180, 180, 180, 220] : [255, 255, 255, 220],
+        lineWidthMinPixels: 1.5,
+        radiusUnits: 'meters',
+        radiusMinPixels: 6,
+        // Uniform base-dot cap (Slice 25): 24px, matches Poverty.
+        radiusMaxPixels: 24,
+        stroked: true,
+        pickable: true,
+      }),
+    ];
+  }, [layerKit, positioned, diseasePoints, pulseRows, pulse]);
 
   const realCount = positioned.filter((p) => !p.synthetic_location).length;
   const syntheticCount = positioned.length - realCount;

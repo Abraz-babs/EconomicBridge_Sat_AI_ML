@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { haloRadiusPx } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
@@ -110,13 +110,28 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [pulse, setPulse] = useState(0);
 
+  // Stable data slices — recomputed only when `alerts` changes, NOT on every
+  // pulse tick. The heatmaps key their GPU aggregation off the `data`
+  // *reference*; rebuilding these inside the pulse-driven effect made deck.gl
+  // re-aggregate 8×/second, pinning the GPU (Edge slowdown + Firefox blank).
+  const active = useMemo(
+    () => alerts.filter((a) => a.severity !== 'resolved'),
+    [alerts],
+  );
+  const pulseAlerts = useMemo(
+    () => alerts.filter((a) => a.severity === 'critical' || a.severity === 'high'),
+    [alerts],
+  );
+
   // Wall-clock tick that drives the "next pass in X min" countdown. Updates
   // every 30s — finer than that is wasted re-renders for a minute-resolution
   // countdown. Initialised lazily so the first render is correct without a
   // setState-in-effect.
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   useEffect(() => {
-    const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setNowMs(Date.now());
+    }, 30_000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -138,7 +153,9 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
   // halo expand/shrink while keeping deck.gl re-renders cheap.
   useEffect(() => {
     if (mapStatus !== 'ready') return;
-    const id = window.setInterval(() => setPulse((p) => (p + 2) % 1000), 120);
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setPulse((p) => (p + 2) % 1000);
+    }, 120);
     return () => window.clearInterval(id);
   }, [mapStatus]);
 
@@ -223,6 +240,10 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
       | { setProps: (p: { layers: unknown[] }) => void }
       | null;
     if (!overlay) return;
+    if (document.visibilityState === 'hidden') {
+      overlay.setProps({ layers: [] });
+      return;
+    }
 
     (async () => {
       const [
@@ -234,7 +255,6 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
       ]);
 
       const layers: unknown[] = [];
-      const active = alerts.filter((a) => a.severity !== 'resolved');
 
       // ── HEAT: orange/red heatmap of active alerts ───────────────────
       if (activeLayer === 'heat') {
@@ -333,9 +353,6 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
       // ── Pulsing halo ring on CRITICAL + HIGH pins ────────────────────
       // Sinusoidal radius: oscillates ~3x base size. The updateTriggers
       // entry forces deck.gl to re-evaluate getRadius on each `pulse` tick.
-      const pulseAlerts = alerts.filter(
-        (a) => a.severity === 'critical' || a.severity === 'high',
-      );
       layers.push(
         new ScatterplotLayer<FarmlandAlertPoint>({
           id: 'farmland-pulse',
@@ -388,7 +405,26 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
 
       overlay.setProps({ layers });
     })();
-  }, [activeLayer, alerts, mapStatus, pulse, tenant.centroid, tenant.type]);
+  }, [activeLayer, alerts, active, pulseAlerts, mapStatus, pulse, tenant.centroid, tenant.type]);
+
+  // Drop Deck layer buffers while the browser tab is hidden, then rebuild the
+  // current layers on return via the pulse dependency above.
+  useEffect(() => {
+    if (mapStatus !== 'ready') return;
+    const onVisibilityChange = () => {
+      const overlay = overlayRef.current as
+        | { setProps: (p: { layers: unknown[] }) => void }
+        | null;
+      if (document.visibilityState === 'hidden') {
+        overlay?.setProps({ layers: [] });
+      } else {
+        setPulse((p) => (p + 2) % 1000);
+        setNowMs(Date.now());
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [mapStatus]);
 
   const cadence = satelliteCadence(tenant);
 
