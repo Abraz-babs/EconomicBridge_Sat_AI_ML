@@ -10,6 +10,7 @@ transactions per full sweep, we're nowhere near the cap.
 """
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from typing import Annotated
 
@@ -25,6 +26,17 @@ from sources.n2yo import (
 from sources.nasa_firms import PILOT_BBOX
 
 router = APIRouter(prefix="/passes", tags=["passes"])
+
+# In-memory pass cache. N2YO's `radiopasses` verb is hourly-rate-limited and each
+# /upcoming call fans out to one transaction PER satellite — so without caching,
+# a few dashboard loads exhaust the quota ("exceeded transactions per hour").
+# Pass times are absolute (the "in X min" countdown is derived client-side), so a
+# cached schedule stays correct for hours. We serve it fresh for an hour, and —
+# crucially — fall back to a stale entry when N2YO rate-limits, so the dashboard
+# keeps showing the last-good passes instead of an error.
+_CACHE_TTL_S = 3600           # serve cached without hitting N2YO
+_CACHE_STALE_S = 6 * 3600     # serve stale on upstream error up to this age
+_pass_cache: dict[tuple, tuple[float, "PassesUpcomingResponse"]] = {}
 
 # Default satellite group → satellites we query. Caller can override.
 DEFAULT_SATELLITES: tuple[str, ...] = (
@@ -126,6 +138,13 @@ async def upcoming_passes(
             f"Valid keys: {sorted(SATELLITE_CATALOG)}",
         )
 
+    # Serve a fresh cache entry without touching N2YO at all.
+    cache_key = (tid, tuple(sorted(sat_keys)), days, min_elevation)
+    now_ts = time.time()
+    cached = _pass_cache.get(cache_key)
+    if cached and now_ts - cached[0] < _CACHE_TTL_S:
+        return cached[1]
+
     lat, lon = _centroid_for(tid)
     client = N2yoClient()
 
@@ -156,6 +175,10 @@ async def upcoming_passes(
                 for p in passes
             )
     except N2yoError as exc:
+        # Rate-limited or upstream down → serve the last-good schedule if we have
+        # one that isn't too old (pass times are absolute, so it's still useful).
+        if cached and now_ts - cached[0] < _CACHE_STALE_S:
+            return cached[1]
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"N2YO upstream error: {exc}",
@@ -165,7 +188,7 @@ async def upcoming_passes(
     # dashboard wants a unified "next 5 things to wake up for" list.
     all_passes.sort(key=lambda p: p.start_utc)
 
-    return PassesUpcomingResponse(
+    response = PassesUpcomingResponse(
         tenant_id=tid,
         observer_lat=lat,
         observer_lon=lon,
@@ -175,3 +198,5 @@ async def upcoming_passes(
         passes=all_passes,
         total=len(all_passes),
     )
+    _pass_cache[cache_key] = (now_ts, response)
+    return response
