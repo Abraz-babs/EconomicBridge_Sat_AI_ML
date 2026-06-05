@@ -2924,3 +2924,5 @@ nav::-webkit-scrollbar {
 /* Scheduled reports card */
 .srep-form { margin-top: 0.5rem; }
 .srep-email { font-size: 0.74rem; color: var(--ink2); max-width: 20ch; overflow: hidden; text-overflow: ellipsis; }
+
+.fp-map-overlay__muted { color: var(--dim, #b0aa9f); font-style: italic; }

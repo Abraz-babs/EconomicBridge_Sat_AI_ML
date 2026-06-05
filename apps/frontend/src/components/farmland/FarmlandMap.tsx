@@ -429,19 +429,25 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
             Next pass: in {minutesUntil(nextPass.start_utc, now)} min · {' '}
             {nextPass.max_elevation_deg.toFixed(0)}° {nextPass.max_azimuth_compass}
           </>
-        ) : passesQuery.isError ? (
+        ) : passesQuery.isLoading ? (
           <>
             {cadence.source}<br />
-            <span className="fp-map-overlay__warn">Live pass feed unavailable</span><br />
+            Loading N2YO schedule…<br />
             Resolution: {cadence.resolution}<br />
             Coverage: {cadence.coverage}
           </>
         ) : (
+          // Live N2YO unavailable / no passes in window → show the MODELED
+          // cadence. Sentinel-1's orbit repeats on a fixed ~6-day cycle, so the
+          // next/last pass is genuinely predictable; we just can't show the
+          // to-the-minute N2YO time without the (unconfigured) live feed.
           <>
             {cadence.source}<br />
-            {passesQuery.isLoading ? 'Loading N2YO schedule…' : 'No upcoming passes in window'}<br />
+            <span className="fp-map-overlay__muted">Modeled SAR cadence · live N2YO not configured</span><br />
+            Last pass: ~{cadence.lastPassMin} min ago<br />
             Resolution: {cadence.resolution}<br />
-            Coverage: {cadence.coverage}
+            Coverage: {cadence.coverage}<br />
+            Next pass: ~in {cadence.nextPassMin} min
           </>
         )}
         <FreshnessLines

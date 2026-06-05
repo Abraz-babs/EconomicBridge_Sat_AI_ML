@@ -78,6 +78,9 @@ export default function SatelliteMap() {
           center: KEBBI_CENTER,
           zoom: 5.2,
           attributionControl: false,
+          // Keep the rendered buffer so the canvas doesn't blank when scrolled
+          // off-screen and back (the GPU would otherwise evict the surface).
+          preserveDrawingBuffer: true,
         });
         mapRef.current = map;
 

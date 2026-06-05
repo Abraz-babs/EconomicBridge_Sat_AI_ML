@@ -30,8 +30,18 @@ const CROPS: { id: string; label: string }[] = [
 const CROP_LABEL = Object.fromEntries(CROPS.map(c => [c.id, c.label]));
 
 
-function fmtNgn(n: number | null | undefined): string {
+// Crop prices are stored in NGN/kg. For ECOWAS tenants (Senegal, Ghana) we show
+// USD instead of Naira (indicative conversion — the regional series is shared).
+const NGN_PER_USD = 1600;
+
+function fmtMoney(n: number | null | undefined, isEcowas: boolean): string {
   if (n == null) return '—';
+  if (isEcowas) {
+    const usd = n / NGN_PER_USD;
+    if (usd >= 1000) return `$${(usd / 1000).toFixed(1)}K`;
+    if (usd >= 100) return `$${usd.toFixed(0)}`;
+    return `$${usd.toFixed(2)}`; // small per-kg prices, e.g. $0.38
+  }
   if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `₦${(n / 1_000).toFixed(1)}K`;
   return `₦${n.toFixed(0)}`;
@@ -45,7 +55,8 @@ function fmtPctSigned(n: number | null | undefined): string {
 
 
 export default function CropMarketPanel() {
-  const { activeTenantId } = useTenant();
+  const { activeTenantId, activeTenant } = useTenant();
+  const isEcowas = activeTenant.type === 'ecowas_country';
   const [selectedCrop, setSelectedCrop] = useState<string>('maize');
 
   const seriesQuery = useCropPriceSeries({
@@ -86,11 +97,11 @@ export default function CropMarketPanel() {
         <div className="cg-chart-card">
           <div className="cg-chart-head">
             <div>
-              <div className="cg-chart-title">{CROP_LABEL[selectedCrop]} · NGN / kg</div>
+              <div className="cg-chart-title">{CROP_LABEL[selectedCrop]} · {isEcowas ? 'USD' : 'NGN'} / kg</div>
               <div className="cg-chart-sub">
                 {series ? (
                   <>
-                    Latest {fmtNgn(series.latest_price)} ·{' '}
+                    Latest {fmtMoney(series.latest_price, isEcowas)} ·{' '}
                     24-mo change{' '}
                     <span
                       className={
@@ -111,7 +122,7 @@ export default function CropMarketPanel() {
             </div>
           </div>
           {series && series.points.length > 0 && (
-            <PriceLineChart points={series.points} />
+            <PriceLineChart points={series.points} isEcowas={isEcowas} />
           )}
           {series && series.points.length === 0 && (
             <div className="fp-alert-empty">
@@ -152,7 +163,7 @@ export default function CropMarketPanel() {
 // ─── SVG line chart ──────────────────────────────────────────────────────
 
 
-function PriceLineChart({ points }: { points: CropPricePoint[] }) {
+function PriceLineChart({ points, isEcowas }: { points: CropPricePoint[]; isEcowas: boolean }) {
   const w = 560;
   const h = 220;
   const padL = 56;
@@ -213,7 +224,7 @@ function PriceLineChart({ points }: { points: CropPricePoint[] }) {
               x={padL - 6} y={y + 3}
               fontSize="10" fill="var(--muted)" textAnchor="end"
             >
-              {fmtNgn(v)}
+              {fmtMoney(v, isEcowas)}
             </text>
           </g>
         );

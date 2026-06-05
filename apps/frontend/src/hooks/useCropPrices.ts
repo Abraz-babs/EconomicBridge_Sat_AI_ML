@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import { ApiException, apiFetch, type SuccessEnvelope } from '@/lib/api';
 
@@ -51,6 +51,9 @@ export function useCropPriceSeries(
     queryKey: ['crop-prices', params.tenantId, params.crop, months],
     enabled: params.enabled !== false && Boolean(params.tenantId && params.crop),
     staleTime: 60 * 1000,
+    // Keep the previous crop's chart visible while the next loads — switching
+    // crops feels instant instead of flashing a loading state.
+    placeholderData: keepPreviousData,
     queryFn: async ({ signal }) => {
       const search = new URLSearchParams({
         crop: params.crop,

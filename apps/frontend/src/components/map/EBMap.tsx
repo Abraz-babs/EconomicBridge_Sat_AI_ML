@@ -110,6 +110,9 @@ export default function EBMap(props: EBMapProps) {
           center: tenant.centroid,
           zoom,
           attributionControl: false,
+          // Keep the rendered buffer so the canvas doesn't blank when scrolled
+          // off-screen and back (the GPU would otherwise evict the surface).
+          preserveDrawingBuffer: true,
         });
         mapRef.current = map;
 
