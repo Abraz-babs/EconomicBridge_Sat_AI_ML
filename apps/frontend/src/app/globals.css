@@ -369,6 +369,11 @@ main {
   inset: 0;
   width: 100%;
   height: 100%;
+  /* Promote the WebGL map to its OWN compositing layer so its repaints don't
+     invalidate (and blank) the whole page layer on scroll. Fixes the
+     "page goes blank for a few seconds when scrolling" on hi-DPI / Firefox. */
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .map-overlay {
