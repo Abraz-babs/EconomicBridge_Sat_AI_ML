@@ -58,6 +58,7 @@
         top: 0;
         z-index: 30;
         background: rgba(255, 253, 247, 0.94);
+        -webkit-backdrop-filter: blur(16px);
         backdrop-filter: blur(16px);
         border-bottom: 1px solid rgba(4, 77, 42, 0.1);
       }
@@ -175,7 +176,7 @@
       .hero-photo img { width: 100%; height: 100%; object-fit: cover; }
       .hero-live {
         position: absolute; left: -18px; bottom: -22px; width: 248px;
-        background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(10px);
+        background: rgba(255, 255, 255, 0.96); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
         border: 1px solid rgba(4, 77, 42, 0.12); border-radius: var(--radius);
         padding: 16px; box-shadow: var(--shadow);
       }

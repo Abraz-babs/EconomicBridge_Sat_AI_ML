@@ -79,7 +79,6 @@ export default function Navigation({ activeTab, onTabChange, lockModules = false
             role="tab"
             type="button"
             aria-selected={active}
-            aria-controls={`panel-${id}`}
             className={`nav-tab ${active ? 'active' : ''}${locked ? ' nav-tab--locked' : ''}`}
             title={locked ? 'Sign in or register to open this module' : undefined}
             onClick={() => onTabChange(id)}
