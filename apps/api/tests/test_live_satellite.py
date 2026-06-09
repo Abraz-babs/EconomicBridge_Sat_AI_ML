@@ -91,7 +91,7 @@ async def test_load_flood_series_raises_when_sparse():
     session = _FakeSession(rows=[
         {"observed_at": date(2026, 4, 1), "sar_backscatter_db": -11.0},
     ])
-    with pytest.raises(LiveDataMissingError, match="only 1 SAR rows"):
+    with pytest.raises(LiveDataMissingError, match="Sentinel-1 SAR.*only 1 are available"):
         await load_flood_series(session)
 
 
@@ -131,7 +131,7 @@ async def test_load_ndvi_series_raises_when_sparse():
     session = _FakeSession(rows=[
         {"observed_at": date(2026, 4, 1), "ndvi_mean": 0.45},
     ])
-    with pytest.raises(LiveDataMissingError, match="only 1 NDVI rows"):
+    with pytest.raises(LiveDataMissingError, match="Sentinel-2 NDVI.*only 1 are available"):
         await load_ndvi_series(session)
 
 

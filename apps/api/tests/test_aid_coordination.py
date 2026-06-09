@@ -112,12 +112,14 @@ def test_agencies_never_cross_borders():
     assert "nema" not in {c.agency_slug for c in _coverage_for("senegal")}
 
 
-def test_coverage_for_lgas_are_in_pool():
-    """Every LGA the seed assigns must come from LGA_POOL for that tenant."""
+def test_coverage_for_lgas_are_in_official_set():
+    """Every LGA the seed assigns must come from the tenant's official set
+    (services.lga_geo). The legacy LGA_POOL is now only a fallback (6e51d81)."""
+    from services.lga_geo import all_lgas
     for tenant in ("kebbi", "ghana"):
-        pool = set(LGA_POOL[tenant])
+        official = set(all_lgas(tenant))
         cov_lgas = {c.lga for c in _coverage_for(tenant)}
-        assert cov_lgas <= pool
+        assert cov_lgas <= official
 
 
 def test_coverage_for_beneficiaries_non_negative():

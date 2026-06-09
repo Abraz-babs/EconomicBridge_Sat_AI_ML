@@ -61,11 +61,14 @@ def test_hash_unit_differs_across_salts():
     assert net != power
 
 
-def test_rows_for_returns_eight_per_pilot_state():
-    """8 LGAs in LGA_POOL × all states except FCT (6) = expected count."""
+def test_rows_for_returns_one_row_per_official_lga():
+    """One row per LGA in the tenant's official set (services.lga_geo). The
+    old 8-per-state cap was removed in 6e51d81 ("roll every LGA into the
+    coverage modules"), so the count now tracks all_lgas()."""
+    from services.lga_geo import all_lgas
     for tenant in ("kebbi", "benue", "ghana", "senegal"):
         rows = _rows_for(tenant)
-        assert len(rows) == 8
+        assert len(rows) == len(all_lgas(tenant)) > 0
 
 
 def test_rows_for_returns_six_lgas_for_fct():
@@ -139,15 +142,20 @@ def test_rows_for_school_count_positive():
 
 def test_rows_for_kebbi_gap_worse_than_fct():
     """Higher gap index = worse infra. Kebbi rural should score worse."""
-    fct_gap = sum(r.learning_gap_index for r in _rows_for("fct")) / 6
-    kebbi_gap = sum(r.learning_gap_index for r in _rows_for("kebbi")) / 8
+    fct_rows = _rows_for("fct")
+    kebbi_rows = _rows_for("kebbi")
+    fct_gap = sum(r.learning_gap_index for r in fct_rows) / len(fct_rows)
+    kebbi_gap = sum(r.learning_gap_index for r in kebbi_rows) / len(kebbi_rows)
     assert kebbi_gap > fct_gap
 
 
-def test_rows_for_lgas_match_pool():
-    for tenant, pool in LGA_POOL.items():
+def test_rows_for_lgas_match_official_set():
+    """Seeded LGAs come from services.lga_geo (the official per-state set),
+    not the legacy LGA_POOL fallback."""
+    from services.lga_geo import all_lgas
+    for tenant in LGA_POOL:
         seen = {r.lga for r in _rows_for(tenant)}
-        assert seen == set(pool)
+        assert seen == set(all_lgas(tenant))
 
 
 def test_rows_for_is_deterministic():
@@ -182,7 +190,7 @@ def test_indicators_endpoint_declares_limit_constraints():
     params = spec["paths"]["/api/v1/skills/indicators"]["get"]["parameters"]
     limit = next(p for p in params if p["name"] == "limit")
     assert limit["schema"]["minimum"] == 1
-    assert limit["schema"]["maximum"] == 200
+    assert limit["schema"]["maximum"] == 2000
 
 
 def test_skills_stats_data_has_all_aggregate_fields():

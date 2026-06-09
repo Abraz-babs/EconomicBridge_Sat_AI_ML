@@ -61,8 +61,8 @@ def test_villages_endpoint_declares_limit_constraints():
     params = spec["paths"]["/api/v1/economic_visibility/villages"]["get"]["parameters"]
     limit = next(p for p in params if p["name"] == "limit")
     assert limit["schema"]["minimum"] == 1
-    assert limit["schema"]["maximum"] == 500
-    assert limit["schema"]["default"] == 200
+    assert limit["schema"]["maximum"] == 2000
+    assert limit["schema"]["default"] == 1000
 
 
 # ─── Seed determinism (mirrors frontend povertySeed.ts) ───────────────────
@@ -98,10 +98,13 @@ def test_rng_first_value_matches_frontend():
     assert isinstance(first, float)
 
 
-def test_villages_for_returns_8_to_11_settlements():
+def test_villages_for_returns_one_settlement_per_official_lga():
+    """One settlement per LGA in the tenant's official set (services.lga_geo).
+    The old fixed 8–11 settlement count was replaced by all_lgas() in 6e51d81."""
+    from services.lga_geo import all_lgas
     for tenant in ("kebbi", "benue", "ghana", "senegal"):
         villages = _villages_for(tenant)
-        assert 8 <= len(villages) <= 11, f"{tenant}: {len(villages)}"
+        assert len(villages) == len(all_lgas(tenant)) > 0, f"{tenant}: {len(villages)}"
 
 
 def test_villages_for_is_deterministic_per_tenant():
