@@ -18,17 +18,15 @@ export function useRotatingWindow<T>(
   useEffect(() => {
     if (items.length <= size) return; // nothing to rotate
     const id = window.setInterval(() => {
-      setStart((s) => (s + size) % items.length);
+      if (document.visibilityState === 'visible') {
+        setStart((s) => (s + size) % items.length);
+      }
     }, intervalMs);
     return () => window.clearInterval(id);
   }, [items.length, size, intervalMs]);
 
-  // Reset to the top whenever the pool changes shape (e.g. a refetch).
-  useEffect(() => {
-    setStart(0);
-  }, [items.length]);
-
   if (items.length <= size) return items;
+  const safeStart = start % items.length;
   // Wrap-around slice so the window is always full.
-  return Array.from({ length: size }, (_, i) => items[(start + i) % items.length]);
+  return Array.from({ length: size }, (_, i) => items[(safeStart + i) % items.length]);
 }

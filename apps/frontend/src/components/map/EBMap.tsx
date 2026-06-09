@@ -110,9 +110,10 @@ export default function EBMap(props: EBMapProps) {
           center: tenant.centroid,
           zoom,
           attributionControl: false,
-          // Keep the rendered buffer so the canvas doesn't blank when scrolled
-          // off-screen and back (the GPU would otherwise evict the surface).
-          preserveDrawingBuffer: true,
+          // Let the browser release WebGL framebuffers under memory pressure.
+          // The CSS compositing layer keeps scroll repainting isolated without
+          // forcing every map to retain a full drawing buffer.
+          preserveDrawingBuffer: false,
         });
         mapRef.current = map;
 
@@ -196,7 +197,13 @@ export default function EBMap(props: EBMapProps) {
     const ov = overlayRef.current as
       | { setProps: (p: { layers: unknown[] }) => void }
       | null;
-    ov?.setProps({ layers });
+    const pushLayers = () => {
+      const shouldRelease = document.visibilityState === 'hidden';
+      ov?.setProps({ layers: shouldRelease ? [] : layers });
+    };
+    pushLayers();
+    document.addEventListener('visibilitychange', pushLayers);
+    return () => document.removeEventListener('visibilitychange', pushLayers);
   }, [layers, status]);
 
   return (

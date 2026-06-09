@@ -78,9 +78,9 @@ export default function SatelliteMap() {
           center: KEBBI_CENTER,
           zoom: 5.2,
           attributionControl: false,
-          // Keep the rendered buffer so the canvas doesn't blank when scrolled
-          // off-screen and back (the GPU would otherwise evict the surface).
-          preserveDrawingBuffer: true,
+          // Avoid retaining a full WebGL drawing buffer for the overview map.
+          // The map host is already on its own compositing layer in CSS.
+          preserveDrawingBuffer: false,
         });
         mapRef.current = map;
 
@@ -213,7 +213,11 @@ export default function SatelliteMap() {
       | null;
     if (!overlay) return;
 
-    (async () => {
+    const pushLayers = async () => {
+      if (document.visibilityState === 'hidden') {
+        overlay.setProps({ layers: [] });
+        return;
+      }
       const { ScatterplotLayer } = await import('@deck.gl/layers');
       overlay.setProps({
         layers: [
@@ -234,7 +238,12 @@ export default function SatelliteMap() {
           }),
         ],
       });
-    })();
+    };
+
+    const onVisibilityChange = () => { void pushLayers(); };
+    void pushLayers();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [activeLayer, mapStatus]);
 
   const detailTenant = selectedTenant ?? TENANTS.find((t) => t.id === 'kebbi')!;

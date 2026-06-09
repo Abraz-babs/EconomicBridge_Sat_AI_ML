@@ -50,7 +50,9 @@ export default function PovertyMap({ tenant, villages }: Props) {
   const hasAttention = villages.length > 0;
   useEffect(() => {
     if (!hasAttention) return;
-    const id = window.setInterval(() => setPulse((p) => (p + 2) % 1000), 120);
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setPulse((p) => (p + 2) % 1000);
+    }, 120);
     return () => window.clearInterval(id);
   }, [hasAttention]);
 
