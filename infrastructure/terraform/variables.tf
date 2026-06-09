@@ -180,6 +180,18 @@ variable "public_app_url" {
   default     = ""
 }
 
+variable "sms_sns_enabled" {
+  description = "Enable outbound SMS via Amazon SNS on the notifications service (sets SNS_ENABLED=true). NOTE: SNS SMS also requires moving the AWS account out of the SMS sandbox and registering the destination-country sender ID (e.g. Nigeria) in the console — a one-time manual step, not Terraform."
+  type        = bool
+  default     = false
+}
+
+variable "sms_sns_sender_id" {
+  description = "Alphanumeric SNS SMS sender ID shown on the handset. Must be registered with AWS for the destination countries."
+  type        = string
+  default     = "EconBridge"
+}
+
 variable "enable_scheduled_reports" {
   description = "Provision an EventBridge schedule that runs scripts.send_scheduled_reports (emails due report PDFs) on the api task. Needs SES live to actually send."
   type        = bool

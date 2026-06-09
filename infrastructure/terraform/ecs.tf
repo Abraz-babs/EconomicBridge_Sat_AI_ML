@@ -66,6 +66,15 @@ locals {
     { name = "SUPER_ADMIN_EMAIL", value = var.super_admin_email },
   ]
 
+  # notifications-only env: outbound SMS via Amazon SNS. The gateway resolves to
+  # SNS when SNS_ENABLED=true; otherwise it falls back to the mock gateway, so a
+  # deploy with SMS still off plans/runs cleanly.
+  notifications_extra_env = [
+    { name = "SNS_ENABLED", value = var.sms_sns_enabled ? "true" : "false" },
+    { name = "SNS_REGION", value = var.aws_region },
+    { name = "SNS_SENDER_ID", value = var.sms_sns_sender_id },
+  ]
+
   # Plain (non-secret) env vars per service. We use a function-style
   # local so each container definition stays terse below.
   service_env = {
@@ -79,6 +88,7 @@ locals {
       v.needs_db ? [{ name = "DATABASE_URL", value = local.database_url }] : [],
       v.needs_redis ? [{ name = "REDIS_URL", value = local.redis_url }] : [],
       k == "api" ? local.api_extra_env : [],
+      k == "notifications" ? local.notifications_extra_env : [],
     )
   }
 

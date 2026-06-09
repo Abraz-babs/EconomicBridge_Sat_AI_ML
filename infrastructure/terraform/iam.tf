@@ -121,6 +121,26 @@ resource "aws_iam_role_policy" "ecs_task_api_ses" {
   policy = data.aws_iam_policy_document.ecs_task_api_ses.json
 }
 
+# notifications-only: send transactional SMS via Amazon SNS (the primary
+# Nigerian carrier path, replacing Termii). SMS publish targets a phone number
+# rather than a topic ARN, so the action is unavoidably resource "*". The app
+# only calls SNS when SNS_ENABLED=true (var.sms_sns_enabled); the permission is
+# granted unconditionally so the notifications task role always "carries publish
+# perm" once SMS is switched on — no IAM change needed to flip it.
+data "aws_iam_policy_document" "ecs_task_notifications_sns" {
+  statement {
+    sid       = "PublishTransactionalSms"
+    actions   = ["sns:Publish", "sns:SetSMSAttributes", "sns:GetSMSAttributes"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_task_notifications_sns" {
+  name   = "${local.name_prefix}-notifications-task-sns"
+  role   = aws_iam_role.ecs_task["notifications"].id
+  policy = data.aws_iam_policy_document.ecs_task_notifications_sns.json
+}
+
 # ─── RDS enhanced monitoring role ────────────────────────────────────
 
 data "aws_iam_policy_document" "rds_monitoring_assume" {
