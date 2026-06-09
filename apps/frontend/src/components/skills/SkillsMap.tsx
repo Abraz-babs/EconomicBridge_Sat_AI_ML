@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import EBMap from '@/components/map/EBMap';
 import { haloRadiusPx, haloRows } from '@/components/map/halo';
@@ -41,34 +41,48 @@ interface Props {
 
 
 export default function SkillsMap({ tenant, indicators }: Props) {
-  const [layers, setLayers] = useState<unknown[]>([]);
   const [pulse, setPulse] = useState(0);
+
+  // deck.gl layer classes are code-split — load once, not on every pulse tick.
+  const [layerKit, setLayerKit] = useState<{
+    ScatterplotLayer: typeof import('@deck.gl/layers').ScatterplotLayer;
+    TextLayer: typeof import('@deck.gl/layers').TextLayer;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { ScatterplotLayer, TextLayer } = await import('@deck.gl/layers');
+      if (!cancelled) setLayerKit({ ScatterplotLayer, TextLayer });
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Heartbeat — drives the halo on the worst-served LGAs (no_signal OR
   // learning_gap_index >= 0.7). Both are the "top intervention priority"
   // rule the dashboard exposes via the worst_gap_lga aggregate.
-  const isAttention = (p: SkillsIndicatorRow) =>
-    p.connectivity_band === 'no_signal' || p.learning_gap_index >= 0.7;
   const hasAttention = indicators.length > 0;
   useEffect(() => {
     if (!hasAttention) return;
-    const id = window.setInterval(() => setPulse((p) => (p + 2) % 1000), 120);
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setPulse((p) => (p + 2) % 1000);
+    }, 120);
     return () => window.clearInterval(id);
   }, [hasAttention]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const [{ ScatterplotLayer, TextLayer }] = await Promise.all([
-        import('@deck.gl/layers'),
-      ]);
-      if (cancelled) return;
-      const pulseRows = haloRows(
-        indicators,
-        isAttention,
-        (p) => p.learning_gap_index,
-      );
-      const built: unknown[] = [
+  // Stable halo rows — recomputed only when data changes, not each pulse.
+  const pulseRows = useMemo(
+    () => haloRows(
+      indicators,
+      (p) => p.connectivity_band === 'no_signal' || p.learning_gap_index >= 0.7,
+      (p) => p.learning_gap_index,
+    ),
+    [indicators],
+  );
+
+  const layers = useMemo<unknown[]>(() => {
+    if (!layerKit) return [];
+    const { ScatterplotLayer, TextLayer } = layerKit;
+    return [
         new ScatterplotLayer<SkillsIndicatorRow>({
           id: 'skills-lga-pulse',
           data: pulseRows,
@@ -113,11 +127,8 @@ export default function SkillsMap({ tenant, indicators }: Props) {
           getBackgroundColor: [26, 23, 20, 200],
           backgroundPadding: [4, 2, 4, 2],
         }),
-      ];
-      setLayers(built);
-    })();
-    return () => { cancelled = true; };
-  }, [indicators, pulse]);
+    ];
+  }, [layerKit, indicators, pulseRows, pulse]);
 
   const noSignal = indicators.filter((i) => i.connectivity_band === 'no_signal').length;
   const broadband = indicators.filter((i) => i.connectivity_band === 'broadband').length;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import EBMap from '@/components/map/EBMap';
 import { haloRadiusPx, haloRows } from '@/components/map/halo';
@@ -41,31 +41,47 @@ interface Props {
 
 
 export default function MobilityMap({ tenant, indicators }: Props) {
-  const [layers, setLayers] = useState<unknown[]>([]);
   const [pulse, setPulse] = useState(0);
+
+  // deck.gl layer classes are code-split — load once, not on every pulse tick.
+  const [layerKit, setLayerKit] = useState<{
+    ScatterplotLayer: typeof import('@deck.gl/layers').ScatterplotLayer;
+    TextLayer: typeof import('@deck.gl/layers').TextLayer;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { ScatterplotLayer, TextLayer } = await import('@deck.gl/layers');
+      if (!cancelled) setLayerKit({ ScatterplotLayer, TextLayer });
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Heartbeat — pulses premium-COL LGAs, falling back to the priciest few so
   // every tenant with data shows a uniform halo (Slice 25 follow-up).
   const hasAttention = indicators.length > 0;
   useEffect(() => {
     if (!hasAttention) return;
-    const id = window.setInterval(() => setPulse((p) => (p + 2) % 1000), 120);
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setPulse((p) => (p + 2) % 1000);
+    }, 120);
     return () => window.clearInterval(id);
   }, [hasAttention]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const [{ ScatterplotLayer, TextLayer }] = await Promise.all([
-        import('@deck.gl/layers'),
-      ]);
-      if (cancelled) return;
-      const pulseRows = haloRows(
-        indicators,
-        (p) => p.cost_of_living_band === 'premium',
-        (p) => p.cost_of_living_index,
-      );
-      const built: unknown[] = [
+  // Stable halo rows — recomputed only when data changes, not each pulse.
+  const pulseRows = useMemo(
+    () => haloRows(
+      indicators,
+      (p) => p.cost_of_living_band === 'premium',
+      (p) => p.cost_of_living_index,
+    ),
+    [indicators],
+  );
+
+  const layers = useMemo<unknown[]>(() => {
+    if (!layerKit) return [];
+    const { ScatterplotLayer, TextLayer } = layerKit;
+    return [
         new ScatterplotLayer<MobilityIndicatorRow>({
           id: 'mobility-lga-pulse',
           data: pulseRows,
@@ -110,11 +126,8 @@ export default function MobilityMap({ tenant, indicators }: Props) {
           getBackgroundColor: [26, 23, 20, 200],
           backgroundPadding: [4, 2, 4, 2],
         }),
-      ];
-      setLayers(built);
-    })();
-    return () => { cancelled = true; };
-  }, [indicators, pulse]);
+    ];
+  }, [layerKit, indicators, pulseRows, pulse]);
 
   const premium = indicators.filter((i) => i.cost_of_living_band === 'premium').length;
   const below = indicators.filter((i) => i.cost_of_living_band === 'below_avg').length;

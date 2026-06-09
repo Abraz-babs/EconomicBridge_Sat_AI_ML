@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import EBMap from '@/components/map/EBMap';
 import { haloRadiusPx, haloRows } from '@/components/map/halo';
@@ -41,32 +41,43 @@ interface Props {
 
 
 export default function AidCoverageMap({ tenant, lgaPoints, sources = [] }: Props) {
-  const [layers, setLayers] = useState<unknown[]>([]);
   const [pulse, setPulse] = useState(0);
+
+  // deck.gl layer classes are code-split — load once, not on every pulse tick.
+  const [layerKit, setLayerKit] = useState<{
+    ScatterplotLayer: typeof import('@deck.gl/layers').ScatterplotLayer;
+    TextLayer: typeof import('@deck.gl/layers').TextLayer;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { ScatterplotLayer, TextLayer } = await import('@deck.gl/layers');
+      if (!cancelled) setLayerKit({ ScatterplotLayer, TextLayer });
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Heartbeat — pulses coverage gaps (LGAs with no agency), falling back to
   // the most under-served few so every tenant shows a uniform halo (Slice 25).
   const hasAttention = lgaPoints.length > 0;
   useEffect(() => {
     if (!hasAttention) return;
-    const id = window.setInterval(() => setPulse((p) => (p + 2) % 1000), 120);
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setPulse((p) => (p + 2) % 1000);
+    }, 120);
     return () => window.clearInterval(id);
   }, [hasAttention]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const [{ ScatterplotLayer, TextLayer }] = await Promise.all([
-        import('@deck.gl/layers'),
-      ]);
-      if (cancelled) return;
+  // Stable halo rows — recomputed only when data changes, not each pulse.
+  const pulseRows = useMemo(
+    () => haloRows(lgaPoints, (p) => p.status === 'gap', (p) => -p.agency_count),
+    [lgaPoints],
+  );
 
-      const pulseRows = haloRows(
-        lgaPoints,
-        (p) => p.status === 'gap',
-        (p) => -p.agency_count,
-      );
-      const built: unknown[] = [
+  const layers = useMemo<unknown[]>(() => {
+    if (!layerKit) return [];
+    const { ScatterplotLayer, TextLayer } = layerKit;
+    return [
         // Pulse halo on coverage gaps.
         new ScatterplotLayer<LgaPoint>({
           id: 'aid-lga-pulse',
@@ -114,11 +125,8 @@ export default function AidCoverageMap({ tenant, lgaPoints, sources = [] }: Prop
           getBackgroundColor: [26, 23, 20, 200],
           backgroundPadding: [4, 2, 4, 2],
         }),
-      ];
-      setLayers(built);
-    })();
-    return () => { cancelled = true; };
-  }, [lgaPoints, pulse]);
+    ];
+  }, [layerKit, lgaPoints, pulseRows, pulse]);
 
   const gapCount = lgaPoints.filter(p => p.status === 'gap').length;
   const dupCount = lgaPoints.filter(p => p.status === 'duplicated').length;
