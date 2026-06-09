@@ -73,6 +73,9 @@ class Settings(BaseSettings):
     email_from: str = "no-reply@economicbridge.app"
     aws_region: str = "eu-west-1"
 
+    # Where the public Bizra Farms contact form delivers inquiries.
+    contact_recipient_email: str = "bizrafarms@gmail.com"
+
     # Super-admin bootstrap — read ONLY by scripts/seed_super_admin.py to create
     # the platform operator account. Never referenced at request time.
     super_admin_email: str = "admin@economicbridge.app"

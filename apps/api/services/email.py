@@ -48,24 +48,61 @@ def send_invite_email(*, to: str, tenant_name: str, activate_url: str) -> bool:
     return False
 
 
-def _send_ses(*, to: str, subject: str, body: str) -> bool:
+def _send_ses(
+    *, to: str, subject: str, body: str, reply_to: str | None = None,
+) -> bool:
     s = get_settings()
     try:
         import boto3  # imported lazily so dev never needs boto3 configured
 
         client = boto3.client("ses", region_name=s.aws_region)
-        client.send_email(
-            Source=s.email_from,
-            Destination={"ToAddresses": [to]},
-            Message={
+        kwargs: dict = {
+            "Source": s.email_from,
+            "Destination": {"ToAddresses": [to]},
+            "Message": {
                 "Subject": {"Data": subject},
                 "Body": {"Text": {"Data": body}},
             },
-        )
+        }
+        if reply_to:
+            kwargs["ReplyToAddresses"] = [reply_to]
+        client.send_email(**kwargs)
         return True
     except Exception as exc:  # noqa: BLE001 — email failure must not break onboarding
         logger.warning("[email:ses] send to %s failed: %s", to, exc)
         return False
+
+
+def send_contact_inquiry(
+    *, name: str, organisation: str, email: str, phone: str | None,
+    interest: str, region: str | None, message: str | None,
+) -> bool:
+    """Deliver a public Bizra Farms contact-form inquiry to the operator inbox
+    (settings.contact_recipient_email), with the inquirer's address as Reply-To
+    so a reply goes straight back to them. Best-effort, mirroring the invite
+    pattern: console backend logs it (dev), ses sends it (prod). Never raises."""
+    s = get_settings()
+    subject = f"EconomicBridge inquiry — {organisation or name}"
+    body = (
+        "New inquiry from the Bizra Farms / EconomicBridge website:\n\n"
+        f"  Name:         {name}\n"
+        f"  Organisation: {organisation}\n"
+        f"  Email:        {email}\n"
+        f"  Phone:        {phone or '—'}\n"
+        f"  Interest:     {interest}\n"
+        f"  Region:       {region or '—'}\n\n"
+        f"  Message:\n  {message or '(none)'}\n\n"
+        "— Reply directly to this email to reach the sender.\n"
+    )
+    if s.email_backend == "ses":
+        return _send_ses(
+            to=s.contact_recipient_email, subject=subject, body=body, reply_to=email,
+        )
+    logger.info(
+        "[email:console] contact inquiry to=%s subject=%r\n%s",
+        s.contact_recipient_email, subject, body,
+    )
+    return False
 
 
 def send_report_email(

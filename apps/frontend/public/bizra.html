@@ -374,6 +374,8 @@
       .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
       .form-grid .full { grid-column: 1 / -1; }
       .form-note { color: var(--green); font-weight: 850; min-height: 24px; margin-top: 10px; }
+      /* Honeypot — off-screen, never seen or tabbed to by a human. */
+      .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 
       /* ─── Footer ─── */
       footer { background: #13251b; color: #dce8df; padding: 48px 22px 26px; }
@@ -803,6 +805,12 @@
               <label>Organisation
                 <input name="organisation" required placeholder="Agency, farm, NGO, ministry" />
               </label>
+              <label>Email
+                <input name="email" type="email" required placeholder="you@organisation.org" />
+              </label>
+              <label>Phone <span style="color: var(--muted); font-weight: 600">(optional)</span>
+                <input name="phone" type="tel" placeholder="+234…" />
+              </label>
               <label>Interest
                 <select name="interest">
                   <option>Farmland Protection pilot</option>
@@ -819,7 +827,11 @@
                 <textarea name="message" placeholder="Tell us the communities, crops, or risks you want to monitor."></textarea>
               </label>
             </div>
-            <button class="btn btn-primary" type="submit">Prepare Inquiry</button>
+            <!-- Honeypot: invisible to people; bots that fill it are dropped server-side. -->
+            <label class="hp" aria-hidden="true">Leave this field empty
+              <input name="company_website" tabindex="-1" autocomplete="off" />
+            </label>
+            <button class="btn btn-primary" type="submit">Send Inquiry</button>
             <div class="form-note" id="formNote" aria-live="polite"></div>
           </form>
         </div>
@@ -961,17 +973,48 @@
       });
       selectTestimonial(0);
 
-      // ─── Contact form (front-end only until wired to email/CRM) ───
+      // ─── Contact form → POST /api/v1/contact (emails the operator via SES) ───
+      // API origin: same-origin in production (ALB serves /api/v1); the local
+      // dev API runs on :8000, a different origin (CORS already allows :3001).
+      const API_BASE =
+        location.hostname === "localhost" || location.hostname === "127.0.0.1"
+          ? "http://localhost:8000/api/v1"
+          : "/api/v1";
+
       const contactForm = document.querySelector("#contactForm");
       const formNote = document.querySelector("#formNote");
-      contactForm.addEventListener("submit", (event) => {
+      const submitBtn = contactForm.querySelector('button[type="submit"]');
+
+      contactForm.addEventListener("submit", async (event) => {
         event.preventDefault();
-        const data = new FormData(contactForm);
-        formNote.textContent =
-          "Inquiry prepared for " +
-          (data.get("organisation") || "your organisation") +
-          ". Our team will follow up to discuss a pilot.";
-        contactForm.reset();
+        const payload = Object.fromEntries(new FormData(contactForm).entries());
+        formNote.style.color = "";
+        formNote.textContent = "Sending…";
+        submitBtn.disabled = true;
+        try {
+          const res = await fetch(API_BASE + "/contact", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (res.ok) {
+            formNote.textContent =
+              "Thank you — your inquiry has been sent. Our team will follow up shortly.";
+            contactForm.reset();
+          } else if (res.status === 429) {
+            formNote.style.color = "var(--maroon)";
+            formNote.textContent =
+              "You've already sent a few inquiries — please try again in a few minutes.";
+          } else {
+            throw new Error("status " + res.status);
+          }
+        } catch (err) {
+          formNote.style.color = "var(--maroon)";
+          formNote.textContent =
+            "Sorry, we couldn't send that. Please email bizrafarms@gmail.com or call +234 703 791 9465.";
+        } finally {
+          submitBtn.disabled = false;
+        }
       });
     </script>
   </body>
