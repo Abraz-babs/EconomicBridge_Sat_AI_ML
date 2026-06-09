@@ -121,9 +121,12 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.REPO }}:latest
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
-          # Frontend needs the public env vars baked into the build.
+          # Frontend needs the public env vars baked into the build. The base
+          # URLs are left to the Dockerfile defaults — RELATIVE paths
+          # (/api/v1, /ingestion/api/v1, ...) — because the ALB serves all
+          # services from one origin, so they work on the bare ALB DNS now and
+          # on any custom domain later without a rebuild-arg change.
           build-args: |
-            NEXT_PUBLIC_API_BASE_URL=${{ inputs.environment == 'production' && 'https://app.economicbridge.org' || 'https://staging.economicbridge.org' }}
             NEXT_PUBLIC_MAPBOX_TOKEN=${{ secrets.NEXT_PUBLIC_MAPBOX_TOKEN }}
 
   # ───────── Rolling deploy (sequential — gives ECS time per service) ──

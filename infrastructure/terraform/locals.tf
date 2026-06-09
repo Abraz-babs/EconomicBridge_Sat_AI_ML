@@ -43,10 +43,14 @@ locals {
       memory       = 1024
       path_pattern = "/ingestion/*"
       health_path  = "/api/v1/health"
-      priority     = 200
-      public       = false # internal-only; called by api / cron
-      needs_db     = true
-      needs_redis  = true
+      # ALB forwards paths unchanged; the app strips this prefix itself
+      # (UrlPrefixStripMiddleware, env URL_PREFIX). api/frontend need none —
+      # their patterns match what they natively serve.
+      url_prefix  = "/ingestion"
+      priority    = 200
+      public      = false # internal-only; called by api / cron
+      needs_db    = true
+      needs_redis = true
     }
     ml = {
       port         = 8002
@@ -54,6 +58,7 @@ locals {
       memory       = 2048
       path_pattern = "/ml/*"
       health_path  = "/api/v1/health"
+      url_prefix   = "/ml"
       priority     = 300
       public       = false # internal-only; called by api
       needs_db     = false
@@ -65,6 +70,7 @@ locals {
       memory       = 1024
       path_pattern = "/notifications/*"
       health_path  = "/api/v1/health"
+      url_prefix   = "/notifications"
       priority     = 400
       public       = true # /api/v1/subscribers is open-access for opt-in
       needs_db     = true

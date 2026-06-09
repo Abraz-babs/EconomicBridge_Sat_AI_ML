@@ -21,11 +21,22 @@ RUN npm ci --no-audit --no-fund
 FROM node:22-alpine AS builder
 WORKDIR /app
 
-# Mapbox token + API base URL are baked into the client bundle at build time.
+# Mapbox token + service base URLs are baked into the client bundle at build
+# time. The production defaults are RELATIVE paths: the ALB serves frontend and
+# backends from one origin (/api/v1 → api, /ingestion → ingestion, /ml → ml,
+# /notifications → notifications), so relative URLs work on any domain —
+# including the bare ALB DNS — with zero CORS surface. The prefixed services
+# strip their prefix via UrlPrefixStripMiddleware (URL_PREFIX env).
 ARG NEXT_PUBLIC_MAPBOX_TOKEN
-ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
+ARG NEXT_PUBLIC_API_BASE_URL=/api/v1
+ARG NEXT_PUBLIC_INGESTION_BASE_URL=/ingestion/api/v1
+ARG NEXT_PUBLIC_ML_BASE_URL=/ml/api/v1
+ARG NEXT_PUBLIC_NOTIFY_BASE_URL=/notifications/api/v1
 ENV NEXT_PUBLIC_MAPBOX_TOKEN=$NEXT_PUBLIC_MAPBOX_TOKEN \
     NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+    NEXT_PUBLIC_INGESTION_BASE_URL=$NEXT_PUBLIC_INGESTION_BASE_URL \
+    NEXT_PUBLIC_ML_BASE_URL=$NEXT_PUBLIC_ML_BASE_URL \
+    NEXT_PUBLIC_NOTIFY_BASE_URL=$NEXT_PUBLIC_NOTIFY_BASE_URL \
     NEXT_TELEMETRY_DISABLED=1
 
 COPY --from=deps /app/node_modules ./node_modules

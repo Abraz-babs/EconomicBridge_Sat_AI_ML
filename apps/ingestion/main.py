@@ -60,6 +60,31 @@ class TraceIdMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class UrlPrefixStripMiddleware:
+    """Strip a deployment path prefix before routing (pure ASGI).
+
+    Behind the ALB this service is routed by path (e.g. ``/ingestion/*``),
+    but ALB listener rules forward the path UNCHANGED — so a request for
+    ``/ingestion/api/v1/health`` arrives here while the app serves
+    ``/api/v1/health``. This shim strips the configured prefix when present
+    and passes everything else through untouched, so direct calls (dev,
+    target-group health checks) keep working. Enabled only when
+    ``URL_PREFIX`` is set (the ECS task definition sets it; dev never does).
+    """
+
+    def __init__(self, app, prefix: str) -> None:
+        self.app = app
+        self.prefix = "/" + prefix.strip("/")
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] in ("http", "websocket"):
+            path = scope.get("path", "")
+            if path == self.prefix or path.startswith(self.prefix + "/"):
+                scope = dict(scope)
+                scope["path"] = path[len(self.prefix):] or "/"
+        await self.app(scope, receive, send)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start the scheduler on app boot, stop it on shutdown.
@@ -104,6 +129,9 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Trace-Id"],
 )
+# Added LAST → runs OUTERMOST, so the prefix is gone before anything routes.
+if settings.url_prefix:
+    app.add_middleware(UrlPrefixStripMiddleware, prefix=settings.url_prefix)
 
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(triggers.router, prefix="/api/v1")

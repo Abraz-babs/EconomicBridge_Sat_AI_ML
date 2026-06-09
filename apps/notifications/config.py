@@ -26,6 +26,10 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    # ALB deployment path prefix (e.g. "/notifications") — stripped before
+    # routing by UrlPrefixStripMiddleware. Empty (dev) = disabled.
+    url_prefix: str = ""
+
     database_url: str = (
         "postgresql+asyncpg://postgres:devpassword@localhost:5432/economicbridge"
     )

@@ -61,6 +61,29 @@ class TraceIdMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class UrlPrefixStripMiddleware:
+    """Strip the ALB deployment path prefix before routing (pure ASGI).
+
+    ALB listener rules forward paths UNCHANGED, so behind ``/ml/*`` a request
+    for ``/ml/api/v1/health`` arrives here while the app serves
+    ``/api/v1/health``. Strips the configured prefix when present; passes
+    everything else through (dev + target-group health checks unaffected).
+    Enabled only when ``URL_PREFIX`` is set (the ECS task definition sets it).
+    """
+
+    def __init__(self, app, prefix: str) -> None:
+        self.app = app
+        self.prefix = "/" + prefix.strip("/")
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] in ("http", "websocket"):
+            path = scope.get("path", "")
+            if path == self.prefix or path.startswith(self.prefix + "/"):
+                scope = dict(scope)
+                scope["path"] = path[len(self.prefix):] or "/"
+        await self.app(scope, receive, send)
+
+
 import contextlib  # noqa: E402
 
 
@@ -97,6 +120,9 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Trace-Id"],
 )
+# Added LAST → runs OUTERMOST, so the prefix is gone before anything routes.
+if settings.url_prefix:
+    app.add_middleware(UrlPrefixStripMiddleware, prefix=settings.url_prefix)
 
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(predict.router, prefix="/api/v1")

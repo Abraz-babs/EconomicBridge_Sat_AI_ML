@@ -87,6 +87,8 @@ locals {
       ],
       v.needs_db ? [{ name = "DATABASE_URL", value = local.database_url }] : [],
       v.needs_redis ? [{ name = "REDIS_URL", value = local.redis_url }] : [],
+      # ALB path prefix the app must strip itself (see UrlPrefixStripMiddleware).
+      lookup(v, "url_prefix", "") != "" ? [{ name = "URL_PREFIX", value = v.url_prefix }] : [],
       k == "api" ? local.api_extra_env : [],
       k == "notifications" ? local.notifications_extra_env : [],
     )

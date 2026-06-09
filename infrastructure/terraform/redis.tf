@@ -33,7 +33,8 @@ resource "aws_elasticache_parameter_group" "redis7" {
 
 resource "aws_elasticache_replication_group" "main" {
   replication_group_id = "${local.name_prefix}-redis"
-  description          = "EconomicBridge Redis — cache + pub/sub"
+  # ASCII only: ElastiCache rejects non-ASCII characters in descriptions.
+  description = "EconomicBridge Redis - cache and pub/sub"
 
   engine               = "redis"
   engine_version       = "7.1"
