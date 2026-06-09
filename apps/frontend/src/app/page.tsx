@@ -1,17 +1,21 @@
 'use client';
 
 /**
- * Front door (route `/`). Shows the marketing/landing page — the first thing a
- * visitor sees. The landing itself lives as a self-contained static page at
- * `public/landing.html` (its own Mapbox globe + animations); we embed it
- * full-bleed here so editing the landing stays a single-file job. Its "Explore"
- * button navigates the top window into the dashboard (`/dashboard`).
+ * Front door (route `/`). The first thing a visitor sees is the Bizra Farms
+ * Integrated corporate site, which presents the company and bridges into the
+ * EconomicBridge platform. It lives as a self-contained static page at
+ * `public/bizra.html` (its own styles + images under `public/bizra-assets/`);
+ * we embed it full-bleed so editing it stays a single-file job. Its
+ * "Enter Platform" buttons navigate the top window to the EconomicBridge
+ * landing page (`/landing`), which in turn opens the dashboard (`/dashboard`).
+ *
+ * Flow: `/` (Bizra) → `/landing` (EconomicBridge) → `/dashboard` (Overview).
  */
-export default function LandingPage() {
+export default function BizraFrontDoor() {
   return (
     <iframe
-      src="/landing.html"
-      title="EconomicBridge"
+      src="/bizra.html"
+      title="Bizra Farms Integrated — EconomicBridge"
       style={{
         position: 'fixed',
         inset: 0,
