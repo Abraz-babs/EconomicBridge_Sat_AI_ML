@@ -19,6 +19,13 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        {/*
+          App-Router root layout is the correct place for a global font <link>.
+          We deliberately avoid next/font here: it fetches Google Fonts at BUILD
+          time, which would couple the Docker/CI build to network access. The
+          runtime <link> keeps the build hermetic.
+        */}
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
           href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Playfair+Display:wght@400;700;900&display=swap"
           rel="stylesheet"

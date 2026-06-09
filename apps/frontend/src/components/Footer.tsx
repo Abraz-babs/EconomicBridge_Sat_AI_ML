@@ -1,10 +1,4 @@
-'use client';
-
-import { useRole } from '@/context/RoleContext';
-
 export default function Footer() {
-  const { currentRole } = useRole();
-
   return (
     <footer className="app-footer" role="contentinfo">
       <div className="footer-row">

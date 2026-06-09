@@ -34,7 +34,6 @@ def test_arid_states_have_no_humid_crops():
     for tenant in ("kebbi", "zamfara"):
         classes = _classes_for(tenant, 5)
         for c in classes:
-            crop = c.rsplit("_", 1)[0] if c.endswith("_healthy") else c.split("_", 1)[0]
             assert not c.startswith(_HUMID_CROPS), f"{tenant} got {c} — wrong for arid NW"
 
 

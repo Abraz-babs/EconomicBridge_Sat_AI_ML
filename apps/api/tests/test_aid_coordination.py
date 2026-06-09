@@ -7,7 +7,6 @@ from main import app
 from routers.aid_coordination import _lga_centroid
 from scripts.seed_aid_coordination import (
     AGENCY_REGISTRY,
-    LGA_POOL,
     SEED_SOURCE,
     TENANT_COUNTRY,
     _coverage_for,
