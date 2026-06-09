@@ -3,37 +3,27 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import { ApiException, apiFetch, type SuccessEnvelope } from '@/lib/api';
+import { fmtUsdCompact, formatLocalAndUsd } from '@/lib/currency';
 
 
 export type CompareBand = 'below_avg' | 'near_avg' | 'above_avg' | 'premium';
 
 
-/** Compact Naira: ₦1.20M / ₦270K / ₦950. */
-export function fmtNgn(n: number): string {
-  if (n >= 1_000_000) return `₦${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000) return `₦${Math.round(n / 1_000)}K`;
-  return `₦${n.toLocaleString()}`;
-}
-
-/** Compact USD: $1.20K above a thousand, else $940. */
-export function fmtUsd(n: number): string {
-  if (n >= 10_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n.toLocaleString()}`;
-}
+/** Compact USD: $1.20K above ten-thousand, else $940. Re-exported for callers. */
+export const fmtUsd = fmtUsdCompact;
 
 /**
- * Dual-currency income display. Nigerian tenants carry both currencies and
- * render `₦X ($Y)`; ECOWAS tenants are USD-only and render `$Y`. Falls back
- * to a dash when neither value is present.
+ * Dual-currency income display, anchored on the real USD figure. Each country
+ * shows its LOCAL currency derived from USD at the market rate (see
+ * lib/currency) — `<local> ($USD)` — or `$USD` alone for an unknown country.
+ * The stored World Bank local-currency figure is intentionally NOT used: its
+ * official/Atlas rate understates the Naira badly.
  */
 export function formatIncome(
-  ngn: number | null | undefined,
   usd: number | null | undefined,
+  country?: string | null,
 ): string {
-  if (ngn != null && usd != null) return `${fmtNgn(ngn)} (${fmtUsd(usd)})`;
-  if (ngn != null) return fmtNgn(ngn);
-  if (usd != null) return fmtUsd(usd);
-  return '—';
+  return formatLocalAndUsd(usd, country);
 }
 
 

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
+import { NGN_PER_USD } from '@/lib/currency';
 import {
   useCropPriceCorrelation,
   useCropPriceSeries,
@@ -32,7 +33,7 @@ const CROP_LABEL = Object.fromEntries(CROPS.map(c => [c.id, c.label]));
 
 // Crop prices are stored in NGN/kg. For ECOWAS tenants (Senegal, Ghana) we show
 // USD instead of Naira (indicative conversion — the regional series is shared).
-const NGN_PER_USD = 1600;
+// NGN_PER_USD is the single shared market rate (see lib/currency).
 
 function fmtMoney(n: number | null | undefined, isEcowas: boolean): string {
   if (n == null) return '—';

@@ -21,13 +21,13 @@ function colourFor(row: MobilityIndicatorRow): [number, number, number, number] 
 
 
 /** Hover-card text for an LGA marker (Slice 25). */
-function tooltipFor(obj: unknown): string | null {
+function tooltipFor(obj: unknown, country: string): string | null {
   const r = obj as MobilityIndicatorRow;
   if (!r?.lga) return null;
   return [
     r.lga,
     `Cost-of-living index: ${r.cost_of_living_index.toFixed(1)} (${r.cost_of_living_band.replace('_', ' ')})`,
-    `Avg household income: ${formatIncome(r.avg_household_income_ngn, r.avg_household_income_usd)}/mo`,
+    `Avg household income: ${formatIncome(r.avg_household_income_usd, country)}/mo`,
     `Opportunity: ${(r.income_opportunity_score * 100).toFixed(0)}% · Capacity: ${(r.displacement_capacity_index * 100).toFixed(0)}%`,
     `Source: ${r.source}`,
   ].join('\n');
@@ -136,7 +136,7 @@ export default function MobilityMap({ tenant, indicators }: Props) {
     <EBMap
       tenant={tenant}
       layers={layers}
-      getTooltip={tooltipFor}
+      getTooltip={(obj) => tooltipFor(obj, tenant.country)}
       ariaLabel={`Economic mobility map — ${tenant.name}`}
       legend={
         <>

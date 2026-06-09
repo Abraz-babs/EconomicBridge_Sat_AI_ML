@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
 import { sourceBadge } from '@/lib/display';
+import { localCurrencyFor } from '@/lib/currency';
 import {
   formatIncome,
   useEconomicMobility,
@@ -115,11 +116,13 @@ export default function MobilityCompassPanel() {
           <div className="fp-stat-label">Median Household Income</div>
           <div className="fp-stat-val">
             {stats
-              ? formatIncome(stats.median_household_income_ngn, stats.median_household_income_usd)
+              ? formatIncome(stats.median_household_income_usd, activeTenant.country)
               : '—'}
           </div>
           <div className="fp-stat-sub">
-            {stats?.median_household_income_ngn != null ? 'NGN (USD) per month' : 'USD per month'}
+            {localCurrencyFor(activeTenant.country)
+              ? `${localCurrencyFor(activeTenant.country)!.code} (USD) per month`
+              : 'USD per month'}
           </div>
         </div>
         <div className="fp-stat crit">
@@ -188,7 +191,7 @@ export default function MobilityCompassPanel() {
                         {row.cost_of_living_band.replace('_', ' ')}
                       </span>
                     </td>
-                    <td>{formatIncome(row.avg_household_income_ngn, row.avg_household_income_usd)}</td>
+                    <td>{formatIncome(row.avg_household_income_usd, activeTenant.country)}</td>
                     <td>
                       <ScoreBar score={row.income_opportunity_score} />
                     </td>
