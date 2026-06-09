@@ -458,18 +458,29 @@ main {
 .sidebar { display: flex; flex-direction: column; gap: 14px; }
 
 /* ─── ACCESS MATRIX ─── */
-.matrix-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+/* table-layout:fixed pins the columns to the panel width so the last
+   ("Report") column can't be pushed off the right edge by the wide uppercase
+   headers' min-content width. */
+.matrix-table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
 
 .matrix-table th {
-  padding: 8px 12px; text-align: left;
-  font-size: 8px; letter-spacing: 2px; text-transform: uppercase;
+  padding: 8px 6px; text-align: left;
+  font-size: 8px; letter-spacing: 1px; text-transform: uppercase;
   color: var(--muted); border-bottom: 1px solid var(--border); font-weight: 400;
+  word-break: break-word;
 }
 
 .matrix-table td {
-  padding: 9px 12px; border-bottom: 1px solid var(--border2);
+  padding: 9px 6px; border-bottom: 1px solid var(--border2);
   color: var(--ink2); vertical-align: middle;
 }
+
+/* Feature label gets the bulk of the width; the four permission columns
+   share the rest and centre under their headers. */
+.matrix-table th:first-child,
+.matrix-table td:first-child { width: 44%; }
+.matrix-table th:not(:first-child),
+.matrix-table td:not(:first-child) { text-align: center; }
 
 .matrix-table tr:last-child td { border-bottom: none; }
 .matrix-table tr:hover td { background: var(--surface2); }
