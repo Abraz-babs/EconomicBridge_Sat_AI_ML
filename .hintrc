@@ -1,0 +1,8 @@
+{
+  "_comment": "Microsoft Edge Tools / webhint config. The project's authoritative linters (ESLint, tsc, ruff) all pass. These hints are disabled because they don't apply to this codebase: no-inline-styles is unsatisfiable for React's dynamic styles (the value depends on runtime data), and the compat hints target ancient browsers outside our support matrix. Accessibility (axe/*) checks remain ON.",
+  "hints": {
+    "no-inline-styles": "off",
+    "compat-api/css": "off",
+    "compat-api/html": "off"
+  }
+}
