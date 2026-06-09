@@ -1,0 +1,2398 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bizra Farms Integrated | EconomicBridge</title>
+    <meta
+      name="description"
+      content="Bizra Farms Integrated Nigeria Limited and EconomicBridge: AI, satellite intelligence, and sustainable agriculture for resilient communities."
+    />
+    <style>
+      :root {
+        --green: #078a46;
+        --green-dark: #044d2a;
+        --green-soft: #e9f7ef;
+        --gold: #f0bd2f;
+        --maroon: #743331;
+        --ink: #1d2520;
+        --muted: #66726b;
+        --line: #dfe8e2;
+        --paper: #fffdf7;
+        --white: #ffffff;
+        --shadow: 0 18px 48px rgba(20, 45, 31, 0.14);
+        --radius: 8px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        color: var(--ink);
+        background: var(--paper);
+        line-height: 1.55;
+      }
+
+      img {
+        max-width: 100%;
+        display: block;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      .top-strip {
+        background: var(--green-dark);
+        color: #e9fff3;
+        font-size: 13px;
+        padding: 8px 22px;
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        text-align: center;
+      }
+
+      .top-strip strong {
+        color: var(--gold);
+      }
+
+      .site-header {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: rgba(255, 253, 247, 0.95);
+        backdrop-filter: blur(16px);
+        border-bottom: 1px solid rgba(4, 77, 42, 0.1);
+      }
+
+      .nav {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 14px 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 22px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 220px;
+      }
+
+      .brand-logo {
+        width: 112px;
+        height: 44px;
+        object-fit: contain;
+        background: var(--white);
+        border: 1px solid rgba(4, 77, 42, 0.12);
+        border-radius: 6px;
+        padding: 4px;
+      }
+
+      .brand-text {
+        display: grid;
+        line-height: 1.1;
+      }
+
+      .brand-text b {
+        color: var(--green);
+        font-size: 15px;
+      }
+
+      .brand-text span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .nav-links {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+
+      .nav-links a,
+      .menu-toggle {
+        border: 0;
+        background: transparent;
+        color: var(--ink);
+        padding: 10px 12px;
+        border-radius: 6px;
+        font-weight: 700;
+        font-size: 14px;
+      }
+
+      .nav-links a:hover,
+      .nav-links a.active,
+      .menu-toggle:hover {
+        color: var(--green);
+        background: var(--green-soft);
+      }
+
+      .nav-action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 11px 16px;
+        border-radius: 6px;
+        background: var(--green);
+        color: var(--white);
+        font-weight: 800;
+        box-shadow: 0 8px 20px rgba(7, 138, 70, 0.22);
+        white-space: nowrap;
+      }
+
+      .menu-toggle {
+        display: none;
+        border: 1px solid var(--line);
+      }
+
+      .section {
+        padding: 86px 22px;
+      }
+
+      .wrap {
+        max-width: 1180px;
+        margin: 0 auto;
+      }
+
+      .hero {
+        min-height: 690px;
+        padding: 76px 22px 42px;
+        background:
+          linear-gradient(
+            110deg,
+            rgba(255, 253, 247, 0.98) 0%,
+            rgba(255, 253, 247, 0.94) 42%,
+            rgba(233, 247, 239, 0.76) 100%
+          ),
+          radial-gradient(
+            circle at 82% 16%,
+            rgba(240, 189, 47, 0.22),
+            transparent 28%
+          ),
+          linear-gradient(135deg, #ffffff, #e9f7ef);
+        overflow: hidden;
+      }
+
+      .hero-grid {
+        max-width: 1180px;
+        min-height: 570px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: minmax(0, 1.02fr) minmax(340px, 0.98fr);
+        gap: 42px;
+        align-items: center;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        width: fit-content;
+        color: var(--green-dark);
+        background: var(--green-soft);
+        border: 1px solid rgba(7, 138, 70, 0.16);
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-weight: 800;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        background: var(--gold);
+        border-radius: 999px;
+        box-shadow: 0 0 0 5px rgba(240, 189, 47, 0.18);
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      .hero h1 {
+        margin: 22px 0 16px;
+        max-width: 780px;
+        font-size: clamp(42px, 6vw, 76px);
+        line-height: 0.95;
+        letter-spacing: 0;
+        color: var(--green-dark);
+      }
+
+      .hero h1 span {
+        color: var(--green);
+      }
+
+      .hero-copy {
+        max-width: 640px;
+        color: #405248;
+        font-size: 19px;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin: 28px 0;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        min-height: 48px;
+        padding: 12px 18px;
+        font-weight: 850;
+        transition:
+          transform 160ms ease,
+          box-shadow 160ms ease,
+          background 160ms ease;
+      }
+
+      .btn:hover {
+        transform: translateY(-2px);
+      }
+
+      .btn-primary {
+        color: var(--white);
+        background: var(--green);
+        box-shadow: 0 14px 28px rgba(7, 138, 70, 0.22);
+      }
+
+      .btn-secondary {
+        color: var(--green-dark);
+        background: var(--white);
+        border-color: rgba(4, 77, 42, 0.18);
+        box-shadow: 0 10px 22px rgba(20, 45, 31, 0.08);
+      }
+
+      .hero-stats {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        max-width: 640px;
+      }
+
+      .stat-tile {
+        border: 1px solid rgba(4, 77, 42, 0.12);
+        border-radius: var(--radius);
+        padding: 14px;
+        background: rgba(255, 255, 255, 0.78);
+      }
+
+      .stat-tile b {
+        display: block;
+        color: var(--green);
+        font-size: 24px;
+        line-height: 1;
+      }
+
+      .stat-tile span {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .hero-visual {
+        display: grid;
+        grid-template-columns: 1.3fr 1fr;
+        grid-template-rows: auto auto;
+        gap: 14px;
+        align-items: stretch;
+      }
+
+      .photo-card {
+        overflow: hidden;
+        border-radius: var(--radius);
+        border: 8px solid var(--white);
+        box-shadow: var(--shadow);
+        background: var(--white);
+      }
+
+      .hero-photo-main {
+        grid-row: 1 / 3;
+        display: grid;
+        place-items: center;
+
+        min-height: 400px;
+        background:
+          linear-gradient(180deg, rgba(4, 77, 42, 0.04), rgba(4, 77, 42, 0.3)),
+          linear-gradient(135deg, #e9f7ef, #ffffff);
+      }
+
+      .hero-photo-main img {
+        width: 78%;
+        height: auto;
+        filter: drop-shadow(0 18px 24px rgba(7, 138, 70, 0.18));
+      }
+
+      .field-rows {
+        min-height: 140px;
+        background:
+          linear-gradient(
+            160deg,
+            transparent 0 34%,
+            rgba(255, 255, 255, 0.5) 34% 36%,
+            transparent 36%
+          ),
+          repeating-linear-gradient(
+            164deg,
+            #0f8c49 0 18px,
+            #58bd6b 18px 34px,
+            #d9a032 34px 44px
+          ),
+          linear-gradient(#a7d36c, #13723d);
+      }
+
+      .dashboard-card {
+        padding: 18px;
+        min-height: 230px;
+        border: 1px solid rgba(4, 77, 42, 0.12);
+        background: rgba(255, 255, 255, 0.94);
+        backdrop-filter: blur(12px);
+      }
+
+      .dash-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-weight: 850;
+        color: var(--green-dark);
+        margin-bottom: 14px;
+      }
+
+      .live-dot {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--green);
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .live-dot::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--green);
+        box-shadow: 0 0 0 5px rgba(7, 138, 70, 0.12);
+      }
+
+      .mini-map {
+        height: 112px;
+        border-radius: 6px;
+        background:
+          radial-gradient(
+            circle at 28% 45%,
+            rgba(240, 189, 47, 0.95) 0 5px,
+            transparent 7px
+          ),
+          radial-gradient(
+            circle at 58% 38%,
+            rgba(224, 90, 43, 0.95) 0 5px,
+            transparent 7px
+          ),
+          radial-gradient(
+            circle at 71% 62%,
+            rgba(7, 138, 70, 0.95) 0 5px,
+            transparent 7px
+          ),
+          linear-gradient(135deg, #18382b, #0c2019);
+        position: relative;
+        overflow: hidden;
+        margin-bottom: 14px;
+      }
+
+      .mini-map::before,
+      .mini-map::after {
+        content: "";
+        position: absolute;
+        border: 1px dashed rgba(255, 255, 255, 0.36);
+        border-radius: 50%;
+      }
+
+      .mini-map::before {
+        width: 160px;
+        height: 160px;
+        left: -35px;
+        top: -26px;
+      }
+
+      .mini-map::after {
+        width: 190px;
+        height: 190px;
+        right: -80px;
+        bottom: -72px;
+      }
+
+      .dash-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        padding: 9px 0;
+        border-top: 1px solid var(--line);
+        font-size: 13px;
+      }
+
+      .dash-row b {
+        color: var(--green);
+      }
+
+      .section-head {
+        max-width: 760px;
+        margin-bottom: 38px;
+      }
+
+      .center-head {
+        margin-left: auto;
+        margin-right: auto;
+        text-align: center;
+      }
+
+      .section-kicker {
+        color: var(--green);
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+
+      .section h2 {
+        font-size: clamp(32px, 4vw, 54px);
+        line-height: 1.02;
+        color: var(--green-dark);
+        margin-bottom: 14px;
+      }
+
+      .section-head p {
+        color: var(--muted);
+        font-size: 18px;
+      }
+
+      .about-grid,
+      .why-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 0.95fr) minmax(360px, 1.05fr);
+        gap: 42px;
+        align-items: center;
+      }
+
+      .about-media {
+        min-height: 480px;
+        position: relative;
+      }
+
+      .about-block {
+        position: absolute;
+        border-radius: var(--radius);
+        overflow: hidden;
+        box-shadow: var(--shadow);
+        border: 8px solid var(--white);
+      }
+
+      .about-large {
+        inset: 0 60px 80px 0;
+        overflow: hidden;
+        background:
+          /* Satellite radar signal — top right */
+          radial-gradient(
+            circle at 82% 20%,
+            rgba(240, 189, 47, 0.3) 0%,
+            transparent 32%
+          ),
+          radial-gradient(
+            circle at 82% 20%,
+            rgba(240, 189, 47, 0.15) 0%,
+            transparent 20%
+          ),
+          radial-gradient(
+            circle at 82% 20%,
+            rgba(240, 189, 47, 0.07) 0%,
+            transparent 10%
+          ),
+          /* Agritech grid overlay — subtle circuit board feel */
+          repeating-linear-gradient(
+              90deg,
+              rgba(255, 255, 255, 0.05) 0px,
+              rgba(255, 255, 255, 0.05) 1.5px,
+              transparent 1.5px,
+              transparent 34px
+            ),
+          repeating-linear-gradient(
+            0deg,
+            rgba(255, 255, 255, 0.05) 0px,
+            rgba(255, 255, 255, 0.05) 1.5px,
+            transparent 1.5px,
+            transparent 34px
+          ),
+          /* Farm field / rice terrace patterns */
+          repeating-linear-gradient(
+              160deg,
+              #1a7a3a 0px,
+              #2d9a4e 22px,
+              #b89428 22px,
+              #d4a830 36px,
+              #2d9a4e 36px,
+              #1a7a3a 58px,
+              #3a8a4e 58px,
+              #5aaa6e 78px,
+              #7ac08a 78px,
+              #6ab07a 100px
+            ),
+          /* Sky-to-field atmospheric gradient */
+          linear-gradient(
+              175deg,
+              #0a1f12 0%,
+              #143823 20%,
+              #1f5432 40%,
+              #2d7a48 60%,
+              #4a9e5e 78%,
+              #6ab87a 100%
+            );
+      }
+
+      /* Satellite dish shape */
+      .about-large::before {
+        content: "";
+        position: absolute;
+        top: 14%;
+        right: 10%;
+        width: 66px;
+        height: 50px;
+        border: 3px solid rgba(240, 189, 47, 0.5);
+        border-bottom: none;
+        border-radius: 50%/50% 50% 0 0;
+        box-shadow:
+          0 0 0 12px rgba(240, 189, 47, 0.06),
+          0 0 0 28px rgba(240, 189, 47, 0.04),
+          0 0 0 48px rgba(240, 189, 47, 0.02);
+      }
+
+      /* Drone / AI node with connection lines */
+      .about-large::after {
+        content: "";
+        position: absolute;
+        bottom: 22%;
+        left: 8%;
+        width: 50px;
+        height: 50px;
+        border: 2px solid rgba(240, 189, 47, 0.25);
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 50% 50%,
+          rgba(240, 189, 47, 0.12) 0%,
+          transparent 70%
+        );
+        box-shadow:
+          0 0 0 8px rgba(7, 138, 70, 0.15),
+          30px -20px 0 -6px rgba(240, 189, 47, 0.12),
+          -20px 30px 0 -4px rgba(240, 189, 47, 0.08);
+      }
+
+      .about-small {
+        right: 0;
+        bottom: 0;
+        width: 245px;
+        height: 220px;
+        overflow: hidden;
+        background:
+          /* Glowing AI neural network nodes */
+          radial-gradient(
+            circle at 25% 35%,
+            rgba(240, 189, 47, 0.95) 5px,
+            transparent 7px
+          ),
+          radial-gradient(
+            circle at 50% 22%,
+            rgba(240, 189, 47, 0.7) 4px,
+            transparent 6px
+          ),
+          radial-gradient(
+            circle at 72% 38%,
+            rgba(240, 189, 47, 0.8) 5px,
+            transparent 7px
+          ),
+          radial-gradient(
+            circle at 38% 58%,
+            rgba(240, 189, 47, 0.6) 3px,
+            transparent 5px
+          ),
+          radial-gradient(
+            circle at 62% 68%,
+            rgba(240, 189, 47, 0.75) 4px,
+            transparent 6px
+          ),
+          radial-gradient(
+            circle at 82% 70%,
+            rgba(240, 189, 47, 0.5) 3px,
+            transparent 5px
+          ),
+          /* Tech circuit lines */
+          linear-gradient(
+              38deg,
+              transparent 0%,
+              rgba(240, 189, 47, 0.08) 30%,
+              transparent 50%
+            ),
+          linear-gradient(
+            -52deg,
+            transparent 20%,
+            rgba(240, 189, 47, 0.06) 45%,
+            transparent 70%
+          ),
+          /* AI glow */
+          radial-gradient(
+              circle at 50% 40%,
+              rgba(7, 138, 70, 0.3) 0%,
+              transparent 60%
+            ),
+          /* Base */
+          linear-gradient(
+              145deg,
+              #0a2b1a,
+              #0f4a2e 30%,
+              #078a46 70%,
+              #0a6b35 100%
+            );
+      }
+
+      /* Satellite orbit arc on the small panel */
+      .about-small::before {
+        content: "";
+        position: absolute;
+        inset: 12%;
+        border: 1.5px dashed rgba(240, 189, 47, 0.2);
+        border-radius: 50%;
+        transform: rotateX(65deg);
+      }
+
+      /* Crosshair / targeting reticle for satellite tech */
+      .about-small::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 40px;
+        height: 40px;
+        transform: translate(-50%, -50%);
+        border: 1.5px solid rgba(240, 189, 47, 0.15);
+        border-radius: 50%;
+        box-shadow:
+          0 -16px 0 -1px rgba(240, 189, 47, 0.08),
+          0 16px 0 -1px rgba(240, 189, 47, 0.08),
+          -16px 0 0 -1px rgba(240, 189, 47, 0.08),
+          16px 0 0 -1px rgba(240, 189, 47, 0.08);
+      }
+
+      .years {
+        position: absolute;
+        left: 22px;
+        bottom: 32px;
+        border-radius: var(--radius);
+        background: var(--green);
+        color: var(--white);
+        padding: 18px;
+        box-shadow: var(--shadow);
+      }
+
+      .years b {
+        font-size: 42px;
+        line-height: 1;
+        display: block;
+      }
+
+      .feature-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 24px;
+      }
+
+      .feature-pill {
+        border: 1px solid var(--line);
+        background: var(--white);
+        border-radius: var(--radius);
+        padding: 16px;
+      }
+
+      .feature-pill b {
+        color: var(--green-dark);
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .feature-pill span {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .features {
+        background: var(--white);
+      }
+
+      .filter-bar {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 28px;
+      }
+
+      .filter-btn {
+        border: 1px solid rgba(7, 138, 70, 0.18);
+        background: var(--white);
+        color: var(--green-dark);
+        border-radius: 999px;
+        padding: 10px 14px;
+        font-weight: 850;
+      }
+
+      .filter-btn.active {
+        color: var(--white);
+        background: var(--green);
+      }
+
+      .service-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .service-card {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 22px;
+        background: var(--paper);
+        min-height: 240px;
+        display: grid;
+        align-content: start;
+        gap: 12px;
+        transition:
+          transform 160ms ease,
+          box-shadow 160ms ease,
+          border-color 160ms ease;
+      }
+
+      .service-card:hover,
+      .service-card:focus-within {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow);
+        border-color: rgba(7, 138, 70, 0.26);
+      }
+
+      .service-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 6px;
+        display: grid;
+        place-items: center;
+        background: var(--green-soft);
+        color: var(--green);
+        font-weight: 900;
+      }
+
+      .service-card h3 {
+        margin: 0;
+        color: var(--green-dark);
+        font-size: 20px;
+      }
+
+      .service-card p {
+        color: var(--muted);
+        margin: 0;
+      }
+
+      .service-card button {
+        justify-self: start;
+        border: 0;
+        background: transparent;
+        color: var(--green);
+        padding: 0;
+        font-weight: 900;
+      }
+
+      .panel-row {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 22px;
+        align-items: stretch;
+      }
+
+      .interactive-table,
+      .detail-panel,
+      .roi-panel,
+      .testimonial-panel,
+      .contact-card {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--white);
+        box-shadow: 0 10px 26px rgba(20, 45, 31, 0.07);
+      }
+
+      .interactive-table {
+        overflow: hidden;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 15px 16px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--green-dark);
+        background: var(--green-soft);
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      tr.module-row {
+        cursor: pointer;
+      }
+
+      tr.module-row:hover,
+      tr.module-row.active {
+        background: #fff8e2;
+      }
+
+      .status-badge {
+        display: inline-flex;
+        border-radius: 999px;
+        padding: 5px 8px;
+        background: var(--green-soft);
+        color: var(--green-dark);
+        font-weight: 850;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .detail-panel {
+        padding: 22px;
+        display: grid;
+        align-content: start;
+        gap: 14px;
+      }
+
+      .detail-panel h3 {
+        color: var(--green-dark);
+        margin-bottom: 0;
+      }
+
+      .detail-metric {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .metric-box {
+        border-radius: var(--radius);
+        padding: 14px;
+        background: var(--green-soft);
+      }
+
+      .metric-box b {
+        display: block;
+        color: var(--green);
+        font-size: 23px;
+        line-height: 1.1;
+      }
+
+      .metric-box span {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .why {
+        background:
+          linear-gradient(180deg, rgba(4, 77, 42, 0.94), rgba(4, 77, 42, 0.9)),
+          radial-gradient(
+            circle at 20% 20%,
+            rgba(240, 189, 47, 0.24),
+            transparent 28%
+          );
+        color: var(--white);
+      }
+
+      .why h2,
+      .why .section-kicker {
+        color: var(--white);
+      }
+
+      .why .section-head p {
+        color: #d5efe0;
+      }
+
+      .why-list {
+        display: grid;
+        gap: 14px;
+      }
+
+      .why-item {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 14px;
+        align-items: start;
+        padding: 16px;
+        border-radius: var(--radius);
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+      }
+
+      .why-number {
+        width: 34px;
+        height: 34px;
+        border-radius: 6px;
+        display: grid;
+        place-items: center;
+        color: var(--green-dark);
+        background: var(--gold);
+        font-weight: 900;
+      }
+
+      .why-item b {
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      .why-item span {
+        color: #d5efe0;
+      }
+
+      .roi-panel {
+        padding: 22px;
+        color: var(--ink);
+      }
+
+      .roi-panel h3 {
+        color: var(--green-dark);
+        margin-bottom: 8px;
+      }
+
+      .roi-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin: 16px 0;
+      }
+
+      label {
+        display: grid;
+        gap: 7px;
+        color: var(--green-dark);
+        font-weight: 850;
+        font-size: 13px;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 12px;
+        background: #ffffff;
+        color: var(--ink);
+      }
+
+      textarea {
+        resize: vertical;
+        min-height: 110px;
+      }
+
+      .roi-output {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .roi-output div {
+        border-radius: var(--radius);
+        padding: 14px;
+        background: #fff8e2;
+        border: 1px solid rgba(240, 189, 47, 0.35);
+      }
+
+      .roi-output b {
+        display: block;
+        color: var(--maroon);
+        font-size: 22px;
+      }
+
+      .cta-band {
+        border-radius: var(--radius);
+        padding: 44px;
+        background:
+          linear-gradient(90deg, rgba(7, 138, 70, 0.96), rgba(4, 77, 42, 0.96)),
+          radial-gradient(
+            circle at 82% 30%,
+            rgba(240, 189, 47, 0.28),
+            transparent 30%
+          );
+        color: var(--white);
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 24px;
+        align-items: center;
+      }
+
+      .cta-band h2 {
+        color: var(--white);
+        margin-bottom: 8px;
+      }
+
+      .cta-band p {
+        color: #dcf4e6;
+        margin-bottom: 0;
+        max-width: 680px;
+      }
+
+      .testimonials {
+        background: var(--white);
+      }
+
+      .testimonial-grid {
+        display: grid;
+        grid-template-columns: 0.85fr 1.15fr;
+        gap: 22px;
+        align-items: stretch;
+      }
+
+      .testimonial-tabs {
+        display: grid;
+        gap: 10px;
+      }
+
+      .testimonial-tabs button {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 16px;
+        background: var(--paper);
+        text-align: left;
+        font-weight: 850;
+        color: var(--green-dark);
+      }
+
+      .testimonial-tabs button.active {
+        background: var(--green);
+        color: var(--white);
+        border-color: var(--green);
+      }
+
+      .testimonial-panel {
+        padding: 28px;
+        display: grid;
+        align-content: center;
+        min-height: 280px;
+      }
+
+      .quote {
+        font-size: 24px;
+        color: var(--green-dark);
+        line-height: 1.35;
+      }
+
+      .quote-name {
+        margin-top: 18px;
+        color: var(--muted);
+        font-weight: 850;
+      }
+
+      .faq-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .faq-item {
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--white);
+        overflow: hidden;
+      }
+
+      .faq-question {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        padding: 18px 20px;
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        color: var(--green-dark);
+        font-weight: 900;
+        text-align: left;
+      }
+
+      .faq-answer {
+        display: none;
+        padding: 0 20px 18px;
+        color: var(--muted);
+      }
+
+      .faq-item.open .faq-answer {
+        display: block;
+      }
+
+      .contact-grid {
+        display: grid;
+        grid-template-columns: 0.85fr 1.15fr;
+        gap: 22px;
+      }
+
+      .contact-card {
+        padding: 24px;
+      }
+
+      .contact-card h3 {
+        color: var(--green-dark);
+        margin-bottom: 8px;
+      }
+
+      .contact-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 20px;
+      }
+
+      .contact-line {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 12px;
+        align-items: start;
+        color: var(--muted);
+      }
+
+      .contact-dot {
+        width: 30px;
+        height: 30px;
+        border-radius: 6px;
+        background: var(--green-soft);
+        color: var(--green);
+        display: grid;
+        place-items: center;
+        font-weight: 900;
+      }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .form-grid .full {
+        grid-column: 1 / -1;
+      }
+
+      .form-note {
+        color: var(--green);
+        font-weight: 850;
+        min-height: 24px;
+        margin-top: 10px;
+      }
+
+      footer {
+        background: #13251b;
+        color: #dce8df;
+        padding: 46px 22px 24px;
+      }
+
+      .footer-grid {
+        max-width: 1180px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr 0.8fr;
+        gap: 28px;
+      }
+
+      .footer-logo {
+        width: 180px;
+        border-radius: 6px;
+        background: var(--white);
+        padding: 6px;
+        margin-bottom: 16px;
+      }
+
+      footer h3 {
+        color: var(--white);
+        margin-bottom: 12px;
+      }
+
+      footer a {
+        display: block;
+        color: #dce8df;
+        margin-bottom: 8px;
+      }
+
+      .copyright {
+        max-width: 1180px;
+        margin: 28px auto 0;
+        padding-top: 20px;
+        border-top: 1px solid rgba(255, 255, 255, 0.12);
+        color: #a9b8ae;
+        font-size: 13px;
+      }
+
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 50;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 22px;
+        background: rgba(11, 24, 17, 0.62);
+      }
+
+      .modal-backdrop.open {
+        display: flex;
+      }
+
+      .modal {
+        width: min(560px, 100%);
+        border-radius: var(--radius);
+        padding: 24px;
+        background: var(--white);
+        box-shadow: var(--shadow);
+      }
+
+      .modal h3 {
+        color: var(--green-dark);
+        margin-bottom: 8px;
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      @media (max-width: 980px) {
+        .hero-grid,
+        .about-grid,
+        .why-grid,
+        .panel-row,
+        .testimonial-grid,
+        .contact-grid,
+        .cta-band,
+        .footer-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          padding-top: 46px;
+        }
+
+        .hero-visual {
+          grid-template-columns: 1.2fr 1fr;
+        }
+
+        .service-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      @media (max-width: 760px) {
+        .nav {
+          align-items: flex-start;
+        }
+
+        .menu-toggle {
+          display: inline-flex;
+        }
+
+        .nav-links {
+          display: none;
+          width: 100%;
+          order: 3;
+          justify-content: flex-start;
+        }
+
+        .nav-links.open {
+          display: flex;
+        }
+
+        .nav-action {
+          display: none;
+        }
+
+        .nav {
+          flex-wrap: wrap;
+        }
+
+        .brand {
+          min-width: auto;
+        }
+
+        .brand-logo {
+          width: 96px;
+        }
+
+        .hero h1 {
+          font-size: 42px;
+        }
+
+        .hero-stats,
+        .feature-list,
+        .service-grid,
+        .roi-grid,
+        .roi-output,
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-visual {
+          grid-template-columns: 1fr;
+          grid-template-rows: auto auto auto;
+        }
+
+        .hero-photo-main {
+          grid-row: auto;
+          min-height: 260px;
+        }
+
+        .hero-photo-main img {
+          width: 64%;
+        }
+
+        .dashboard-card {
+          min-height: auto;
+        }
+
+        .field-rows {
+          min-height: 100px;
+        }
+
+        th:nth-child(3),
+        td:nth-child(3) {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="top-strip">
+      <span
+        ><strong>Bizra Farms Integrated</strong> presents EconomicBridge:
+        satellite intelligence for food security, aid delivery, and resilient
+        farming.</span
+      >
+    </div>
+
+    <header class="site-header">
+      <nav class="nav" aria-label="Main navigation">
+        <a class="brand" href="#home" aria-label="Bizra Farms Integrated home">
+          <img
+            class="brand-logo"
+            src="bizra-logo.jpg"
+            alt="Bizra Farms Integrated Nigeria Limited logo"
+          />
+          <span class="brand-text">
+            <b>Bizra Farms Integrated</b>
+            <span>Planting the seeds of tomorrow</span>
+          </span>
+        </a>
+        <button
+          class="menu-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="navLinks"
+        >
+          Menu
+        </button>
+        <div class="nav-links" id="navLinks">
+          <a href="#home">Home</a>
+          <a href="#about">About</a>
+          <a href="#features">Features</a>
+          <a href="#platform">Platform</a>
+          <a href="#impact">Impact</a>
+          <a href="#contact">Contact</a>
+        </div>
+        <a class="nav-action" href="#contact">Contact Us</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" id="home">
+        <div class="hero-grid">
+          <div>
+            <div class="eyebrow">Sustainable agriculture intelligence</div>
+            <h1>
+              Revolutionizing the agricultural value chain with
+              <span>EconomicBridge</span>
+            </h1>
+            <p class="hero-copy">
+              Bizra Farms Integrated Nigeria Limited combines precision
+              agriculture, AI, satellite mapping, and field-ready decision tools
+              to help governments, NGOs, food-security partners, and farmers
+              detect risk earlier and protect livelihoods faster.
+            </p>
+            <div class="hero-actions">
+              <a class="btn btn-primary" href="#features">Explore Features</a>
+              <button
+                class="btn btn-secondary"
+                type="button"
+                data-open-modal="brief"
+              >
+                View Pilot Brief
+              </button>
+            </div>
+            <div
+              class="hero-stats"
+              aria-label="EconomicBridge coverage highlights"
+            >
+              <div class="stat-tile">
+                <b>52</b>
+                <span
+                  >West African administrative units designed for coverage</span
+                >
+              </div>
+              <div class="stat-tile">
+                <b>7</b>
+                <span>Integrated intelligence modules</span>
+              </div>
+              <div class="stat-tile">
+                <b>24-72h</b>
+                <span>Target early-warning window</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-visual" aria-label="EconomicBridge visual preview">
+            <div class="photo-card hero-photo-main">
+              <img
+                src="bizra-logo.jpg"
+                alt="Bizra Farms Integrated Nigeria Limited"
+              />
+            </div>
+            <div class="photo-card field-rows" aria-hidden="true"></div>
+            <div class="photo-card dashboard-card">
+              <div class="dash-title">
+                <span>EconomicBridge Live</span>
+                <span class="live-dot">ONLINE</span>
+              </div>
+              <div class="mini-map" aria-hidden="true"></div>
+              <div class="dash-row">
+                <span>Priority alert</span>
+                <b>Farmland risk</b>
+              </div>
+              <div class="dash-row">
+                <span>Satellite feeds</span>
+                <b>SAR + NDVI</b>
+              </div>
+              <div class="dash-row">
+                <span>Response mode</span>
+                <b>SMS ready</b>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="about">
+        <div class="wrap about-grid">
+          <div class="about-media" aria-hidden="true">
+            <div class="about-block about-large"></div>
+            <div class="about-block about-small"></div>
+            <div class="years">
+              <b>5+</b>
+              Years of agribusiness excellence
+            </div>
+          </div>
+          <div>
+            <div class="section-kicker">About Us</div>
+            <h2>From sustainable farming to satellite-powered resilience</h2>
+            <p>
+              Bizra Farms Integrated Nigeria Limited is an agribusiness company
+              focused on precision farming, sustainable food systems, smart
+              distribution, and technology-enabled agriculture. EconomicBridge
+              extends that mission into AI and satellite intelligence for aid
+              delivery, climate adaptation, and rural economic opportunity.
+            </p>
+            <div class="feature-list">
+              <div class="feature-pill">
+                <b>Precision Farming</b>
+                <span
+                  >Data-guided crop decisions, field monitoring, and yield
+                  protection.</span
+                >
+              </div>
+              <div class="feature-pill">
+                <b>Satellite Intelligence</b>
+                <span
+                  >Sentinel, FIRMS, VIIRS, World Bank, and open-data
+                  pipelines.</span
+                >
+              </div>
+              <div class="feature-pill">
+                <b>Aid Coordination</b>
+                <span
+                  >Coverage gaps, duplication signals, and response
+                  planning.</span
+                >
+              </div>
+              <div class="feature-pill">
+                <b>Farmer Alerts</b>
+                <span
+                  >SMS-ready warnings for conflict, flood, drought, and crop
+                  threats.</span
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section features" id="features">
+        <div class="wrap">
+          <div class="section-head center-head">
+            <div class="section-kicker">Our Expertise</div>
+            <h2>Smart agriculture services plus EconomicBridge intelligence</h2>
+            <p>
+              Choose a category to see how Bizra's agricultural work connects
+              with the EconomicBridge platform.
+            </p>
+          </div>
+
+          <div class="filter-bar" role="tablist" aria-label="Feature filters">
+            <button class="filter-btn active" type="button" data-filter="all">
+              All
+            </button>
+            <button class="filter-btn" type="button" data-filter="farm">
+              Agriculture
+            </button>
+            <button class="filter-btn" type="button" data-filter="satellite">
+              Satellite
+            </button>
+            <button class="filter-btn" type="button" data-filter="response">
+              Response
+            </button>
+          </div>
+
+          <div class="service-grid" id="serviceGrid">
+            <article class="service-card" data-category="farm">
+              <div class="service-icon">01</div>
+              <h3>Rice Farming</h3>
+              <p>
+                Large-scale, quality-focused rice production supported by field
+                data and modern farm management.
+              </p>
+              <button type="button" data-open-modal="rice">Learn more</button>
+            </article>
+            <article class="service-card" data-category="farm">
+              <div class="service-icon">02</div>
+              <h3>Animal Feed</h3>
+              <p>
+                Organic feed systems and agricultural by-product value chains
+                that reduce waste and improve productivity.
+              </p>
+              <button type="button" data-open-modal="feed">Learn more</button>
+            </article>
+            <article class="service-card" data-category="farm">
+              <div class="service-icon">03</div>
+              <h3>Sustainable Storage</h3>
+              <p>
+                Storage and distribution planning for freshness, lower
+                post-harvest loss, and reliable market access.
+              </p>
+              <button type="button" data-open-modal="storage">
+                Learn more
+              </button>
+            </article>
+            <article class="service-card" data-category="satellite">
+              <div class="service-icon">04</div>
+              <h3>Farmland Protection</h3>
+              <p>
+                Satellite-backed monitoring for encroachment signals, conflict
+                risk, and livelihoods at risk.
+              </p>
+              <button type="button" data-open-modal="farmland">
+                Learn more
+              </button>
+            </article>
+            <article class="service-card" data-category="satellite">
+              <div class="service-icon">05</div>
+              <h3>CropGuard</h3>
+              <p>
+                Crop disease intelligence combining AI image analysis, NDVI
+                anomaly detection, and price awareness.
+              </p>
+              <button type="button" data-open-modal="cropguard">
+                Learn more
+              </button>
+            </article>
+            <article class="service-card" data-category="response">
+              <div class="service-icon">06</div>
+              <h3>ShockGuard</h3>
+              <p>
+                Flood, drought, and heat early-warning workflows for responders
+                and vulnerable communities.
+              </p>
+              <button type="button" data-open-modal="shockguard">
+                Learn more
+              </button>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="platform">
+        <div class="wrap">
+          <div class="section-head">
+            <div class="section-kicker">EconomicBridge Platform</div>
+            <h2>Click each module to see what it provides</h2>
+            <p>
+              This interactive table is a future website component: each row
+              updates the module detail panel and gives visitors clear,
+              partner-facing content.
+            </p>
+          </div>
+
+          <div class="panel-row">
+            <div class="interactive-table">
+              <table aria-label="EconomicBridge module table">
+                <thead>
+                  <tr>
+                    <th>Module</th>
+                    <th>Primary users</th>
+                    <th>Core data</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="moduleRows"></tbody>
+              </table>
+            </div>
+            <aside
+              class="detail-panel"
+              id="moduleDetail"
+              aria-live="polite"
+            ></aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="section why" id="impact">
+        <div class="wrap why-grid">
+          <div>
+            <div class="section-head">
+              <div class="section-kicker">
+                Why Choose Bizra Farms Integrated?
+              </div>
+              <h2>
+                Built for agriculture, food security, and real field action
+              </h2>
+              <p>
+                EconomicBridge is not only a dashboard. It is a decision bridge
+                between satellites, local evidence, and the field teams who need
+                to act quickly.
+              </p>
+            </div>
+            <div class="why-list">
+              <div class="why-item">
+                <div class="why-number">1</div>
+                <div>
+                  <b>Early warning for vulnerable communities</b
+                  ><span
+                    >Detects risk patterns before losses become
+                    irreversible.</span
+                  >
+                </div>
+              </div>
+              <div class="why-item">
+                <div class="why-number">2</div>
+                <div>
+                  <b>Better aid targeting</b
+                  ><span
+                    >Helps institutions identify coverage gaps, duplication, and
+                    priority locations.</span
+                  >
+                </div>
+              </div>
+              <div class="why-item">
+                <div class="why-number">3</div>
+                <div>
+                  <b>Auditable and partner-ready</b
+                  ><span
+                    >Designed for multi-tenant access, compliance, and
+                    responsible data sharing.</span
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="roi-panel">
+            <h3>Impact Estimator</h3>
+            <p>
+              Adjust the pilot values to estimate the first wave of people and
+              farms EconomicBridge can help monitor.
+            </p>
+            <div class="roi-grid">
+              <label>
+                Pilot regions
+                <input
+                  id="regionsInput"
+                  type="number"
+                  min="1"
+                  max="52"
+                  value="10"
+                />
+              </label>
+              <label>
+                LGAs or districts per region
+                <input
+                  id="lgaInput"
+                  type="number"
+                  min="1"
+                  max="80"
+                  value="24"
+                />
+              </label>
+              <label>
+                Average farming households
+                <input
+                  id="householdInput"
+                  type="number"
+                  min="100"
+                  step="100"
+                  value="4200"
+                />
+              </label>
+              <label>
+                Alert reach rate
+                <select id="reachInput">
+                  <option value="0.25">25% starter reach</option>
+                  <option value="0.4" selected>40% partner reach</option>
+                  <option value="0.65">65% scaled reach</option>
+                </select>
+              </label>
+            </div>
+            <div class="roi-output">
+              <div><b id="monitoredOut">240</b><span>LGAs monitored</span></div>
+              <div>
+                <b id="householdsOut">1.0M</b><span>households mapped</span>
+              </div>
+              <div>
+                <b id="alertsOut">403K</b
+                ><span>alert-reachable households</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="wrap">
+          <div class="cta-band">
+            <div>
+              <h2>Join the agricultural intelligence revolution</h2>
+              <p>
+                Use EconomicBridge to connect precision farming, climate
+                resilience, aid coordination, and local response into one
+                practical operating system.
+              </p>
+            </div>
+            <a class="btn btn-secondary" href="#contact">Start Partnership</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section testimonials">
+        <div class="wrap">
+          <div class="section-head center-head">
+            <div class="section-kicker">Testimonials</div>
+            <h2>Messages for the partners this platform is built to serve</h2>
+            <p>
+              Use the buttons to switch testimonial perspectives for future
+              campaign pages.
+            </p>
+          </div>
+          <div class="testimonial-grid">
+            <div class="testimonial-tabs" id="testimonialTabs"></div>
+            <div class="testimonial-panel">
+              <p class="quote" id="quoteText"></p>
+              <div class="quote-name" id="quoteName"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="wrap">
+          <div class="section-head center-head">
+            <div class="section-kicker">Questions</div>
+            <h2>What the website should answer for visitors</h2>
+          </div>
+          <div class="faq-grid">
+            <div class="faq-item open">
+              <button class="faq-question" type="button">
+                Is EconomicBridge only for farms?<span>+</span>
+              </button>
+              <div class="faq-answer">
+                No. It starts from agriculture and livelihoods, but it also
+                serves NGOs, state agencies, UN-style partners, researchers, and
+                disaster-response teams.
+              </div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-question" type="button">
+                Can the platform work before all paid data keys are
+                available?<span>+</span>
+              </button>
+              <div class="faq-answer">
+                Yes. The current architecture uses keyless open data where
+                possible and can add paid satellite or national-statistics feeds
+                as credentials become available.
+              </div>
+            </div>
+            <div class="faq-item">
+              <button class="faq-question" type="button">
+                What makes it sustainable?<span>+</span>
+              </button>
+              <div class="faq-answer">
+                It reduces waste, improves targeting, strengthens early warning,
+                and helps institutions act before crops, income, and lives are
+                lost.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="contact">
+        <div class="wrap contact-grid">
+          <div class="contact-card">
+            <div class="section-kicker">Contact Us</div>
+            <h2>Bring EconomicBridge to your region</h2>
+            <p>
+              Fill in your details and interest area — our team will follow up
+              to discuss a pilot or partnership.
+            </p>
+            <div class="contact-list">
+              <div class="contact-line">
+                <div class="contact-dot">B</div>
+                <div>
+                  <b>Bizra Farms Integrated Nigeria Limited</b><br />AI,
+                  satellite mapping, and sustainable agriculture.
+                </div>
+              </div>
+              <div class="contact-line">
+                <div class="contact-dot">E</div>
+                <div>
+                  <b>EconomicBridge</b><br />Food security, aid delivery, and
+                  rural resilience intelligence.
+                </div>
+              </div>
+              <div class="contact-line">
+                <div class="contact-dot">W</div>
+                <div>
+                  <b>West Africa first</b><br />Nigeria, Ghana, Senegal, and
+                  ECOWAS-ready expansion.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <form class="contact-card" id="contactForm">
+            <div class="form-grid">
+              <label>
+                Name
+                <input name="name" required placeholder="Your full name" />
+              </label>
+              <label>
+                Organisation
+                <input
+                  name="organisation"
+                  required
+                  placeholder="Agency, farm, NGO, ministry"
+                />
+              </label>
+              <label>
+                Interest
+                <select name="interest">
+                  <option>Farmland Protection pilot</option>
+                  <option>CropGuard disease monitoring</option>
+                  <option>ShockGuard early warning</option>
+                  <option>Aid coordination dashboard</option>
+                  <option>Full EconomicBridge partnership</option>
+                </select>
+              </label>
+              <label>
+                Region
+                <input
+                  name="region"
+                  placeholder="State, country, or ECOWAS region"
+                />
+              </label>
+              <label class="full">
+                Message
+                <textarea
+                  name="message"
+                  placeholder="Tell us the communities, crops, or risks you want to monitor."
+                ></textarea>
+              </label>
+            </div>
+            <button class="btn btn-primary" type="submit">
+              Prepare Inquiry
+            </button>
+            <div class="form-note" id="formNote" aria-live="polite"></div>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-grid">
+        <div>
+          <img
+            class="footer-logo"
+            src="bizra-logo.jpg"
+            alt="Bizra Farms Integrated Nigeria Limited logo"
+          />
+          <p>
+            Committed to sustainable agriculture, intelligent aid delivery, and
+            resilient rural economies through Bizra Farms Integrated and
+            EconomicBridge.
+          </p>
+        </div>
+        <div>
+          <h3>Navigation</h3>
+          <a href="#about">About</a>
+          <a href="#features">Services</a>
+          <a href="#platform">EconomicBridge</a>
+          <a href="#contact">Contact</a>
+        </div>
+        <div>
+          <h3>Key Phrases</h3>
+          <a href="#features">Precision Farming</a>
+          <a href="#platform">Satellite Intelligence</a>
+          <a href="#impact">Sustainable Practices</a>
+          <a href="#contact">Agri-Tech Innovation</a>
+        </div>
+      </div>
+      <div class="copyright">
+        Copyright Bizra Farms Integrated Nigeria Limited, 2026. All rights
+        reserved.
+      </div>
+    </footer>
+
+    <div
+      class="modal-backdrop"
+      id="modalBackdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modalTitle"
+    >
+      <div class="modal">
+        <h3 id="modalTitle">EconomicBridge Pilot Brief</h3>
+        <p id="modalText"></p>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" type="button" id="copyBriefBtn">
+            Copy brief
+          </button>
+          <button class="btn btn-primary" type="button" id="closeModalBtn">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const moduleData = [
+        {
+          id: "visibility",
+          module: "Economic Visibility",
+          users: "NGOs, ministries, researchers",
+          data: "WorldPop, nightlights, poverty indicators",
+          status: "Live-ready",
+          headline: "Make invisible communities visible.",
+          body: "Maps vulnerable settlements, household pressure, poverty intensity, and service gaps so partners can target support with evidence.",
+          metricA: "3,000+",
+          metricALabel: "villages targetable",
+          metricB: "LGA",
+          metricBLabel: "decision level",
+        },
+        {
+          id: "aid",
+          module: "Aid Coordination",
+          users: "WFP-style partners, NGOs, state agencies",
+          data: "Agency coverage, HAPI/HDX, local partner records",
+          status: "Pilot",
+          headline: "Reduce aid gaps and duplication.",
+          body: "Shows who is serving which communities, where no agency is present, and where overlapping programs should coordinate.",
+          metricA: "10",
+          metricALabel: "pilot regions",
+          metricB: "Gap",
+          metricBLabel: "detection",
+        },
+        {
+          id: "farmland",
+          module: "Farmland Protection",
+          users: "Farmers, state teams, mediators",
+          data: "Sentinel-1 SAR, heat, alerts, field reports",
+          status: "Priority",
+          headline: "Protect land, crops, and livelihoods.",
+          body: "Detects conflict-risk patterns, encroachment signals, and economic value at risk before tensions become large losses.",
+          metricA: "24-72h",
+          metricALabel: "warning window",
+          metricB: "SAR",
+          metricBLabel: "all-weather",
+        },
+        {
+          id: "cropguard",
+          module: "CropGuard",
+          users: "Farmers, extension officers, food-security teams",
+          data: "Leaf images, NDVI, crop prices, disease model",
+
+          status: "Trained",
+          headline: "Spot disease and market pressure earlier.",
+          body: "Combines crop disease prediction, vegetation anomaly detection, and price intelligence for intervention planning.",
+          metricA: "AI",
+          metricALabel: "disease check",
+          metricB: "NDVI",
+          metricBLabel: "health signal",
+        },
+        {
+          id: "shockguard",
+          module: "ShockGuard",
+          users: "Disaster teams, NGOs, local authorities",
+          data: "Flood, drought, rainfall, SAR, alerts",
+          status: "Pilot",
+          headline: "Turn climate risk into action.",
+          body: "Supports flood and drought early warning so responders can prioritize communities before a shock peaks.",
+          metricALabel: "detector",
+          metricB: "SMS",
+          metricBLabel: "response path",
+        },
+        {
+          id: "mobility",
+          module: "Mobility Compass",
+          users: "Development planners, donors, governments",
+          data: "World Bank income, cost-of-living, displacement capacity",
+          status: "Live anchor",
+          headline: "Map opportunity, not only risk.",
+          body: "Shows where households have better income mobility, affordability, and capacity to absorb displacement pressure.",
+          metricA: "USD",
+          metricALabel: "cross-country",
+          metricB: "NGN",
+          metricBLabel: "Nigeria view",
+        },
+        {
+          id: "skills",
+          module: "SkillsBridge",
+          users: "Education partners, youth programs, donors",
+          data: "Connectivity, school density, youth population",
+          status: "Pilot",
+          headline: "Connect skills to real opportunity.",
+          body: "Identifies where digital learning and remote-work access should land first for underserved youth.",
+          metricA: "Youth",
+          metricALabel: "opportunity",
+          metricB: "Signal",
+          metricBLabel: "coverage",
+        },
+      ];
+
+      const modalContent = {
+        brief: {
+          title: "EconomicBridge Pilot Brief",
+          text: "EconomicBridge is Bizra Farms Integrated Nigeria Limited's AI and satellite intelligence platform for food security, farmland protection, disaster warning, aid coordination, and rural opportunity mapping across Nigeria and ECOWAS.",
+        },
+        rice: {
+          title: "Rice Farming",
+          text: "Bizra Farms supports quality rice production with data-informed farming, storage planning, and market-aware agricultural operations.",
+        },
+        feed: {
+          title: "Animal Feed",
+          text: "Animal feed work turns agricultural value-chain knowledge into practical nutrition inputs for resilient farming communities.",
+        },
+        storage: {
+          title: "Sustainable Storage",
+          text: "Smart storage reduces post-harvest loss and supports better distribution timing for farmers, processors, and buyers.",
+        },
+        farmland: {
+          title: "Farmland Protection",
+          text: "Farmland Protection uses satellite layers, conflict signals, and livelihood-risk indicators to help partners intervene early.",
+        },
+        cropguard: {
+          title: "CropGuard",
+          text: "CropGuard helps identify crop disease pressure, vegetation stress, and crop-price movements for food-security planning.",
+        },
+        shockguard: {
+          title: "ShockGuard",
+          text: "ShockGuard supports early warning for flood, drought, and climate shocks with maps, alerts, and response-ready summaries.",
+        },
+      };
+
+      const testimonials = [
+        {
+          label: "Farmer Cooperative",
+          quote:
+            "A platform like EconomicBridge helps us see risk before the season is lost. It brings satellite intelligence closer to farmers.",
+          name: "Pilot message for farmer groups",
+        },
+        {
+          label: "Aid Partner",
+          quote:
+            "The value is the combination of poverty visibility, aid coverage, and disaster warning in one place for faster coordination.",
+          name: "Pilot message for development partners",
+        },
+        {
+          label: "State Agency",
+          quote:
+            "EconomicBridge gives decision-makers a practical view of hotspots, vulnerable communities, and where response should begin.",
+          name: "Pilot message for public-sector teams",
+        },
+      ];
+
+      const navLinks = document.querySelectorAll(".nav-links a");
+      const menuToggle = document.querySelector(".menu-toggle");
+      const navMenu = document.querySelector("#navLinks");
+
+      menuToggle.addEventListener("click", () => {
+        const isOpen = navMenu.classList.toggle("open");
+        menuToggle.setAttribute("aria-expanded", String(isOpen));
+      });
+
+      navLinks.forEach((link) => {
+        link.addEventListener("click", () => {
+          navLinks.forEach((l) => l.classList.remove("active"));
+          link.classList.add("active");
+          navMenu.classList.remove("open");
+          menuToggle.setAttribute("aria-expanded", "false");
+        });
+      });
+
+      const filterButtons = document.querySelectorAll(".filter-btn");
+      const serviceCards = document.querySelectorAll(".service-card");
+      filterButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const filter = button.dataset.filter;
+          filterButtons.forEach((b) => b.classList.remove("active"));
+          button.classList.add("active");
+          serviceCards.forEach((card) => {
+            const show = filter === "all" || card.dataset.category === filter;
+            card.style.display = show ? "grid" : "none";
+          });
+        });
+      });
+
+      const moduleRows = document.querySelector("#moduleRows");
+      const moduleDetail = document.querySelector("#moduleDetail");
+
+      function renderModuleRows() {
+        moduleRows.innerHTML = moduleData
+          .map(
+            (item, index) => `
+        <tr class="module-row ${index === 0 ? "active" : ""}" tabindex="0" data-module="${item.id}">
+          <td><b>${item.module}</b></td>
+          <td>${item.users}</td>
+          <td>${item.data}</td>
+          <td><span class="status-badge">${item.status}</span></td>
+        </tr>
+      `,
+          )
+          .join("");
+        moduleRows.querySelectorAll(".module-row").forEach((row) => {
+          row.addEventListener("click", () => selectModule(row.dataset.module));
+          row.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              selectModule(row.dataset.module);
+            }
+          });
+        });
+      }
+
+      function selectModule(id) {
+        const item = moduleData.find((m) => m.id === id) || moduleData[0];
+        moduleRows.querySelectorAll(".module-row").forEach((row) => {
+          row.classList.toggle("active", row.dataset.module === id);
+        });
+        moduleDetail.innerHTML = `
+        <span class="status-badge">${item.status}</span>
+        <h3>${item.headline}</h3>
+        <p>${item.body}</p>
+        <div class="detail-metric">
+          <div class="metric-box"><b>${item.metricA}</b><span>${item.metricALabel}</span></div>
+          <div class="metric-box"><b>${item.metricB}</b><span>${item.metricBLabel}</span></div>
+        </div>
+        <a class="btn btn-primary" href="#contact">Discuss ${item.module}</a>
+      `;
+      }
+
+      renderModuleRows();
+      selectModule(moduleData[0].id);
+
+      const regionsInput = document.querySelector("#regionsInput");
+      const lgaInput = document.querySelector("#lgaInput");
+      const householdInput = document.querySelector("#householdInput");
+      const reachInput = document.querySelector("#reachInput");
+      const monitoredOut = document.querySelector("#monitoredOut");
+      const householdsOut = document.querySelector("#householdsOut");
+      const alertsOut = document.querySelector("#alertsOut");
+
+      function compactNumber(value) {
+        if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+        if (value >= 1000) return `${Math.round(value / 1000)}K`;
+        return String(Math.round(value));
+      }
+
+      function updateImpact() {
+        const regions = Number(regionsInput.value || 0);
+        const lgas = Number(lgaInput.value || 0);
+        const households = Number(householdInput.value || 0);
+        const reach = Number(reachInput.value || 0);
+        const monitored = regions * lgas;
+        const mapped = monitored * households;
+        monitoredOut.textContent = compactNumber(monitored);
+        householdsOut.textContent = compactNumber(mapped);
+        alertsOut.textContent = compactNumber(mapped * reach);
+      }
+
+      [regionsInput, lgaInput, householdInput, reachInput].forEach((input) => {
+        input.addEventListener("input", updateImpact);
+        input.addEventListener("change", updateImpact);
+      });
+      updateImpact();
+
+      const testimonialTabs = document.querySelector("#testimonialTabs");
+      const quoteText = document.querySelector("#quoteText");
+      const quoteName = document.querySelector("#quoteName");
+
+      function selectTestimonial(index) {
+        const item = testimonials[index];
+        quoteText.textContent = `"${item.quote}"`;
+        quoteName.textContent = item.name;
+        testimonialTabs.querySelectorAll("button").forEach((button, i) => {
+          button.classList.toggle("active", i === index);
+        });
+      }
+
+      testimonialTabs.innerHTML = testimonials
+        .map(
+          (item, index) => `
+      <button type="button" class="${index === 0 ? "active" : ""}" data-testimonial="${index}">${item.label}</button>
+    `,
+        )
+        .join("");
+      testimonialTabs.querySelectorAll("button").forEach((button) => {
+        button.addEventListener("click", () =>
+          selectTestimonial(Number(button.dataset.testimonial)),
+        );
+      });
+      selectTestimonial(0);
+
+      document.querySelectorAll(".faq-question").forEach((button) => {
+        button.addEventListener("click", () => {
+          button.closest(".faq-item").classList.toggle("open");
+        });
+      });
+
+      const modalBackdrop = document.querySelector("#modalBackdrop");
+      const modalTitle = document.querySelector("#modalTitle");
+      const modalText = document.querySelector("#modalText");
+      const closeModalBtn = document.querySelector("#closeModalBtn");
+      const copyBriefBtn = document.querySelector("#copyBriefBtn");
+
+      document.querySelectorAll("[data-open-modal]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const key = button.dataset.openModal;
+          const item = modalContent[key] || modalContent.brief;
+          modalTitle.textContent = item.title;
+          modalText.textContent = item.text;
+          modalBackdrop.classList.add("open");
+        });
+      });
+
+      function closeModal() {
+        modalBackdrop.classList.remove("open");
+      }
+
+      closeModalBtn.addEventListener("click", closeModal);
+      modalBackdrop.addEventListener("click", (event) => {
+        if (event.target === modalBackdrop) closeModal();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") closeModal();
+      });
+      copyBriefBtn.addEventListener("click", async () => {
+        const text = `${modalTitle.textContent}: ${modalText.textContent}`;
+        try {
+          await navigator.clipboard.writeText(text);
+          copyBriefBtn.textContent = "Copied";
+          setTimeout(() => {
+            copyBriefBtn.textContent = "Copy brief";
+          }, 1200);
+        } catch {
+          copyBriefBtn.textContent = "Copy unavailable";
+          setTimeout(() => {
+            copyBriefBtn.textContent = "Copy brief";
+          }, 1200);
+        }
+      });
+
+      const contactForm = document.querySelector("#contactForm");
+      const formNote = document.querySelector("#formNote");
+      contactForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const data = new FormData(contactForm);
+        formNote.textContent = `Inquiry prepared for ${data.get("organisation")}. Connect this form to email/CRM when the site goes live.`;
+        contactForm.reset();
+      });
+    </script>
+  </body>
+</html>
