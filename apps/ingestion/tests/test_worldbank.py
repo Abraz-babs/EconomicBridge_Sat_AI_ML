@@ -206,8 +206,8 @@ def test_compose_anchors_opportunity_to_employment():
         "kebbi", ["Argungu", "Jega"], _anchor(employment_ratio=0.80))
     lo = compose_mobility_indicators(
         "kebbi", ["Argungu", "Jega"], _anchor(employment_ratio=0.40))
-    for h, l in zip(hi, lo):
-        assert h.income_opportunity_score > l.income_opportunity_score
+    for h, lo_row in zip(hi, lo):
+        assert h.income_opportunity_score > lo_row.income_opportunity_score
     assert all(0.6 <= r.income_opportunity_score <= 0.98 for r in hi)
 
 

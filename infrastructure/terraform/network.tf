@@ -136,8 +136,8 @@ resource "aws_route_table" "private" {
 }
 
 resource "aws_route_table_association" "private" {
-  count          = var.az_count
-  subnet_id      = aws_subnet.private[count.index].id
+  count     = var.az_count
+  subnet_id = aws_subnet.private[count.index].id
   # If single NAT, all private subnets share index 0; otherwise pair by AZ index.
   route_table_id = aws_route_table.private[var.single_nat_gateway ? 0 : count.index].id
 }

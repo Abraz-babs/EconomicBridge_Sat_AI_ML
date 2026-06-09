@@ -53,7 +53,7 @@ resource "aws_elasticache_replication_group" "main" {
   transit_encryption_enabled = true
 
   snapshot_retention_limit = 7
-  snapshot_window          = "01:00-02:00"   # UTC, before RDS backups
+  snapshot_window          = "01:00-02:00" # UTC, before RDS backups
   maintenance_window       = "sun:04:30-sun:05:30"
 
   apply_immediately = var.environment != "production"

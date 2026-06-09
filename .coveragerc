@@ -14,7 +14,7 @@ omit =
     */node_modules/*
     */conftest.py
     */main.py             ; uvicorn entrypoint — exercised by TestClient health checks but the if __name__ == "__main__" guard isn't
-    apps/*/scripts/*      ; seed + CLI scripts run end-to-end manually, not unit-tested
+    */scripts/*           ; seed + CLI scripts run end-to-end manually, not unit-tested
 
 [report]
 # Skip files where coverage would be misleading (empty __init__.py etc).

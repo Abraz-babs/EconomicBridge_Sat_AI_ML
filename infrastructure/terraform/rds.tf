@@ -116,10 +116,10 @@ resource "aws_db_instance" "main" {
   enabled_cloudwatch_logs_exports       = ["postgresql", "upgrade"]
 
   # Safety rails
-  deletion_protection      = var.rds_deletion_protection
-  skip_final_snapshot      = var.environment != "production"
+  deletion_protection       = var.rds_deletion_protection
+  skip_final_snapshot       = var.environment != "production"
   final_snapshot_identifier = var.environment == "production" ? "${local.name_prefix}-final-${formatdate("YYYYMMDD-hhmmss", timestamp())}" : null
-  apply_immediately        = var.environment != "production"
+  apply_immediately         = var.environment != "production"
 
   # Force-recreate triggers — most are stable, but lifecycle prevents
   # unnecessary churn if AWS auto-bumps the patch version.

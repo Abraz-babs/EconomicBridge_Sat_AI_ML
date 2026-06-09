@@ -18,7 +18,7 @@ if str(ML_ROOT) not in sys.path:
     sys.path.insert(0, str(ML_ROOT))
 
 from models.flood_detector import FloodDetector, MODEL_NAME  # noqa: E402
-from scripts.acled_client import AcledClient, AcledError, _parse_event  # noqa: E402
+from scripts.acled_client import AcledClient, AcledError  # noqa: E402
 from scripts.train_conflict_real import (  # noqa: E402
     FEATURE_ORDER,
     _historical_density,

@@ -62,7 +62,8 @@ async def test_fetch_filters_by_admin1():
         _row("Benue", "Makurdi", "Action Against Hunger", "AAH"),
         _row("Adamawa", "Demsa", "Other Org", "OTH"),
     ]
-    handler = lambda req: httpx.Response(200, content=json.dumps({"data": rows}).encode())
+    def handler(req):
+        return httpx.Response(200, content=json.dumps({"data": rows}).encode())
     out = await _client(handler).fetch_operational_presence(
         location_code="NGA", admin1_name="Benue",
     )
@@ -89,7 +90,8 @@ async def test_fetch_paginates(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_non_200_raises():
-    handler = lambda req: httpx.Response(503, content=b"unavailable")
+    def handler(req):
+        return httpx.Response(503, content=b"unavailable")
     with pytest.raises(HapiError):
         await _client(handler).fetch_operational_presence(location_code="NGA")
 
@@ -146,7 +148,8 @@ async def test_ingest_writes_agencies_and_hapi_coverage():
         _row("Benue", "Gboko", "Norwegian Refugee Council", "NRC", "Protection"),
         _row("Adamawa", "Demsa", "Filtered Out", "FO"),  # wrong state — dropped
     ]
-    handler = lambda req: httpx.Response(200, content=json.dumps({"data": rows}).encode())
+    def handler(req):
+        return httpx.Response(200, content=json.dumps({"data": rows}).encode())
     session = _FakeSession()
     result = await ingest_aid_for_tenant(
         session, tenant_id="benue", client=_client(handler),
