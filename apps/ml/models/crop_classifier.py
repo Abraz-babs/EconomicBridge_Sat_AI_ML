@@ -154,6 +154,7 @@ class CropClassifier:
         )
 
     # ── Loader ──────────────────────────────────────────────────────────
+    # (S3 fetch helper is module-level below the class.)
 
     def _load(self) -> None:
         if self._mode is not None:
@@ -161,6 +162,8 @@ class CropClassifier:
 
         settings = get_settings()
         artifact = Path(settings.model_dir) / "crop_classifier.pth"
+        if not artifact.exists() and settings.model_s3_uri:
+            _fetch_artifact_from_s3(settings.model_s3_uri, artifact)
 
         try:
             import torch  # noqa: F401
@@ -281,6 +284,37 @@ def _top_k_entries(
 def hash_image_bytes(blob: bytes) -> str:
     """SHA-256 of image bytes — used for replay + the input_hash field."""
     return hashlib.sha256(blob).hexdigest()
+
+
+# ─── S3 artifact fetch ────────────────────────────────────────────────────
+
+
+def _fetch_artifact_from_s3(s3_uri: str, dest: Path) -> None:
+    """Download the trained weights from S3 to `dest` (best-effort).
+
+    The ~94 MB .pth is gitignored, so deployed containers pull it at first
+    model load via MODEL_S3_URI (task role provides credentials). Never
+    raises — on any failure the loader proceeds and lands in UNTUNED mode,
+    which the response's model_version surfaces honestly.
+
+    Args:
+        s3_uri: Location like ``s3://bucket/ml/crop_classifier.pth``.
+        dest: Local artifact path to write.
+    """
+    try:
+        import boto3
+
+        bucket_key = s3_uri.removeprefix("s3://")
+        bucket, _, key = bucket_key.partition("/")
+        if not bucket or not key:
+            log.warning("crop_classifier: malformed MODEL_S3_URI %r", s3_uri)
+            return
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        log.info("crop_classifier: fetching weights from %s ...", s3_uri)
+        boto3.client("s3").download_file(bucket, key, str(dest))
+        log.info("crop_classifier: weights downloaded to %s", dest)
+    except Exception as exc:  # noqa: BLE001 — model fetch must not crash the service
+        log.warning("crop_classifier: S3 fetch failed (%s) → continuing without", exc)
 
 
 # ─── Singleton ────────────────────────────────────────────────────────────

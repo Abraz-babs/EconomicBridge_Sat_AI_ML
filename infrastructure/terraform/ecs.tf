@@ -66,6 +66,12 @@ locals {
     { name = "SUPER_ADMIN_EMAIL", value = var.super_admin_email },
   ]
 
+  # ml-only env: where to fetch the trained CropGuard weights at startup
+  # (gitignored 94 MB artifact — lives in S3, not the image).
+  ml_extra_env = [
+    { name = "MODEL_S3_URI", value = "s3://${aws_s3_bucket.artifacts.bucket}/ml/crop_classifier.pth" },
+  ]
+
   # notifications-only env: outbound SMS via Amazon SNS. The gateway resolves to
   # SNS when SNS_ENABLED=true; otherwise it falls back to the mock gateway, so a
   # deploy with SMS still off plans/runs cleanly.
@@ -90,6 +96,7 @@ locals {
       # ALB path prefix the app must strip itself (see UrlPrefixStripMiddleware).
       lookup(v, "url_prefix", "") != "" ? [{ name = "URL_PREFIX", value = v.url_prefix }] : [],
       k == "api" ? local.api_extra_env : [],
+      k == "ml" ? local.ml_extra_env : [],
       k == "notifications" ? local.notifications_extra_env : [],
     )
   }

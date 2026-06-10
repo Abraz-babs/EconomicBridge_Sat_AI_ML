@@ -27,3 +27,6 @@ joblib>=1.4,<2.0
 torch>=2.2,<3.0
 torchvision>=0.17,<1.0
 pillow>=10.0,<12.0
+
+# Model-artifact fetch from S3 at startup (MODEL_S3_URI); creds via task role.
+boto3>=1.34,<2.0

@@ -121,6 +121,21 @@ resource "aws_iam_role_policy" "ecs_task_api_ses" {
   policy = data.aws_iam_policy_document.ecs_task_api_ses.json
 }
 
+# ml-only: fetch the trained model weights from the artifacts bucket at boot.
+data "aws_iam_policy_document" "ecs_task_ml_artifacts" {
+  statement {
+    sid       = "FetchModelArtifacts"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.artifacts.arn}/ml/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_task_ml_artifacts" {
+  name   = "${local.name_prefix}-ml-task-artifacts"
+  role   = aws_iam_role.ecs_task["ml"].id
+  policy = data.aws_iam_policy_document.ecs_task_ml_artifacts.json
+}
+
 # notifications-only: send transactional SMS via Amazon SNS (the primary
 # Nigerian carrier path, replacing Termii). SMS publish targets a phone number
 # rather than a topic ARN, so the action is unavoidably resource "*". The app

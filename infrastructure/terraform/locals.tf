@@ -61,7 +61,7 @@ locals {
       url_prefix   = "/ml"
       priority     = 300
       public       = false # internal-only; called by api
-      needs_db     = false
+      needs_db     = true  # persists crop predictions (predict_crop routers)
       needs_redis  = false
     }
     notifications = {

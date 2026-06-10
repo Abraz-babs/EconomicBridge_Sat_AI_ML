@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     # Model paths — joblib / .pth snapshots live next to the source code.
     model_dir: Path = PROJECT_ROOT / "apps" / "ml" / "artifacts"
 
+    # Optional S3 location of the trained CropGuard weights
+    # (s3://bucket/key). The ~94 MB artifact is gitignored, so deployed
+    # containers fetch it at first model load instead of shipping it in the
+    # image. Empty (dev) = load from model_dir only.
+    model_s3_uri: str = ""
+
     # CropGuard ResNet-50 — how many top classes the response ships back.
     # 3 hits the sweet spot: top-1 + two runners-up gives the dashboard
     # enough context for "are we confident?" without exploding payload size.
