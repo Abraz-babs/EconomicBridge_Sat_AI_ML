@@ -41,6 +41,8 @@ async def seed() -> int:
     added = 0
     async with factory() as session:
         # 1) The demo organisation itself (fixed UUID the frontend sends).
+        # NB: permitted_tenants / bilateral_agreements are varchar[] ARRAYs in
+        # the DDL (migration 0001), NOT json — cast accordingly.
         await session.execute(
             text(
                 """
@@ -49,14 +51,14 @@ async def seed() -> int:
                      permitted_tenants, bilateral_agreements,
                      dpa_signed, dpa_signed_at, is_active)
                 SELECT CAST(:id AS uuid), 'demo-sms-org', 'EconomicBridge SMS Demo Org',
-                       'ngo', 'NGA', CAST(:tenants AS jsonb), '[]'::jsonb,
+                       'ngo', 'NGA', '{}'::varchar[], '{}'::varchar[],
                        true, NOW(), true
                 WHERE NOT EXISTS (
                     SELECT 1 FROM public.organisations WHERE id = CAST(:id AS uuid)
                 )
                 """
             ),
-            {"id": DEMO_ORG_ID, "tenants": "[]"},
+            {"id": DEMO_ORG_ID},
         )
 
         # 2) A signed DPA per pilot tenant (skip any already present).
