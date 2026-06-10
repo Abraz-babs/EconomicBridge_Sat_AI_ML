@@ -113,7 +113,11 @@ jobs:
           REPO: ${{ env.PROJECT_NAME }}-${{ inputs.environment }}/${{ matrix.service }}
           TAG: ${{ needs.setup.outputs.tag }}
         with:
-          context: .
+          # Each Dockerfile COPYs paths relative to its OWN service directory
+          # (COPY requirements.txt ./), so the context must be the service dir,
+          # not the repo root — root context fails with "requirements.txt not
+          # found".
+          context: apps/${{ matrix.service }}
           file: apps/${{ matrix.service }}/Dockerfile
           push: true
           tags: |
