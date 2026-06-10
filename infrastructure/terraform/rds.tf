@@ -76,8 +76,11 @@ resource "aws_db_parameter_group" "postgres16" {
 resource "aws_db_instance" "main" {
   identifier = "${local.name_prefix}-postgres"
 
-  engine               = "postgres"
-  engine_version       = "16.4"
+  engine = "postgres"
+  # Major version only — AWS retires specific minors (16.4 no longer exists),
+  # so a pinned minor rots. RDS picks the current 16.x; lifecycle ignores the
+  # resulting drift (auto-minor-version-upgrade).
+  engine_version = "16"
   instance_class       = var.rds_instance_class
   parameter_group_name = aws_db_parameter_group.postgres16.name
 
