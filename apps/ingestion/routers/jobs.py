@@ -25,13 +25,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session
 from scheduler import (
+    JOB_ID_AID_MONTHLY,
     JOB_ID_CONFLICT_DAILY,
     JOB_ID_FIRMS_DAILY,
+    JOB_ID_MOBILITY_MONTHLY,
+    JOB_ID_PASS_IMAGERY_SWEEP,
+    JOB_ID_SATOBS_WEEKLY,
+    JOB_ID_SKILLS_MONTHLY,
     JOB_ID_WORLDPOP_WEEKLY,
     run_daily_firms_ingest,
+    run_monthly_aid_ingest,
+    run_monthly_mobility_ingest,
+    run_monthly_skills_ingest,
+    run_weekly_satellite_observations,
     run_weekly_worldpop_sweep,
 )
 from tasks.conflict_pipeline import run_daily_conflict_pipeline
+from tasks.pass_imagery_sweep import run_pass_imagery_sweep
 
 router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 
@@ -80,7 +90,29 @@ _TRIGGERABLE_JOBS = {
     JOB_ID_FIRMS_DAILY: run_daily_firms_ingest,
     JOB_ID_CONFLICT_DAILY: run_daily_conflict_pipeline,
     JOB_ID_WORLDPOP_WEEKLY: run_weekly_worldpop_sweep,
+    # Slices 21/22/26-33 jobs — every registered job is manually fireable, so
+    # a fresh deployment can pull all live feeds immediately instead of
+    # waiting for the weekly/monthly cron (Admin → Scheduler → Run now).
+    JOB_ID_SATOBS_WEEKLY: run_weekly_satellite_observations,
+    JOB_ID_MOBILITY_MONTHLY: run_monthly_mobility_ingest,
+    JOB_ID_AID_MONTHLY: run_monthly_aid_ingest,
+    JOB_ID_SKILLS_MONTHLY: run_monthly_skills_ingest,
+    JOB_ID_PASS_IMAGERY_SWEEP: None,  # adapted below — returns a dataclass
 }
+
+
+async def _run_pass_sweep_as_dict() -> dict:
+    """Adapter: run_pass_imagery_sweep returns a SweepResult dataclass; the
+    response model wants a plain dict like every other job body."""
+    res = await run_pass_imagery_sweep()
+    return {
+        "ran_at": res.ran_at.isoformat(),
+        "decisions": len(res.decisions),
+        "refreshed": res.refreshed_count,
+    }
+
+
+_TRIGGERABLE_JOBS[JOB_ID_PASS_IMAGERY_SWEEP] = _run_pass_sweep_as_dict
 
 
 class JobRunResponse(BaseModel):
