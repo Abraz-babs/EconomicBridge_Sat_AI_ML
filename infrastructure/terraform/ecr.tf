@@ -7,8 +7,13 @@
 resource "aws_ecr_repository" "service" {
   for_each = local.services
 
-  name                 = "${local.name_prefix}/${each.key}"
-  image_tag_mutability = "IMMUTABLE" # never overwrite a tag (e.g. `latest`)
+  name = "${local.name_prefix}/${each.key}"
+  # MUTABLE because the deploy flow uses a moving `latest` tag: task defs pin
+  # :latest and deploy.yml rolls services with --force-new-deployment. With
+  # IMMUTABLE, the second-ever deploy fails ("tag 'latest' ... cannot be
+  # overwritten"). Provenance still holds — every build also pushes the
+  # commit-SHA tag, which is never reused.
+  image_tag_mutability = "MUTABLE"
 
   image_scanning_configuration {
     scan_on_push = true # Trivy-equivalent scan; results visible in console
