@@ -156,9 +156,18 @@ def _load_full_dataset() -> dict[str, dict[str, tuple[float, float]]]:
     import json
     from pathlib import Path
 
-    # apps/api/services/lga_geo.py → repo .../apps/ → ingestion/data/...
-    path = Path(__file__).resolve().parents[2] / "ingestion" / "data" / "lga_centroids.json"
-    if not path.exists():
+    # Service-local copy FIRST (apps/api/data/ — ships inside the api Docker
+    # image, whose build context is apps/api only), then the ingestion
+    # original (dev monorepo layout). Without the local copy the deployed api
+    # fell back to the curated 8-per-state set and the live maps showed 8
+    # LGAs per state instead of the full coverage.
+    here = Path(__file__).resolve()
+    candidates = [
+        here.parents[1] / "data" / "lga_centroids.json",
+        here.parents[2] / "ingestion" / "data" / "lga_centroids.json",
+    ]
+    path = next((p for p in candidates if p.exists()), None)
+    if path is None:
         return _CURATED_CENTROIDS
     raw = json.loads(path.read_text(encoding="utf-8"))
     out: dict[str, dict[str, tuple[float, float]]] = {}
