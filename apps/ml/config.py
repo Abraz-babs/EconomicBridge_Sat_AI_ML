@@ -40,7 +40,11 @@ class Settings(BaseSettings):
     db_pool_max_overflow: int = 5
 
     # Model paths — joblib / .pth snapshots live next to the source code.
-    model_dir: Path = PROJECT_ROOT / "apps" / "ml" / "artifacts"
+    # Anchored to THIS file (apps/ml/), not the monorepo root: in the Docker
+    # image the service lives at /app, so the old PROJECT_ROOT/apps/ml path
+    # resolved to a non-existent, non-writable /apps/ml and the S3 model
+    # fetch died on mkdir → UNTUNED in production.
+    model_dir: Path = Path(__file__).resolve().parent / "artifacts"
 
     # Optional S3 location of the trained CropGuard weights
     # (s3://bucket/key). The ~94 MB artifact is gitignored, so deployed
