@@ -8,6 +8,7 @@ started. In production, secrets come from AWS Secrets Manager — see CLAUDE.md
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # apps/api/config.py → apps/api/ → apps/ → project root
@@ -41,6 +42,23 @@ class Settings(BaseSettings):
     database_url_sync: str = (
         "postgresql+psycopg2://postgres:devpassword@localhost:5432/economicbridge"
     )
+
+    @model_validator(mode="after")
+    def _derive_sync_url(self) -> "Settings":
+        """Derive the Alembic sync URL from DATABASE_URL when only that is set.
+
+        Deployment (ECS task defs) injects DATABASE_URL alone; without this,
+        database_url_sync silently kept its localhost default and migrations
+        ran against a non-existent local server. An explicit
+        DATABASE_URL_SYNC env still wins.
+        """
+        default_async = type(self).model_fields["database_url"].default
+        default_sync = type(self).model_fields["database_url_sync"].default
+        if self.database_url != default_async and self.database_url_sync == default_sync:
+            self.database_url_sync = self.database_url.replace(
+                "+asyncpg", "+psycopg2"
+            )
+        return self
     db_echo: bool = False
     db_pool_size: int = 5
     db_pool_max_overflow: int = 10
