@@ -152,9 +152,12 @@ resource "aws_ecs_task_definition" "service" {
       # Frontend doesn't expose a /health endpoint in dev, so we use a
       # simple TCP probe for it.
       healthCheck = each.key == "frontend" ? {
-        # wget, not curl: the frontend image is node:22-alpine, which ships
-        # busybox wget but NO curl — a curl health check kills a healthy task.
-        command     = ["CMD-SHELL", "wget -qO- http://localhost:${each.value.port}/ >/dev/null 2>&1 || exit 1"]
+        # node fetch against 127.0.0.1, NOT curl/wget/localhost: the image is
+        # node:22-alpine (no curl), and alpine resolves `localhost` to ::1
+        # first while the Next standalone server binds IPv4 0.0.0.0 — so a
+        # localhost probe is refused even though the app is healthy (the ALB,
+        # connecting via the ENI IPv4, was serving fine the whole time).
+        command     = ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:${each.value.port}/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
         interval    = 30
         timeout     = 5
         retries     = 3
