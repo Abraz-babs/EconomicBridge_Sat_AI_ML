@@ -110,6 +110,27 @@ header {
 }
 
 .logo { display: flex; align-items: baseline; gap: 14px; }
+/* The logo links back to the front door — keep it looking like the wordmark. */
+.logo-link { text-decoration: none; color: inherit; }
+.logo-link:hover .logo-word { opacity: 0.85; }
+
+/* "⌂ Home" — back to the Bizra front door without browser-back. */
+.home-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  border: 1px solid var(--border);
+  color: var(--ink2);
+  background: var(--surface);
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.home-btn:hover { background: var(--surface2); color: var(--ink); }
 
 .logo-word {
   font-family: 'Playfair Display', serif;

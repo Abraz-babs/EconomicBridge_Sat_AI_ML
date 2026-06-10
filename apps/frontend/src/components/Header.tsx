@@ -23,13 +23,17 @@ export default function Header() {
 
   return (
     <header role="banner">
-      <div className="logo">
+      {/* Logo doubles as a link back to the Bizra front door. */}
+      <a href="/" className="logo logo-link" aria-label="Back to the Bizra Farms home page">
         <h1 className="logo-word">EconomicBridge</h1>
         <span className="logo-tagline">
           AI &amp; Satellite Mapping for Aid Delivery Optimization · Bizra Farms
         </span>
-      </div>
+      </a>
       <div className="header-right">
+        <a href="/" className="home-btn" aria-label="Back to the home page">
+          ⌂ Home
+        </a>
         <div className="org-pill" style={{ background: roleConfig.pillBg }} aria-label={`Current organisation: ${roleConfig.label}`}>
           <div className="org-dot" style={{ background: roleConfig.dot }} aria-hidden="true" />
           <span>{roleConfig.label}</span>
