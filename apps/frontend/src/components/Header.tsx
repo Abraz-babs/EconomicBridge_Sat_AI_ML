@@ -28,7 +28,7 @@ export default function Header() {
       <Link href="/" className="logo logo-link" aria-label="Back to the Bizra Farms home page">
         <h1 className="logo-word">EconomicBridge</h1>
         <span className="logo-tagline">
-          AI &amp; Satellite Mapping for Aid Delivery Optimization · Bizra Farms
+          AI &amp; Satellite Intelligence for Agriculture, Food Security &amp; Aid Delivery · Bizra Farms
         </span>
       </Link>
       <div className="header-right">

@@ -4,9 +4,9 @@ import "./globals.css";
 import { AppProviders } from "./providers";
 
 export const metadata: Metadata = {
-  title: "EconomicBridge — AI & Satellite Mapping for Aid Delivery Optimization",
+  title: "EconomicBridge — AI & Satellite Intelligence for Agriculture, Food Security & Aid Delivery",
   description:
-    "Multi-tenant platform combining satellite imagery, AI, and economic data to optimize humanitarian aid delivery across Sub-Saharan Africa and developing regions.",
+    "Multi-tenant platform combining satellite imagery, AI, and economic data for agriculture, food security, farmland protection, and humanitarian aid delivery across West Africa.",
 };
 
 export default function RootLayout({

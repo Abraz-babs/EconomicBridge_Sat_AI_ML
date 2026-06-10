@@ -67,8 +67,8 @@ def t(rows: list[list[str]], widths: list[float]) -> Table:
 story = [
     Paragraph("EconomicBridge — Technical Specification", H1),
     Paragraph(
-        "AI &amp; Satellite Intelligence for Aid Delivery Optimization · "
-        "Operated by Bizra Farms Integrated Nigeria Limited", SUB),
+        "AI &amp; Satellite Intelligence for Agriculture, Food Security &amp; "
+        "Aid Delivery · Operated by Bizra Farms Integrated Nigeria Limited", SUB),
 
     Paragraph(
         "EconomicBridge is a deployed, multi-tenant satellite-intelligence "
