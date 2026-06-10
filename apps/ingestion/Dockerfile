@@ -22,8 +22,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8001
 
+# libexpat1: rasterio's bundled GDAL dlopens libexpat.so.1 at import time —
+# python:slim doesn't ship it, and without it the app dies at startup with
+# "ImportError: libexpat.so.1: cannot open shared object file".
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgeos-c1v5 \
+        libexpat1 \
         curl \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system app && useradd --system --gid app --create-home app

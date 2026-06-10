@@ -152,7 +152,9 @@ resource "aws_ecs_task_definition" "service" {
       # Frontend doesn't expose a /health endpoint in dev, so we use a
       # simple TCP probe for it.
       healthCheck = each.key == "frontend" ? {
-        command     = ["CMD-SHELL", "curl -f http://localhost:${each.value.port}/ || exit 1"]
+        # wget, not curl: the frontend image is node:22-alpine, which ships
+        # busybox wget but NO curl — a curl health check kills a healthy task.
+        command     = ["CMD-SHELL", "wget -qO- http://localhost:${each.value.port}/ >/dev/null 2>&1 || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
