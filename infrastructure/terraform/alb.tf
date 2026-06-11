@@ -22,7 +22,10 @@ resource "aws_lb" "main" {
   subnets            = aws_subnet.public[*].id
 
   enable_deletion_protection = var.environment == "production"
-  idle_timeout               = 60
+  # 300s: big report PDF/CSV exports and slower admin operations were getting
+  # cut by the 60s default (manual job triggers also 504'd before they became
+  # background tasks).
+  idle_timeout = 300
   drop_invalid_header_fields = true # security: reject malformed Host header etc.
 
   tags = {

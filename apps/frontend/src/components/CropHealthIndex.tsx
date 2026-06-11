@@ -24,7 +24,7 @@ export default function CropHealthIndex() {
       <div className="panel-header">
         <span className="panel-title">Crop Health Index</span>
         <span className="panel-meta">
-          {isError ? 'API unreachable' : 'ResNet-50 · live · mixed regions'}
+          {isError ? 'API unreachable' : 'ResNet-50 + modelled · mixed regions'}
         </span>
       </div>
       <div>

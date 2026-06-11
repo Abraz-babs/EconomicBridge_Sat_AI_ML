@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { KEBBI_CENTER, RISK_RGB, TENANTS, type Tenant } from '@/data/tenants';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -246,7 +246,24 @@ export default function SatelliteMap() {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [activeLayer, mapStatus]);
 
-  const detailTenant = selectedTenant ?? TENANTS.find((t) => t.id === 'kebbi')!;
+  // Detail strip: a user click pins a tenant; otherwise rotate through the
+  // active pilots so the strip reads as the live intel ticker it is — not a
+  // hardcoded "Kebbi" line. Paused while the tab is hidden (project pattern).
+  const [rotateIdx, setRotateIdx] = useState(0);
+  const activePilots = useMemo(() => TENANTS.filter((t) => t.active), []);
+  useEffect(() => {
+    if (selectedTenant || activePilots.length === 0) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        setRotateIdx((i) => (i + 1) % activePilots.length);
+      }
+    }, 7000);
+    return () => window.clearInterval(id);
+  }, [selectedTenant, activePilots.length]);
+  const detailTenant =
+    selectedTenant ??
+    activePilots[rotateIdx % Math.max(activePilots.length, 1)] ??
+    TENANTS.find((t) => t.id === 'kebbi')!;
 
   return (
     <div className="panel">

@@ -190,9 +190,12 @@ async def crop_health(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessResponse[CropHealthData]:
-    """% of crop detections classified healthy, per crop × region, from the
-    trained ResNet — mixed across NG states + Ghana + Senegal (real data,
-    real crop families; never off-plan countries)."""
+    """% of crop detections classified healthy, per crop × region, mixed
+    across NG states + Ghana + Senegal. Includes BOTH real ResNet inference
+    rows and the modelled baseline (0.0.0-seed): a real-only filter left the
+    widget showing a single tenant (or nothing) until uploads accumulate.
+    Real detections dominate naturally as they land; the dashboard subtitle
+    declares the blend."""
     shift = datetime.now(timezone.utc).timetuple().tm_yday
     by_tenant: dict[str, list[CropHealthRow]] = {}
     for t in sorted(PILOT_TENANT_IDS):
@@ -208,7 +211,6 @@ async def crop_health(
                            SUM(CASE WHEN predicted_class LIKE '%healthy'
                                     THEN 1 ELSE 0 END) AS healthy
                       FROM crop_predictions
-                     WHERE model_version LIKE '0.1.0%'
                      GROUP BY 1
                      HAVING COUNT(*) > 0
                      ORDER BY total DESC

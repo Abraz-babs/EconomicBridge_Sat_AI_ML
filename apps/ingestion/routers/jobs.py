@@ -15,6 +15,8 @@ Also exposes:
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 from datetime import datetime
 from typing import Annotated
 
@@ -43,6 +45,7 @@ from scheduler import (
 from tasks.conflict_pipeline import run_daily_conflict_pipeline
 from tasks.pass_imagery_sweep import run_pass_imagery_sweep
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/scheduler", tags=["scheduler"])
 
 
@@ -133,8 +136,25 @@ async def run_job_now(job_id: str) -> JobRunResponse:
             f"Known: {sorted(_TRIGGERABLE_JOBS)}",
         )
     callback = _TRIGGERABLE_JOBS[job_id]
-    result = await callback()
-    return JobRunResponse(job_id=job_id, result=result)
+
+    # Fire-and-return: long sweeps (Sentinel over 10 ROIs takes minutes)
+    # exceeded the ALB's idle timeout and surfaced as 504s in the admin panel
+    # even though the work would have succeeded. The body now runs as a
+    # background task; completion/failure lands in the logs and (for jobs
+    # that record runs) in /scheduler/runs/recent.
+    async def _run_and_log() -> None:
+        try:
+            result = await callback()
+            log.info("manual run %s finished: %s", job_id, result)
+        except Exception:  # noqa: BLE001 — background task must never crash the loop
+            log.exception("manual run %s failed", job_id)
+
+    asyncio.create_task(_run_and_log())
+    return JobRunResponse(
+        job_id=job_id,
+        result={"status": "started",
+                "note": "Running in the background — refresh Recent Runs."},
+    )
 
 
 # ─── GET /api/v1/scheduler/runs/recent — pipeline observability ───────────

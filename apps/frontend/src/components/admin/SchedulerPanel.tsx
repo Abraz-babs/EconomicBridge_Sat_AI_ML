@@ -51,9 +51,17 @@ export default function SchedulerPanel() {
   const runJob = useRunSchedulerJob();
   const triggerConflict = useTriggerConflictPipeline();
 
+  const [jobNote, setJobNote] = useState<string | null>(null);
+
   async function fireJob(jobId: string) {
+    setJobNote(null);
     try {
       await runJob.mutateAsync({ jobId });
+      // Jobs run in the background on the ingestion service (long sweeps
+      // would otherwise 504 at the load balancer) — tell the operator where
+      // to watch for the outcome.
+      setJobNote(`${jobId} started — running in the background; refresh Recent Runs below.`);
+      window.setTimeout(() => setJobNote(null), 10_000);
     } catch {
       /* surfaced via runJob.error below */
     }
@@ -133,6 +141,7 @@ export default function SchedulerPanel() {
             })}
           </div>
         )}
+        {jobNote && <div className="sch-trigger-ok">✓ {jobNote}</div>}
         {runJob.error && (
           <div className="fp-alert-error">
             Job run failed: {runJob.error.message}
