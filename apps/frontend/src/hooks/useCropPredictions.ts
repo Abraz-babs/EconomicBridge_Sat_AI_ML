@@ -98,6 +98,25 @@ export interface CropPredictionsResult {
   traceId: string | null;
 }
 
+/** The classifier's CURRENT capability (what the next inference would use) —
+ * distinct from per-row provenance, which keeps the version each historic
+ * prediction was made with. Drives the panel's model badge so a trained
+ * model reads TRAINED for every tenant, not only those with fresh rows. */
+export interface CropModelInfo {
+  model_name: string;
+  model_version: string;
+  execution_mode: string;
+}
+
+export function useCropModelInfo(): UseQueryResult<CropModelInfo, ApiException> {
+  return useQuery<CropModelInfo, ApiException>({
+    queryKey: ['crop-model-info'],
+    staleTime: 5 * 60 * 1000, // capability changes only on redeploy
+    queryFn: async ({ signal }) =>
+      mlFetch<CropModelInfo>('/predict/crop_disease/model_info', { signal }),
+  });
+}
+
 export function useCropPredictions(
   params: UseCropPredictionsParams,
 ): UseQueryResult<CropPredictionsResult, ApiException> {

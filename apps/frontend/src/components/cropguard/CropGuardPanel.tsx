@@ -5,6 +5,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useTenant } from '@/context/TenantContext';
 import {
   fileToBase64,
+  useCropModelInfo,
   useCropPredictions,
   usePredictCropDisease,
   usePredictCropDiseaseTiled,
@@ -79,6 +80,7 @@ export default function CropGuardPanel() {
     () => recentQuery.data?.predictions ?? [],
     [recentQuery.data],
   );
+  const modelInfo = useCropModelInfo();
 
   const predictMutation = usePredictCropDisease(activeTenantId);
   const predictTiledMutation = usePredictCropDiseaseTiled(activeTenantId);
@@ -86,15 +88,22 @@ export default function CropGuardPanel() {
 
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
   const modeBadge = useMemo(() => {
-    // Show whatever the most recent prediction tells us; otherwise neutral.
-    const v = lastResult?.model_version ?? recent[0]?.model_version;
+    // The badge reports MODEL CAPABILITY (what the ml service would use for
+    // the next inference), not the provenance of historic rows — a trained
+    // model reads TRAINED on every tenant, even those whose stored rows are
+    // still seeds. Falls back to the latest row's version if the capability
+    // endpoint is unreachable.
+    const v =
+      modelInfo.data?.model_version ??
+      lastResult?.model_version ??
+      recent[0]?.model_version;
     if (!v) return null;
     if (v.endsWith('-trained')) return { label: 'TRAINED', cls: 'cg-mode-trained' };
     if (v.endsWith('-untuned')) return { label: 'UNTUNED', cls: 'cg-mode-untuned' };
     if (v.endsWith('-stub')) return { label: 'STUB', cls: 'cg-mode-stub' };
     if (v.endsWith('-seed')) return { label: 'DEMO', cls: 'cg-mode-untuned' };
     return { label: v, cls: 'cg-mode-stub' };
-  }, [lastResult, recent]);
+  }, [modelInfo.data, lastResult, recent]);
 
   function handleFile(file: File) {
     setUploadError(null);

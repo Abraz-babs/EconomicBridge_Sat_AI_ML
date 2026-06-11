@@ -14,6 +14,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +38,41 @@ router = APIRouter(prefix="/predict", tags=["predict"])
 
 def _trace_id(request: Request) -> UUID:
     return getattr(request.state, "trace_id", uuid4())
+
+
+class CropModelInfo(BaseModel):
+    """Capability of the crop classifier as currently loaded in THIS process.
+
+    Distinct from per-row provenance: historic predictions keep the
+    model_version they were made with, while this reports what the service
+    would use for the next inference (the dashboard's capability badge).
+    """
+
+    model_name: str
+    model_version: str
+    execution_mode: str
+
+
+@router.get(
+    "/crop_disease/model_info",
+    response_model=SuccessResponse[CropModelInfo],
+    summary="Report the crop classifier's loaded capability (trained/untuned/stub)",
+)
+async def crop_model_info(request: Request) -> SuccessResponse[CropModelInfo]:
+    clf = get_classifier()
+    return SuccessResponse(
+        data=CropModelInfo(
+            model_name="crop_classifier_resnet50",
+            model_version=clf.version,  # forces the (S3-aware) weight load
+            execution_mode=clf.mode,
+        ),
+        meta=ResponseMeta(
+            tenant_id=None,
+            trace_id=_trace_id(request),
+            timestamp=datetime.now(timezone.utc),
+            pagination=None,
+        ),
+    )
 
 
 @router.post(
