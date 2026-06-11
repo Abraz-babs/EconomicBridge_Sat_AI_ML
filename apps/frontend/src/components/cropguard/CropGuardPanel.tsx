@@ -270,7 +270,14 @@ export default function CropGuardPanel() {
               <div className="cg-dropzone-empty">
                 <div className="cg-dropzone-icon">📷</div>
                 <div className="cg-dropzone-text">
-                  Drop a leaf photo here or <span className="cg-link">click to choose</span>
+                  {analysisMode === 'leaf'
+                    ? <>Drop a leaf photo here or <span className="cg-link">click to choose</span></>
+                    : <>Drop a wide field photo here or <span className="cg-link">click to choose</span></>}
+                </div>
+                <div className="cg-dropzone-hint">
+                  {analysisMode === 'leaf'
+                    ? 'Best results: ONE leaf filling the frame, top side, good light — the model is trained on single-leaf close-ups. For whole-field shots switch to Field mode.'
+                    : 'Wide canopy shot — analysed as 4×4 tiles and aggregated.'}
                 </div>
                 <div className="cg-dropzone-hint">JPEG / PNG / WebP · max 8 MB</div>
               </div>
