@@ -33,6 +33,7 @@ from tasks.conflict_pipeline import run_daily_conflict_pipeline
 from tasks.firms_ingest import ingest_firms_for_tenant
 from tasks.mobility_ingest import ingest_mobility_worldbank_for_tenant
 from tasks.pass_imagery_sweep import run_pass_imagery_sweep
+from tasks.poverty_ingest import ingest_all as poverty_ingest_all
 from tasks.satellite_observations_ingest import ingest_all as satobs_ingest_all
 from tasks.skills_ingest import ingest_skills_for_tenant
 from tasks.worldpop_raster_sample import sweep_tenant as worldpop_sweep_tenant
@@ -45,6 +46,7 @@ JOB_ID_FIRMS_DAILY = "firms_daily_06utc"
 JOB_ID_CONFLICT_DAILY = "conflict_daily_0630utc"
 JOB_ID_PASS_IMAGERY_SWEEP = "pass_imagery_sweep_15min"
 JOB_ID_WORLDPOP_WEEKLY = "worldpop_weekly_sun_07utc"
+JOB_ID_POVERTY_WEEKLY = "poverty_viirs_weekly_mon_0630utc"
 JOB_ID_MOBILITY_MONTHLY = "mobility_worldbank_monthly_1st_08utc"
 JOB_ID_AID_MONTHLY = "aid_hapi_monthly_1st_09utc"
 JOB_ID_SKILLS_MONTHLY = "skills_giga_monthly_1st_10utc"
@@ -103,6 +105,20 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         max_instances=1,
         # 6h grace covers a Sunday-morning pod restart.
+        misfire_grace_time=21600,
+    )
+
+    scheduler.add_job(
+        run_weekly_poverty_ingest,
+        # VIIRS Black Marble nightlights move slowly for poverty purposes —
+        # weekly keeps them fresh. Monday 06:30 UTC, off the Sunday WorldPop
+        # slot. (This feed previously had NO schedule at all and silently sat
+        # unused despite a configured Earthdata token — never again.)
+        trigger=CronTrigger(day_of_week="mon", hour=6, minute=30, timezone="UTC"),
+        id=JOB_ID_POVERTY_WEEKLY,
+        name="VIIRS nightlights + WorldPop poverty ingest (all pilots, weekly)",
+        replace_existing=True,
+        max_instances=1,
         misfire_grace_time=21600,
     )
 
@@ -234,6 +250,25 @@ async def run_weekly_worldpop_sweep(
 
     log.info("scheduled.worldpop summary: %s", results)
     return results
+
+
+async def run_weekly_poverty_ingest() -> dict[str, str]:
+    """VIIRS Black Marble nightlights + WorldPop metadata for every pilot.
+
+    Wraps tasks.poverty_ingest.ingest_all (per-tenant sessions, failures
+    isolated). Returns a per-tenant summary for the run-now endpoint/logs.
+    """
+    factory = get_session_factory()
+    results = await poverty_ingest_all(factory)
+    summary = {
+        r.tenant_id: (
+            f"{r.rows_written} rows, "
+            f"viirs={'yes' if r.viirs_granule_id else 'no granule'}"
+        )
+        for r in results
+    }
+    log.info("scheduled.poverty summary: %s", summary)
+    return summary
 
 
 async def run_monthly_mobility_ingest(

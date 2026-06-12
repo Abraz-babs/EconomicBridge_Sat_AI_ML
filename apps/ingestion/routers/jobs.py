@@ -32,6 +32,7 @@ from scheduler import (
     JOB_ID_FIRMS_DAILY,
     JOB_ID_MOBILITY_MONTHLY,
     JOB_ID_PASS_IMAGERY_SWEEP,
+    JOB_ID_POVERTY_WEEKLY,
     JOB_ID_SATOBS_WEEKLY,
     JOB_ID_SKILLS_MONTHLY,
     JOB_ID_WORLDPOP_WEEKLY,
@@ -39,6 +40,7 @@ from scheduler import (
     run_monthly_aid_ingest,
     run_monthly_mobility_ingest,
     run_monthly_skills_ingest,
+    run_weekly_poverty_ingest,
     run_weekly_satellite_observations,
     run_weekly_worldpop_sweep,
 )
@@ -100,6 +102,7 @@ _TRIGGERABLE_JOBS = {
     JOB_ID_MOBILITY_MONTHLY: run_monthly_mobility_ingest,
     JOB_ID_AID_MONTHLY: run_monthly_aid_ingest,
     JOB_ID_SKILLS_MONTHLY: run_monthly_skills_ingest,
+    JOB_ID_POVERTY_WEEKLY: run_weekly_poverty_ingest,
     JOB_ID_PASS_IMAGERY_SWEEP: None,  # adapted below — returns a dataclass
 }
 
