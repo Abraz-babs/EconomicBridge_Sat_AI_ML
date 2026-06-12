@@ -45,6 +45,48 @@ log = logging.getLogger(__name__)
 # unaffected.
 VIIRS_LATENCY_DAYS = 10
 
+# NASA's publication lag VARIES — a fixed-lag day regularly 404s (observed:
+# day now-10 missing while older days exist). Walk further back, two days at
+# a time, until a published day is found. 10 + 16 = up to 26 days back.
+VIIRS_PROBE_STEP_DAYS = 2
+VIIRS_PROBE_MAX_EXTRA_DAYS = 16
+
+# The archive day that worked is the same for every tenant — resolve it once
+# per process run instead of re-probing 10×. Keyed by the probe start date.
+_resolved_viirs_date: dict[str, datetime] = {}
+
+
+async def _latest_published_viirs_date(
+    viirs_client: BlackMarbleClient,
+    bbox: tuple[float, float, float, float],
+    start: datetime,
+) -> tuple[datetime, list[BlackMarbleGranule]]:
+    """Find the most recent VIIRS day that actually has published granules.
+
+    Starts at `start` (now - VIIRS_LATENCY_DAYS) and steps further back until
+    granules appear or the probe window is exhausted. Returns the resolved
+    date plus its granules ([] when nothing in the window is published).
+    """
+    key = start.strftime("%Y-%m-%d")
+    if key in _resolved_viirs_date:
+        d = _resolved_viirs_date[key]
+        return d, await viirs_client.search_granules(bbox=bbox, date=d, max_results=4)
+
+    for extra in range(0, VIIRS_PROBE_MAX_EXTRA_DAYS + 1, VIIRS_PROBE_STEP_DAYS):
+        candidate = start - timedelta(days=extra)
+        granules = await viirs_client.search_granules(
+            bbox=bbox, date=candidate, max_results=4,
+        )
+        if granules:
+            _resolved_viirs_date[key] = candidate
+            if extra:
+                log.info(
+                    "viirs: day %s unpublished — using %s (%dd further back)",
+                    start.date(), candidate.date(), extra,
+                )
+            return candidate, granules
+    return start, []
+
 
 # Per-tenant centroid + LGA pool. Mirrors apps/api/scripts/seed_poverty_villages.py
 # verbatim so the same settlement points get assigned a real source row
@@ -159,11 +201,13 @@ async def ingest_tenant(
     if bbox is None:
         raise ValueError(f"No bbox for tenant {tenant_id}")
 
-    target_date = date or (datetime.now(timezone.utc) - timedelta(days=VIIRS_LATENCY_DAYS))
-
-    granules = await viirs_client.search_granules(
-        bbox=bbox, date=target_date, max_results=4,
-    )
+    if date is not None:
+        granules = await viirs_client.search_granules(
+            bbox=bbox, date=date, max_results=4,
+        )
+    else:
+        start = datetime.now(timezone.utc) - timedelta(days=VIIRS_LATENCY_DAYS)
+        _, granules = await _latest_published_viirs_date(viirs_client, bbox, start)
     granule: BlackMarbleGranule | None = granules[0] if granules else None
 
     layer: WorldPopLayer | None = await worldpop_client.latest_layer_for_tenant(tenant_id)
