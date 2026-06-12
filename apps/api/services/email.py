@@ -115,8 +115,11 @@ def send_report_email(
     subject = f"EconomicBridge — {module_label} report · {tenant_name} ({period})"
     body = (
         f"Attached is your scheduled {module_label} report for {tenant_name}, "
-        f"covering {period}.\n\n— EconomicBridge (operated by Bizra Farms "
-        f"Integrated Nigeria Ltd)\n"
+        f"covering {period}.\n\n"
+        f"To stop receiving these reports, reply to this email or contact "
+        f"{get_settings().contact_recipient_email} and your subscription will "
+        f"be cancelled immediately.\n\n"
+        f"— EconomicBridge (operated by Bizra Farms Integrated Nigeria Ltd)\n"
     )
     if s.email_backend == "ses":
         return _send_ses_with_attachment(
