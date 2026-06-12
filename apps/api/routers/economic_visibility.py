@@ -152,6 +152,12 @@ async def list_villages(
     raster_sampled = sum(
         1 for v in villages if v.latest_worldpop_sample is not None
     )
+    # Real WorldPop pixel reads are a genuine LIVE source feeding this page
+    # (population enrichment), even though the settlement rows themselves stay
+    # modelled — surface it so the provenance badge reflects the blend instead
+    # of reading DEMO forever.
+    if raster_sampled > 0 and "worldpop_cog_v1" not in sources:
+        sources.append("worldpop_cog_v1")
 
     return SuccessResponse(
         data=PovertyStatsData(

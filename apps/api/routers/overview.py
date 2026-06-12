@@ -147,7 +147,14 @@ async def overview_stats(
         OverviewStatCard(
             label="Crop-disease detections",
             value=_fmt(crop_detections),
-            subtitle="ResNet-50 · live model",
+            # Counts REAL trained-model detections only (seeds excluded).
+            # Zero is the honest state until field photos are uploaded — say
+            # so, instead of looking broken next to a "live model" claim.
+            subtitle=(
+                "ResNet-50 · live model"
+                if crop_detections
+                else "ResNet-50 live · awaiting field uploads"
+            ),
             tone="warn" if crop_detections else "ok",
         ),
     ]
