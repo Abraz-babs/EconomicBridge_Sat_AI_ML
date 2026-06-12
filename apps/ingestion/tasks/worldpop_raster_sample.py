@@ -56,12 +56,18 @@ TENANT_TO_ISO3: dict[str, str] = {
 
 
 def worldpop_url_for(iso3: str, year: int = OBSERVED_YEAR) -> str:
-    """Build the WorldPop PPP GeoTIFF URL for a given country."""
+    """Build the WorldPop PPP GeoTIFF URL for a given country.
+
+    The base comes from settings (WORLDPOP_RASTER_BASE_URL) so deployments can
+    point at the S3 mirror — rasterio reads s3:// natively with the task-role
+    credentials, with real 206 range support that WorldPop's own server
+    currently lacks.
+    """
+    from config import get_settings
+
     iso3 = iso3.upper()
-    return (
-        f"https://data.worldpop.org/GIS/Population/Global_2000_2020/"
-        f"{year}/{iso3}/{iso3.lower()}_ppp_{year}.tif"
-    )
+    base = get_settings().worldpop_raster_base_url.rstrip("/")
+    return f"{base}/{year}/{iso3}/{iso3.lower()}_ppp_{year}.tif"
 
 
 @dataclass(frozen=True, slots=True)

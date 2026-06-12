@@ -124,6 +124,16 @@ class Settings(BaseSettings):
     # hub.worldpop.org/rest/data (the www. host 301s here as of 2026-04).
     # Open S3 bucket (s3://worldpop-data) for raster reads in Phase B.
     worldpop_rest_base_url: str = "https://hub.worldpop.org/rest/data"
+
+    # Base for the PPP population GeoTIFF rasters (COG sampling). Default is
+    # WorldPop's server; in AWS we point this at our S3 mirror
+    # (s3://<artifacts-bucket>/worldpop) because data.worldpop.org currently
+    # answers HTTP range requests with 200 + the full file instead of 206,
+    # which breaks GDAL/vsicurl COG reads everywhere. Same path layout under
+    # either base: {year}/{ISO3}/{iso3}_ppp_{year}.tif
+    worldpop_raster_base_url: str = (
+        "https://data.worldpop.org/GIS/Population/Global_2000_2020"
+    )
     # Family path within the catalog. "pop/pic" = "Individual country
     # populations" (one row per ISO3). The bare /pop list is a directory
     # of 17 subdatasets — too coarse. /pop/{id} detail endpoints return

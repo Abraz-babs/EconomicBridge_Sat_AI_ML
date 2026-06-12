@@ -136,6 +136,21 @@ resource "aws_iam_role_policy" "ecs_task_ml_artifacts" {
   policy = data.aws_iam_policy_document.ecs_task_ml_artifacts.json
 }
 
+# ingestion-only: read (and one-off mirror-write) the WorldPop raster mirror.
+data "aws_iam_policy_document" "ecs_task_ingestion_artifacts" {
+  statement {
+    sid       = "WorldpopMirror"
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${aws_s3_bucket.artifacts.arn}/worldpop/*"]
+  }
+}
+
+resource "aws_iam_role_policy" "ecs_task_ingestion_artifacts" {
+  name   = "${local.name_prefix}-ingestion-task-artifacts"
+  role   = aws_iam_role.ecs_task["ingestion"].id
+  policy = data.aws_iam_policy_document.ecs_task_ingestion_artifacts.json
+}
+
 # notifications-only: send transactional SMS via Amazon SNS (the primary
 # Nigerian carrier path, replacing Termii). SMS publish targets a phone number
 # rather than a topic ARN, so the action is unavoidably resource "*". The app

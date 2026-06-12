@@ -72,6 +72,14 @@ locals {
     { name = "MODEL_S3_URI", value = "s3://${aws_s3_bucket.artifacts.bucket}/ml/crop_classifier.pth" },
   ]
 
+  # ingestion-only env: WorldPop COG sampling reads our S3 mirror —
+  # data.worldpop.org answers range requests with 200+full-file (no 206),
+  # which breaks GDAL/vsicurl reads. Mirror layout matches the original:
+  # worldpop/{year}/{ISO3}/{iso3}_ppp_{year}.tif
+  ingestion_extra_env = [
+    { name = "WORLDPOP_RASTER_BASE_URL", value = "s3://${aws_s3_bucket.artifacts.bucket}/worldpop" },
+  ]
+
   # notifications-only env: outbound SMS via Amazon SNS. The gateway resolves to
   # SNS when SNS_ENABLED=true; otherwise it falls back to the mock gateway, so a
   # deploy with SMS still off plans/runs cleanly.
@@ -96,6 +104,7 @@ locals {
       # ALB path prefix the app must strip itself (see UrlPrefixStripMiddleware).
       lookup(v, "url_prefix", "") != "" ? [{ name = "URL_PREFIX", value = v.url_prefix }] : [],
       k == "api" ? local.api_extra_env : [],
+      k == "ingestion" ? local.ingestion_extra_env : [],
       k == "ml" ? local.ml_extra_env : [],
       k == "notifications" ? local.notifications_extra_env : [],
     )
