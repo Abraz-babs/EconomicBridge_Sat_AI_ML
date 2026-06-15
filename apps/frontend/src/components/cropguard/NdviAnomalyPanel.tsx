@@ -29,8 +29,12 @@ export default function NdviAnomalyPanel() {
   const { activeTenantId } = useTenant();
   const [lastScan, setLastScan] = useState<NdviScanData | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
-  const [demoMode, setDemoMode] = useState(true);
-  const [dataSource, setDataSource] = useState<NdviDataSource>('synthetic');
+  // Default to LIVE Sentinel-2 now that real NDVI is ingested for every tenant
+  // (it degrades gracefully to a modelled series + notice if a tenant has no
+  // usable acquisitions yet). Synthetic stays available as an explicit demo
+  // toggle. Demo anomaly-injection off by default — meaningless on real data.
+  const [demoMode, setDemoMode] = useState(false);
+  const [dataSource, setDataSource] = useState<NdviDataSource>('live');
 
   const scanMutation = useScanNdviAnomaly(activeTenantId);
   const listQuery = useNdviAnomalies({ tenantId: activeTenantId, limit: 6 });
