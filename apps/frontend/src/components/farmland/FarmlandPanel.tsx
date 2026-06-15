@@ -365,7 +365,13 @@ export default function FarmlandPanel() {
           <div className="fp-title">Farmland Protection &amp; Livelihood Alert System</div>
           <div className="fp-subtitle">Encroachment prediction · Copernicus Sentinel-1 SAR · 48–72hr conflict-risk window · Heat &amp; NDVI as supporting signals</div>
         </div>
-        <div className="fp-live-badge">
+        <div
+          className={`fp-live-badge ${
+            !query.isLoading && !query.isError && liveCount === 0
+              ? 'fp-live-badge--monitoring'
+              : ''
+          }`}
+        >
           <div className="fp-pulse" />
           {query.isLoading
             ? 'LOADING'
@@ -373,7 +379,12 @@ export default function FarmlandPanel() {
             ? 'API UNREACHABLE'
             : (
                 <>
-                  LIVE — {stateLabel} · {allAlerts.length} alerts ·{' '}
+                  {/* "LIVE" only when the pipeline has produced live alerts;
+                     otherwise "MONITORING" (watch on, none active) — so the
+                     status word never contradicts the "N live" count beside
+                     it, and an all-clear state doesn't show alert-red. */}
+                  {liveCount > 0 ? 'LIVE' : 'MONITORING'} — {stateLabel} ·{' '}
+                  {allAlerts.length} alerts ·{' '}
                   <span className="fp-live-split">
                     {liveCount} live, {seedCount} seed
                   </span>

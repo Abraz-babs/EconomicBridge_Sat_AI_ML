@@ -1182,6 +1182,13 @@ footer.app-footer {
   animation: pulse 1.4s ease-in-out infinite;
 }
 
+/* All-clear "MONITORING" state — watch is on, no live alerts. Calm green,
+   not the red alert look, so 0 live alerts reads as good news not a fault. */
+.fp-live-badge--monitoring {
+  background: #eef6f0; border-color: #bcdcc7; color: #0a6b34;
+}
+.fp-live-badge--monitoring .fp-pulse { background: #0a6b34; }
+
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(0.85); }
