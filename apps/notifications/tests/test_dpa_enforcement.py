@@ -93,17 +93,20 @@ def test_gated_and_open_routes_have_the_expected_deps():
             return True
         return any(has_dep(sub, target) for sub in dependant.dependencies)
 
-    routes = {
-        (r.path, m): r
-        for r in app.routes
-        if hasattr(r, "methods")
-        for m in r.methods
-    }
+    def find_route(suffix: str, method: str):
+        """Locate a registered route by path suffix + method — robust to the
+        way Starlette/FastAPI expose ``route.path`` across versions (an exact
+        full-path key KeyError'd in CI while passing locally)."""
+        for r in app.routes:
+            methods = getattr(r, "methods", None) or set()
+            if getattr(r, "path", "").endswith(suffix) and method in methods:
+                return r
+        raise AssertionError(f"no {method} route ending with {suffix!r} registered")
 
-    get_subs = routes[("/api/v1/subscribers", "GET")]
-    post_subs = routes[("/api/v1/subscribers", "POST")]
-    notify = routes[("/api/v1/notify/conflict", "POST")]
-    health = routes[("/api/v1/health", "GET")]
+    get_subs = find_route("/subscribers", "GET")
+    post_subs = find_route("/subscribers", "POST")
+    notify = find_route("/notify/conflict", "POST")
+    health = find_route("/health", "GET")
 
     # Gated — Slice 17.
     assert has_dep(get_subs.dependant, require_signed_dpa), (

@@ -102,16 +102,23 @@ def test_dsr_post_is_not_gated():
             return True
         return any(has_dep(sub, target) for sub in dependant.dependencies)
 
-    routes = {
-        (r.path, m): r
-        for r in app.routes
-        if hasattr(r, "methods")
-        for m in r.methods
-    }
+    def find_route(suffix: str, method: str):
+        """Locate a registered route by path suffix + method.
 
-    post_route = routes[("/api/v1/dpa/data-subject-requests", "POST")]
-    get_route = routes[("/api/v1/dpa/data-subject-requests", "GET")]
-    patch_route = routes[("/api/v1/dpa/data-subject-requests/{dsr_id}", "PATCH")]
+        Matching on the router-local suffix (not an exact full-path key)
+        survives the way Starlette/FastAPI expose ``route.path`` differently
+        across versions — the old exact-key dict KeyError'd in CI while
+        passing locally purely from that representation drift.
+        """
+        for r in app.routes:
+            methods = getattr(r, "methods", None) or set()
+            if getattr(r, "path", "").endswith(suffix) and method in methods:
+                return r
+        raise AssertionError(f"no {method} route ending with {suffix!r} registered")
+
+    post_route = find_route("/data-subject-requests", "POST")
+    get_route = find_route("/data-subject-requests", "GET")
+    patch_route = find_route("/data-subject-requests/{dsr_id}", "PATCH")
 
     # Positive controls — confirm we're testing what we think we are.
     assert has_dep(get_route.dependant, require_signed_dpa), (
