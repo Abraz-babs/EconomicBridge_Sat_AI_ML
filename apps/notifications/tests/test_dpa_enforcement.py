@@ -93,13 +93,25 @@ def test_gated_and_open_routes_have_the_expected_deps():
             return True
         return any(has_dep(sub, target) for sub in dependant.dependencies)
 
+    def _iter_routes(routes):
+        """Yield every endpoint route, descending into included routers.
+        Starlette 1.x keeps ``include_router`` routes nested under
+        ``.original_router.routes`` instead of flattening them into
+        app.routes — walk both shapes so introspection is version-proof
+        (flat iteration found nothing under Starlette 1.3 → CI-only failure)."""
+        for r in routes:
+            if getattr(r, "methods", None):
+                yield r
+            nested = (
+                getattr(getattr(r, "original_router", None), "routes", None)
+                or getattr(r, "routes", None)
+            )
+            if nested:
+                yield from _iter_routes(nested)
+
     def find_route(suffix: str, method: str):
-        """Locate a registered route by path suffix + method — robust to the
-        way Starlette/FastAPI expose ``route.path`` across versions (an exact
-        full-path key KeyError'd in CI while passing locally)."""
-        for r in app.routes:
-            methods = getattr(r, "methods", None) or set()
-            if getattr(r, "path", "").endswith(suffix) and method in methods:
+        for r in _iter_routes(app.routes):
+            if getattr(r, "path", "").endswith(suffix) and method in (r.methods or set()):
                 return r
         raise AssertionError(f"no {method} route ending with {suffix!r} registered")
 
