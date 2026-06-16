@@ -10,8 +10,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# Where the operator saves the scanned signature.
-SIG_RAW = Path(r"C:\Users\HP\Downloads\signature.png")
+# Where the operator saves the scanned signature. First existing path wins.
+_SIG_CANDIDATES = [
+    Path(r"C:\Users\HP\Documents\IMG-20260616-WA0004.jpg"),
+    Path(r"C:\Users\HP\Downloads\signature.png"),
+]
+SIG_RAW = next((p for p in _SIG_CANDIDATES if p.exists()), _SIG_CANDIDATES[0])
 SIG_CLEAN = Path(__file__).parent / "_signature_clean.png"
 
 # Pixels brighter than this (0-255 luminance) are treated as paper → made
