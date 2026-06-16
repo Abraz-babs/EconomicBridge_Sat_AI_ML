@@ -16,8 +16,13 @@ from reportlab.platypus import (
     HRFlowable, Image, Paragraph, SimpleDocTemplate, Spacer,
 )
 
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from _sig import signature_image  # noqa: E402
+
 LOGO = Path(r"C:\Users\HP\Downloads\Company Logo.jpg")
 OUT = Path(__file__).parent / "Bizra_NEMA_Partnership_Letter.pdf"
+_SIGNATURE = signature_image(target_width=150)
 
 GREEN = colors.HexColor("#1f8a3b")
 BROWN = colors.HexColor("#6e2b2b")
@@ -123,8 +128,9 @@ story = [
     Paragraph("Please accept the assurances of our highest regard.", body),
     Spacer(1, 10),
     Paragraph("Yours faithfully,", sign),
-    Spacer(1, 16),
-    Paragraph("_______________________________", sign),
+    Spacer(1, 8),
+    _SIGNATURE or Paragraph("_______________________________", sign),
+    Spacer(1, 2),
     Paragraph("<b>Abdullahi Zuru Ibrahim</b>", sign),
     Paragraph("Founder &amp; CEO", sign),
     Paragraph("Bizra Farms Integrated Nigeria Limited", sign),
