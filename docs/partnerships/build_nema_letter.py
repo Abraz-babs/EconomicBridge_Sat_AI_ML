@@ -88,7 +88,8 @@ story = [
         "work with your nominated officers over an initial pilot period to "
         "embed the platform into your early warning and response workflows. "
         "This is offered at no cost during the pilot, with NEMA's data visible "
-        "only to your team.", body),
+        "only to your team. Beyond the pilot, we anticipate transitioning to a "
+        "subscription arrangement by mutual agreement.", body),
 
     Paragraph(
         "<b>What the platform delivers for NEMA:</b>", body),
