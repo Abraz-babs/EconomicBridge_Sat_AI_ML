@@ -72,10 +72,12 @@ story = [
     Paragraph(
         "EconomicBridge is live on secure cloud infrastructure and draws on "
         "real data from the European Copernicus (Sentinel-1 and Sentinel-2) "
-        "satellites, NASA, the World Bank and UNICEF. We are pleased to extend "
-        "this offer to Nasarawa State at no cost, covering all 13 Local "
-        "Government Areas, so that Your Excellency's administration can see its "
-        "value firsthand.", body),
+        "satellites, NASA, the World Bank and UNICEF. We are pleased to offer "
+        "this access to Nasarawa State free of charge for an initial pilot "
+        "period, covering all 13 Local Government Areas, so that Your "
+        "Excellency's administration can evaluate its value firsthand. Beyond "
+        "the pilot, we anticipate transitioning to a modest subscription "
+        "arrangement by mutual agreement.", body),
 
     Paragraph("<b>What the platform offers Nasarawa State:</b>", body),
     Paragraph(
