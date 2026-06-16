@@ -59,5 +59,7 @@ def signature_image(target_width: float = 150):
     from reportlab.platypus import Image as RLImage
 
     w, h = size
-    return RLImage(str(SIG_CLEAN), width=target_width,
-                   height=target_width * h / w)
+    img = RLImage(str(SIG_CLEAN), width=target_width,
+                  height=target_width * h / w)
+    img.hAlign = "LEFT"  # sit at the left margin, above the (left-aligned) name
+    return img
