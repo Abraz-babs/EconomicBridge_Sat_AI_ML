@@ -83,6 +83,14 @@ story = [
         "all 36 states and the FCT.", body),
 
     Paragraph(
+        "EconomicBridge is designed to complement, not replace, the Agency's "
+        "existing forecasting sources such as NIMET and NIHSA. Where those "
+        "provide weather and flood forecasts, EconomicBridge adds live "
+        "satellite observation of actual ground conditions and ties every "
+        "hazard to the affected population, giving NEMA forecast, reality and "
+        "response targeting in a single picture.", body),
+
+    Paragraph(
         "<b>The proposed project.</b> We will activate a dedicated, secure "
         "national account for NEMA, configured for the Agency's mandate, and "
         "work with your nominated officers over an initial pilot period to "
@@ -94,9 +102,10 @@ story = [
     Paragraph(
         "<b>What the platform delivers for NEMA:</b>", body),
     Paragraph(
-        "• <b>Flood &amp; drought early warning (ShockGuard):</b> detection from "
-        "Sentinel-1 radar that sees through cloud cover, day or night, for "
-        "advance warning ahead of disasters.<br/>"
+        "• <b>Live flood &amp; drought observation (ShockGuard):</b> Sentinel-1 "
+        "radar confirms actual flood extent on the ground, through cloud cover "
+        "day or night, turning a forecast into a verified, mapped picture for "
+        "response.<br/>"
         "• <b>Active fire monitoring:</b> daily NASA FIRMS detections of bush "
         "and wildfire across the country.<br/>"
         "• <b>Conflict &amp; displacement early warning:</b> 24 to 72 hour "
