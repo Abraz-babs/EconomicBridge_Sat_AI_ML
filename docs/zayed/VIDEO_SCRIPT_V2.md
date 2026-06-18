@@ -9,16 +9,17 @@ SHOW: Founder in a real field at golden hour; sweeping wide shots of farmland
 and a rural settlement; a farmer's face.
 SAY: "Every year across West Africa, a farmer watches a whole season's work
 vanish. To a flood no one warned them about. A disease they couldn't name. A
-conflict that swept through overnight. Not because the danger was invisible —
-but because no one was watching from above."
+conflict that swept through overnight. Yet every one of these leaves a trace —
+in the soil, the water, the heat — long before it strikes. The danger was
+never invisible. We simply had no way to read it in time."
 
 ## SEG 2 — SOLUTION (0:18–0:38)
 SHOW: Screen rec — Bizra front door → dashboard Overview: the map, pulsing
 halos, the rotating intel ticker.
-SAY: "I'm [name], founder of Bizra Farms. We built EconomicBridge — and now,
-someone is watching. A satellite and AI platform, live today, monitoring more
-than seven hundred local areas across Nigeria, Ghana and Senegal — every
-single day, from space."
+SAY: "I'm [name], founder of Bizra Farms, and we built EconomicBridge to
+change that. A satellite and AI platform, live today, monitoring more than
+seven hundred local areas across Nigeria, Ghana and Senegal — every single
+day, from space."
 
 ## SEG 3 — PROOF (0:38–1:18) — three quick scenes
 1) CropGuard money shot: hold a diseased leaf to camera, then screen rec:
