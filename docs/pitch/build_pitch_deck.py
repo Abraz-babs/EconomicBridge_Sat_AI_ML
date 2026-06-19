@@ -81,9 +81,10 @@ def bullets(items, top=H - 140, size=16, gap=14, x=70, maxw=W - 150, lead=None):
 
 
 def stat_grid(stats, note=None):
-    # 2x2 big-number grid
+    # 2x2 big-number grid (kept clear of the title underline at ~y=448)
     xs = [70, W / 2 + 10]
-    ys = [H - 200, H - 360]
+    ys = [H - 235, H - 375]
+    ch = 120
     i = 0
     for ry in ys:
         for rx in xs:
@@ -91,14 +92,14 @@ def stat_grid(stats, note=None):
                 break
             big, label = stats[i]
             c.setFillColor(LIGHT)
-            c.roundRect(rx, ry, W / 2 - 90, 130, 10, fill=1, stroke=0)
+            c.roundRect(rx, ry, W / 2 - 90, ch, 10, fill=1, stroke=0)
             c.setFillColor(GREEN)
-            c.setFont("Helvetica-Bold", 38)
-            c.drawString(rx + 22, ry + 74, big)
+            c.setFont("Helvetica-Bold", 36)
+            c.drawString(rx + 22, ry + 66, big)
             c.setFillColor(INK)
             c.setFont("Helvetica", 13)
             for k, ln in enumerate(wrap(label, "Helvetica", 13, W / 2 - 130)):
-                c.drawString(rx + 22, ry + 50 - k * 16, ln)
+                c.drawString(rx + 22, ry + 42 - k * 16, ln)
             i += 1
     if note:
         c.setFillColor(GREY)
