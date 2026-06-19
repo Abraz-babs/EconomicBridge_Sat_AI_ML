@@ -91,6 +91,14 @@ class Settings(BaseSettings):
     email_from: str = "no-reply@economicbridge.app"
     aws_region: str = "eu-west-1"
 
+    # 'resend' backend — transactional email via Resend (https://resend.com).
+    # Chosen over SES after AWS denied SES production access. Resend needs a
+    # verified domain to send to arbitrary recipients (auto-approved on DNS
+    # verification, no manual review); until then it only sends to the
+    # account owner's address. Set EMAIL_BACKEND=resend + RESEND_API_KEY.
+    resend_api_key: str = ""
+    resend_base_url: str = "https://api.resend.com"
+
     # Where the public Bizra Farms contact form delivers inquiries.
     contact_recipient_email: str = "bizrafarms@gmail.com"
 

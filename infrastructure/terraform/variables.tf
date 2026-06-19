@@ -168,6 +168,18 @@ variable "ses_sender_email" {
   default     = ""
 }
 
+variable "email_backend" {
+  description = "Override email backend: 'resend' | 'ses' | 'console'. Empty = auto (ses if ses_sender_email set, else console). Set 'resend' once a domain is verified in Resend and the resend/api_key secret is populated."
+  type        = string
+  default     = ""
+}
+
+variable "email_from" {
+  description = "From address for outbound email (e.g. no-reply@yourdomain). Empty falls back to ses_sender_email."
+  type        = string
+  default     = ""
+}
+
 variable "super_admin_email" {
   description = "Platform operator (super-admin) login email — set as SUPER_ADMIN_EMAIL on the api task; the password is the auth/super_admin_password secret."
   type        = string

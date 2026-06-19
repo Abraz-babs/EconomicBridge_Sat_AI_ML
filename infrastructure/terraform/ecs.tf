@@ -53,15 +53,18 @@ locals {
   # domain is in front.
   public_app_url = var.public_app_url != "" ? var.public_app_url : "https://${aws_lb.main.dns_name}"
 
-  # Invite email goes out via SES only when a verified sender is configured;
-  # otherwise the API falls back to 'console' (logs the link) so a deploy
-  # without SES set up still works (invites just aren't emailed).
-  email_backend = var.ses_sender_email != "" ? "ses" : "console"
+  # Email backend: explicit var.email_backend wins (set 'resend' once a Resend
+  # domain is verified); otherwise auto — SES if a verified sender is set, else
+  # 'console' (logs the link) so a deploy without email still works.
+  email_backend = var.email_backend != "" ? var.email_backend : (
+    var.ses_sender_email != "" ? "ses" : "console"
+  )
+  email_from = var.email_from != "" ? var.email_from : var.ses_sender_email
 
   # api-only env: auth onboarding (invite email + super-admin bootstrap).
   api_extra_env = [
     { name = "EMAIL_BACKEND", value = local.email_backend },
-    { name = "EMAIL_FROM", value = var.ses_sender_email },
+    { name = "EMAIL_FROM", value = local.email_from },
     { name = "PUBLIC_APP_URL", value = local.public_app_url },
     { name = "SUPER_ADMIN_EMAIL", value = var.super_admin_email },
   ]

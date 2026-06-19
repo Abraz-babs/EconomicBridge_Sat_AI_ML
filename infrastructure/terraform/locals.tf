@@ -107,6 +107,9 @@ locals {
     # Added for the live open-data feeds (Skills + Poverty/VIIRS).
     "giga/api_key",
     "earthdata/token",
+    # Transactional email via Resend (replaces denied AWS SES). Operator
+    # populates; api reads it when EMAIL_BACKEND=resend.
+    "resend/api_key",
     # Super-admin bootstrap password — operator populates, read once by the
     # seed_super_admin one-off task (see README). NOT the JWT key (that's
     # Terraform-generated in secrets.tf).
@@ -130,6 +133,7 @@ locals {
     "twilio/auth_token"            = "TWILIO_AUTH_TOKEN"
     "giga/api_key"                 = "GIGA_API_KEY"
     "earthdata/token"              = "EARTHDATA_TOKEN"
+    "resend/api_key"               = "RESEND_API_KEY"
     "auth/super_admin_password"    = "SUPER_ADMIN_PASSWORD"
   }
 }

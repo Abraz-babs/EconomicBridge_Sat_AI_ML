@@ -4,14 +4,16 @@ Pluggable backend, mirroring the SMS gateway pattern:
   * 'console' (dev default) — logs the message + link and returns False for
     "really sent". No spend, no infra. The router echoes the activation link in
     the API response so the operator can copy it.
-  * 'ses' (prod) — sends via AWS SES (boto3). Requires a verified sender and
-    `aws_region` set. Returns True on accept.
+  * 'resend' (prod) — sends via the Resend HTTP API (RESEND_API_KEY). Chosen
+    after AWS denied SES production access; auto-approved on domain verify.
+  * 'ses' (legacy) — sends via AWS SES (boto3). Kept for completeness.
 
 Selected by `settings.email_backend`. Never raises on a send failure — onboarding
 must not roll back just because email is down; the link is logged regardless.
 """
 from __future__ import annotations
 
+import base64
 import logging
 
 from config import get_settings
@@ -38,6 +40,8 @@ def send_invite_email(*, to: str, tenant_name: str, activate_url: str) -> bool:
     s = get_settings()
     subject, body = _invite_body(tenant_name, activate_url)
 
+    if s.email_backend == "resend":
+        return _send_resend(to=to, subject=subject, body=body)
     if s.email_backend == "ses":
         return _send_ses(to=to, subject=subject, body=body)
 
@@ -46,6 +50,53 @@ def send_invite_email(*, to: str, tenant_name: str, activate_url: str) -> bool:
         "[email:console] to=%s subject=%r\n%s", to, subject, body,
     )
     return False
+
+
+def _send_resend(
+    *, to: str, subject: str, body: str, reply_to: str | None = None,
+    pdf: bytes | None = None, filename: str | None = None,
+) -> bool:
+    """Send one email via the Resend HTTP API. Best-effort; never raises.
+
+    Optional PDF attachment (base64-encoded per Resend's API). Returns True
+    when Resend accepts the message (HTTP 200/201).
+    """
+    s = get_settings()
+    if not s.resend_api_key:
+        logger.warning("[email:resend] RESEND_API_KEY not set — not sent to %s", to)
+        return False
+    try:
+        import httpx
+
+        payload: dict = {
+            "from": s.email_from,
+            "to": [to],
+            "subject": subject,
+            "text": body,
+        }
+        if reply_to:
+            payload["reply_to"] = reply_to
+        if pdf is not None and filename:
+            payload["attachments"] = [{
+                "filename": filename,
+                "content": base64.b64encode(pdf).decode("ascii"),
+            }]
+        resp = httpx.post(
+            f"{s.resend_base_url}/emails",
+            headers={"Authorization": f"Bearer {s.resend_api_key}"},
+            json=payload,
+            timeout=15,
+        )
+        if resp.status_code in (200, 201):
+            return True
+        logger.warning(
+            "[email:resend] send to %s rejected (%s): %s",
+            to, resp.status_code, resp.text[:200],
+        )
+        return False
+    except Exception as exc:  # noqa: BLE001 — email failure must not break onboarding
+        logger.warning("[email:resend] send to %s failed: %s", to, exc)
+        return False
 
 
 def _send_ses(
@@ -94,6 +145,10 @@ def send_contact_inquiry(
         f"  Message:\n  {message or '(none)'}\n\n"
         "— Reply directly to this email to reach the sender.\n"
     )
+    if s.email_backend == "resend":
+        return _send_resend(
+            to=s.contact_recipient_email, subject=subject, body=body, reply_to=email,
+        )
     if s.email_backend == "ses":
         return _send_ses(
             to=s.contact_recipient_email, subject=subject, body=body, reply_to=email,
@@ -121,6 +176,10 @@ def send_report_email(
         f"be cancelled immediately.\n\n"
         f"— EconomicBridge (operated by Bizra Farms Integrated Nigeria Ltd)\n"
     )
+    if s.email_backend == "resend":
+        return _send_resend(
+            to=to, subject=subject, body=body, pdf=pdf, filename=filename,
+        )
     if s.email_backend == "ses":
         return _send_ses_with_attachment(
             to=to, subject=subject, body=body, pdf=pdf, filename=filename,
