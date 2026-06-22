@@ -286,4 +286,88 @@ come via partner agencies acting as data controllers.
 
 ---
 
+## PART 6 — DEEP DIVE FOR A GIS / REMOTE-SENSING AUDIENCE
+
+*Read this before meeting a GIS professional. These are the details they will
+probe, in their own language.*
+
+### Coordinate systems
+All data is handled in **WGS84 geographic coordinates (EPSG:4326, lat/lon)**.
+The web map renders in **Web Mercator (EPSG:3857)** via Mapbox GL, with deck.gl
+drawing the data layers on top. Tenant areas are defined by a **region-of-interest
+(ROI) bounding box**: `[min_lon, min_lat, max_lon, max_lat]`.
+
+### Administrative boundaries & spatial joins
+- Admin-2 units (LGAs / districts) come from **geoBoundaries** (open data).
+- Each settlement / event point is assigned to its LGA by a **point-in-polygon
+  spatial join**; per-LGA **centroids** drive map placement and the per-tenant
+  lists (Kebbi 21, Benue 23, Kaduna 23, Niger 25, Plateau 17, Zamfara 14,
+  Nasarawa 13, FCT 6 area councils, Ghana 260, Senegal 45).
+
+### Raster handling (WorldPop)
+- WorldPop population is a **GeoTIFF / Cloud-Optimized GeoTIFF (COG)**, ~100 m.
+- We **point-sample** it at each settlement's coordinates with **rasterio**,
+  handling **nodata** cells.
+- We serve the raster from **our own S3 mirror** because the upstream server
+  stopped honouring HTTP range requests — which breaks COG windowed reads. A GIS
+  pro will appreciate that detail: we restored proper range-read behaviour rather
+  than downloading whole 100–500 MB rasters per query.
+
+### Zonal statistics (Sentinel via Copernicus Statistical API)
+Instead of downloading raw scenes, we call Copernicus's **Statistical API**, which
+computes **server-side zonal statistics** (mean / min / max / percentiles) over
+each tenant's ROI per time bucket. So Sentinel-1 returns backscatter stats and
+Sentinel-2 returns NDVI stats, as **time series** ready for anomaly detection —
+efficient, and no gigabytes of imagery moved.
+
+### Sensor specifics
+| Sensor | Type | Resolution | Measure / bands | Revisit |
+|---|---|---|---|---|
+| Sentinel-1 | C-band SAR | ~10 m | VV/VH backscatter | ~6–12 days |
+| Sentinel-2 | Optical | 10–20 m | NDVI = (B8 − B4)/(B8 + B4) | ~5 days |
+| VIIRS Black Marble | Night optical | ~500 m | radiance (VNP46A2) | daily (we use weekly) |
+| WorldPop | Modelled raster | ~100 m | persons / pixel | annual |
+| NASA FIRMS | Thermal | 375 m–1 km | active-fire detections | daily (NRT) |
+
+### NDVI math
+**NDVI = (NIR − Red) / (NIR + Red)**; on Sentinel-2 that is **(B8 − B4)/(B8 + B4)**.
+Range −1 to +1; dense healthy crops sit ~0.6–0.9. We compare a recent mean against
+a baseline mean and flag the **z-score** deviation.
+
+### SAR for flood
+Open water is a **specular reflector** — it bounces the radar pulse away from the
+sensor, so it returns **very low backscatter (dark)**. A sudden drop in VV/VH
+backscatter over normally-bright land indicates **standing water** → mapped flood
+extent, cloud-independent and day or night.
+
+### Anomaly detection (the maths, plainly)
+Per ROI we hold a baseline distribution; each new acquisition is scored
+**z = (recent_mean − baseline_mean) / baseline_std**. Beyond a threshold → anomaly,
+with a confidence band. Deliberately transparent — no black box for hazard calls.
+
+### Visualization stack
+Mapbox GL JS basemap (satellite / dark) + **deck.gl** GPU layers for points and
+heatmaps. Pulse animations are decoupled from the data layers so re-rendering
+stays smooth.
+
+### Honest GIS caveats (knowing these earns credibility)
+- We currently place per-LGA data at **centroids** for display; full-polygon
+  **choropleth** is on the roadmap.
+- The Statistical API gives **ROI-aggregate** values, not per-pixel rasters —
+  excellent for trends, not for sub-LGA pixel mapping.
+- Some layers (fine connectivity, the settlement baseline) are **modelled** and
+  labelled as such.
+
+### Where NASRDA / NigeriaSat fits (the GIS framing for the meeting)
+**NigeriaSat-2** (~2.5 m panchromatic, ~5 m multispectral) and the **NCRS**
+archives would give us **higher-resolution, locally-owned scenes** to: map at
+**sub-LGA / field scale**, **validate** our 10 m Sentinel-derived indicators
+against finer imagery, and move from ROI-aggregates toward **full-polygon
+analysis**. In GIS terms: NigeriaSat complements our medium-resolution,
+high-revisit Sentinel pipeline with high-resolution detail — a genuine
+capability gain, not a duplication. *Lead with this when the director asks what
+you'd do with their data.*
+
+---
+
 *Bizra Farms Integrated Nigeria Limited · bizrafarms@gmail.com · +234 703 791 9465*
