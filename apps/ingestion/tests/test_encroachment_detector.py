@@ -46,10 +46,21 @@ def test_fire_boosts_the_score():
     assert with_fire.score > no_fire.score
 
 
-def test_components_and_weights_present():
+def test_vegetation_gain_alone_does_not_alert():
+    # Wet-season greening: NDVI rises sharply, SAR flat, no fire. This must
+    # NOT be flagged as land-disturbance risk (the bug we fixed).
+    ndvi = [0.30, 0.31, 0.29, 0.30, 0.32, 0.31, 0.62, 0.60, 0.63]
+    sar = [-12.0] * 9
+    sig = compute_encroachment(ndvi, sar, fire_count=0)
+    assert sig is not None
+    assert sig.ndvi_z > 0                       # it's a GAIN
+    assert sig.score < ALERT_THRESHOLD          # but no alert
+    assert sig.components["ndvi_loss"] == 0.0   # gain contributes nothing
+
+
+def test_components_present():
     ndvi = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.4, 0.4, 0.4]
     sar = [-12, -12, -12, -12, -12, -12, -9, -9, -9]
     sig = compute_encroachment(ndvi, sar, 1)
-    assert set(sig.components) >= {"ndvi", "sar", "fire", "weights"}
-    assert abs(sum(sig.components["weights"].values()) - 1.0) < 1e-9
+    assert set(sig.components) >= {"ndvi_loss", "sar_change", "fire"}
     assert len(ndvi) >= MIN_POINTS

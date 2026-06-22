@@ -36,12 +36,6 @@ log = logging.getLogger(__name__)
 MODEL_VERSION = "encroachment_detector_v1"
 RUN_SOURCE = "encroachment_detector_v1"
 
-# Fusion weights (sum to 1.0). SAR is the most reliable all-weather
-# disturbance signal, so it carries the most weight.
-W_NDVI = 0.40
-W_SAR = 0.45
-W_FIRE = 0.15
-
 RECENT_N = 3          # most-recent acquisitions treated as "recent" vs baseline
 MIN_POINTS = 6        # need this many obs in a series to judge
 NDVI_SCALE = 2.0      # z-score magnitude -> 0..1 saturation
@@ -105,14 +99,20 @@ def compute_encroachment(
     ndvi_z = (mean(nr) - mean(nb)) / n_std      # signed
     sar_z = abs(mean(sr) - mean(sb)) / s_std    # magnitude
 
-    # A vegetation DROP (loss) is the stronger encroachment signal; any large
-    # deviation is land change, so give a gain partial credit.
-    ndvi_mag = (-ndvi_z) if ndvi_z < 0 else (0.5 * ndvi_z)
-    c_ndvi = _tanh01(ndvi_mag, NDVI_SCALE)
-    c_sar = _tanh01(sar_z, SAR_SCALE)
+    # Encroachment is vegetation LOSS — only a NDVI DROP counts. Vegetation
+    # gain (wet-season greening) is NOT a disturbance signal and is ignored,
+    # so we never flag healthy crops as risk.
+    c_ndvi = _tanh01(max(0.0, -ndvi_z), NDVI_SCALE)
+    c_sar = _tanh01(sar_z, SAR_SCALE)               # radar land-surface change
     c_fire = min(1.0, fire_count / FIRE_SATURATION)
 
-    score = min(1.0, W_NDVI * c_ndvi + W_SAR * c_sar + W_FIRE * c_fire)
+    # OR-with-corroboration: any single strong signal can flag a watch, and
+    # additional signals raise confidence. Avoids the weighted-sum diluting a
+    # genuine one-signal anomaly (e.g. a sharp SAR change) below the bar.
+    comps = (c_ndvi, c_sar, c_fire)
+    primary = max(comps)
+    corroboration = sum(comps) - primary
+    score = min(1.0, primary + 0.25 * corroboration)
     return EncroachmentSignal(
         score=round(score, 4),
         severity=_severity(score),
@@ -120,9 +120,8 @@ def compute_encroachment(
         sar_z=round(sar_z, 3),
         fire_count=fire_count,
         components={
-            "ndvi": round(c_ndvi, 3), "sar": round(c_sar, 3),
-            "fire": round(c_fire, 3),
-            "weights": {"ndvi": W_NDVI, "sar": W_SAR, "fire": W_FIRE},
+            "ndvi_loss": round(c_ndvi, 3), "sar_change": round(c_sar, 3),
+            "fire": round(c_fire, 3), "fusion": "max + 0.25*corroboration",
         },
         latest_obs=latest_obs,
     )
@@ -175,10 +174,15 @@ async def _insert_alert(
 ) -> None:
     bbox = PILOT_BBOX[tenant]
     lon, lat = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
-    drift = "vegetation loss" if signal.ndvi_z < 0 else "vegetation change"
-    zone = (f"ROI land-surface change: {drift} {signal.ndvi_z:+.1f}σ, "
-            f"SAR Δ{signal.sar_z:.1f}σ"
-            + (f", {signal.fire_count} fire(s)" if signal.fire_count else ""))
+    parts = []
+    if signal.ndvi_z <= -0.5:
+        parts.append(f"vegetation loss {signal.ndvi_z:.1f}σ")
+    if signal.sar_z >= 1.0:
+        parts.append(f"radar land-surface change {signal.sar_z:.1f}σ")
+    if signal.fire_count:
+        parts.append(f"{signal.fire_count} fire(s)")
+    trigger = ", ".join(parts) if parts else "low-level land anomaly"
+    zone = f"Land-surface change risk: {trigger}"
     await session.execute(text("""
         INSERT INTO alert_events (
             id, tenant_id, alert_type, severity, status, zone_name, lga,
