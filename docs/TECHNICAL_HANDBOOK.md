@@ -286,6 +286,13 @@ come via partner agencies acting as data controllers.
 - **"How does radar see through clouds?"** → It's active microwave — it makes its
   own signal and reads the echo, so cloud and darkness don't block it. Water looks
   dark to radar, which is how we map floods.
+- **"How do you detect herder/cattle encroachment?"** → We can't see individual
+  cattle at 10 m, so we detect their *signatures*: Sentinel-2 vegetation loss
+  (grazing/clearing) + Sentinel-1 radar land-surface disturbance + FIRMS fire,
+  fused per ROI into a year-round risk watch. A lone signal is a medium watch;
+  corroborating signals escalate to high/critical in the dry/conflict season.
+  Higher-resolution NigeriaSat / NCRS data would localize the watch from ROI to
+  the actual field, and confirm cattle vs. soil moisture.
 - **"How is each state's data protected?"** → Schema-per-tenant isolation in the
   database; a state can never read another's; regional bodies get cross-state view
   by role.

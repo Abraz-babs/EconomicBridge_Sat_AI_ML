@@ -97,8 +97,9 @@ def build_one_pager():
             "<b>CropGuard</b> — AI crop-disease diagnosis from a leaf photo, plus "
             "satellite vegetation monitoring. &nbsp; <b>ShockGuard</b> — flood and "
             "drought detection from all-weather radar. &nbsp; <b>Farmland "
-            "Protection</b> — conflict and encroachment early warning, 24 to 72 "
-            "hours ahead. &nbsp; <b>Economic Visibility</b> — poverty and "
+            "Protection</b> — herder/cattle encroachment & conflict early warning, "
+            "fusing Sentinel-2 vegetation loss, Sentinel-1 radar disturbance and "
+            "fire. &nbsp; <b>Economic Visibility</b> — poverty and "
             "population mapping from space. &nbsp; Plus mobility, education and "
             "aid-coordination intelligence. Warnings reach communities by SMS in "
             "local languages, no smartphone needed.", body),
