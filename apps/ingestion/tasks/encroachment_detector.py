@@ -137,13 +137,15 @@ def compute_encroachment(
     c_sar = _tanh01(sar_z, SAR_SCALE)               # radar land-surface change
     c_fire = min(1.0, fire_count / FIRE_SATURATION)
 
-    # OR-with-corroboration: any single strong signal can flag a watch, and
-    # additional signals raise confidence. Avoids the weighted-sum diluting a
-    # genuine one-signal anomaly (e.g. a sharp SAR change) below the bar.
+    # Corroboration-weighted confidence. A LONE signal is ambiguous — a single
+    # SAR change in the wet season is often just soil moisture, not
+    # encroachment — so on its own it only earns a moderate watch (×0.6).
+    # Corroborating signals (vegetation loss, fire) raise confidence toward the
+    # full magnitude, and genuine multi-signal events reach high/critical.
     comps = (c_ndvi, c_sar, c_fire)
     primary = max(comps)
-    corroboration = sum(comps) - primary
-    score = min(1.0, primary + 0.25 * corroboration)
+    corroboration = min(1.0, sum(comps) - primary)
+    score = min(1.0, primary * (0.6 + 0.4 * corroboration))
     return EncroachmentSignal(
         score=round(score, 4),
         severity=_severity(score),
