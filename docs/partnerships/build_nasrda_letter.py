@@ -50,7 +50,8 @@ story = [
 
     Paragraph(date.today().strftime("%d %B %Y"), ref),
     Spacer(1, 6),
-    Paragraph("The Director-General & Chief Executive Officer", ref),
+    Paragraph("Dr. Matthew Adepoju", ref),
+    Paragraph("Director-General & Chief Executive Officer", ref),
     Paragraph("National Space Research and Development Agency (NASRDA)", ref),
     Paragraph("Obasanjo Space Centre, Airport Road, Lugbe", ref),
     Paragraph("Abuja, Nigeria", ref),
@@ -61,7 +62,7 @@ story = [
         "FOOD SECURITY AND DISASTER RESILIENCE, THROUGH A NIGERIAN-BUILT "
         "SATELLITE INTELLIGENCE PLATFORM", subj),
 
-    Paragraph("Dear Sir,", body),
+    Paragraph("Dear Dr. Adepoju,", body),
 
     Paragraph(
         "On behalf of <b>Bizra Farms Integrated Nigeria Limited</b>, I write "
@@ -117,7 +118,8 @@ story = [
 
     Spacer(1, 6),
     Paragraph(
-        "Please accept, Sir, the assurances of our highest regard.", body),
+        "Please accept, Dr. Adepoju, the assurances of our highest regard.",
+        body),
     Spacer(1, 10),
     Paragraph("Yours faithfully,", sign),
     Spacer(1, 8),
