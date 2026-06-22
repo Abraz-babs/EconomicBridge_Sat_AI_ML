@@ -166,16 +166,27 @@ For each module: **purpose · inputs · how it works · what you see · provenan
 - **Provenance:** `hapi_v1` where HDX covers; CSV-sourced elsewhere.
 
 ### 3. Farmland Protection
-- **Purpose:** Warn of farmer-herder conflict and encroachment **before** it happens.
-- **Inputs:** Sentinel-1 SAR (land change) + NASA FIRMS (fire) + the conflict
-  Random-Forest model.
-- **How:** Signals feed the model; high-confidence predictions become alerts with a
-  24–72-hour window; FIRMS fires add a real hazard layer.
-- **You see:** Pulsing alert halos on the map, a conflict-risk timeline, livelihoods
-  at risk, agencies notified.
-- **Provenance:** Live pipeline alerts vs seed baseline are labelled (LIVE /
-  MONITORING badge — "MONITORING" = watch on, nothing currently active, which is
-  good news).
+- **Purpose:** Warn of herder/cattle encroachment and farmer-herder conflict
+  **before** it happens.
+- **Inputs:** two live engines — (a) a **fire-cluster conflict pipeline** (NASA
+  FIRMS heat clusters → Random-Forest conflict model), and (b) the **encroachment
+  detector** that fuses **Sentinel-2 NDVI loss** (grazing/clearing) + **Sentinel-1
+  SAR change** (land-surface disturbance, tracks, trampling) + **FIRMS fire**.
+- **How — encroachment detector:** we cannot see individual cattle at 10 m, so we
+  detect their *signatures*. Per tenant ROI we compare recent satellite readings
+  to a baseline; a single notable signal raises a **medium watch**, and
+  corroborating signals (loss + radar + fire) escalate to **high/critical**.
+  Confidence is corroboration-weighted, so a lone wet-season radar change (often
+  just soil moisture) never reads as critical. Runs daily for every tenant,
+  year-round — independent of fire season.
+- **You see:** pulsing alert halos, a conflict-risk timeline, each alert labelled
+  with an LGA + the real trigger ("vegetation loss", "radar land-surface change",
+  "N fires"), flagged for human review.
+- **Provenance:** live encroachment alerts (model_name=`encroachment_detector_v1`)
+  vs seed baseline are labelled — LIVE when present, MONITORING when the watch is
+  on but nothing's active. These are ROI-level *risk indicators*, not confirmed
+  incidents; higher-resolution / per-LGA data (NASRDA NCRS) would localize them
+  from ROI to field scale.
 
 ### 4. CropGuard
 - **Purpose:** Protect harvests from disease, and watch crop health from space.
