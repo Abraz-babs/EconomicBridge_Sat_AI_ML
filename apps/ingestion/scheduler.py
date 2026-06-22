@@ -32,6 +32,7 @@ from tasks.aid_ingest import ingest_aid_for_tenant
 from tasks.conflict_pipeline import run_daily_conflict_pipeline
 from tasks.firms_ingest import ingest_firms_for_tenant
 from tasks.mobility_ingest import ingest_mobility_worldbank_for_tenant
+from tasks.encroachment_detector import run_encroachment_sweep
 from tasks.pass_imagery_sweep import run_pass_imagery_sweep
 from tasks.poverty_ingest import ingest_all as poverty_ingest_all
 from tasks.satellite_observations_ingest import ingest_all as satobs_ingest_all
@@ -47,6 +48,7 @@ JOB_ID_CONFLICT_DAILY = "conflict_daily_0630utc"
 JOB_ID_PASS_IMAGERY_SWEEP = "pass_imagery_sweep_15min"
 JOB_ID_WORLDPOP_WEEKLY = "worldpop_weekly_sun_07utc"
 JOB_ID_POVERTY_WEEKLY = "poverty_viirs_weekly_mon_0630utc"
+JOB_ID_ENCROACHMENT_DAILY = "encroachment_daily_0700utc"
 JOB_ID_MOBILITY_MONTHLY = "mobility_worldbank_monthly_1st_08utc"
 JOB_ID_AID_MONTHLY = "aid_hapi_monthly_1st_09utc"
 JOB_ID_SKILLS_MONTHLY = "skills_giga_monthly_1st_10utc"
@@ -105,6 +107,21 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         max_instances=1,
         # 6h grace covers a Sunday-morning pod restart.
+        misfire_grace_time=21600,
+    )
+
+    scheduler.add_job(
+        run_encroachment_sweep,
+        # Fuses Sentinel-2 NDVI + Sentinel-1 SAR + FIRMS into a year-round
+        # farmland land-disturbance / encroachment risk indicator. Daily at
+        # 07:00 UTC, after the conflict sweep (06:30); dedup means re-running
+        # is safe. This is what keeps Farmland Protection alive out of fire
+        # season — see tasks/encroachment_detector.py.
+        trigger=CronTrigger(hour=7, minute=0, timezone="UTC"),
+        id=JOB_ID_ENCROACHMENT_DAILY,
+        name="Encroachment & land-disturbance detector (all pilots, daily)",
+        replace_existing=True,
+        max_instances=1,
         misfire_grace_time=21600,
     )
 
