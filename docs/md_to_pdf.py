@@ -61,38 +61,56 @@ def inline(text: str) -> str:
 def render(md_path: Path, out_path: Path) -> None:
     lines = md_path.read_text(encoding="utf-8").splitlines()
     flow: list = []
+    buf: list[str] = []
+    kind = {"v": None}  # 'p' (paragraph) or 'li' (list item)
+
+    def flush():
+        if not buf:
+            return
+        txt = inline(" ".join(buf))
+        if kind["v"] == "li":
+            flow.append(Paragraph(txt, S["bullet"], bulletText="•"))
+        else:
+            flow.append(Paragraph(txt, S["body"]))
+        buf.clear()
+        kind["v"] = None
+
     i, n = 0, len(lines)
     while i < n:
-        ln = lines[i]
-        stripped = ln.strip()
+        stripped = lines[i].strip()
 
         if stripped.startswith("```"):              # code fence
+            flush()
             i += 1
-            buf = []
+            cbuf = []
             while i < n and not lines[i].strip().startswith("```"):
-                buf.append(lines[i])
+                cbuf.append(lines[i])
                 i += 1
-            flow.append(Preformatted("\n".join(buf), S["code"]))
+            flow.append(Preformatted("\n".join(cbuf), S["code"]))
             flow.append(Spacer(1, 4))
         elif stripped.startswith("# "):
+            flush()
             flow.append(Paragraph(inline(stripped[2:]), S["h1"]))
             flow.append(HRFlowable(width="100%", thickness=1.2, color=GREEN,
                                    spaceBefore=2, spaceAfter=6))
         elif stripped.startswith("## "):
+            flush()
             flow.append(Paragraph(inline(stripped[3:]), S["h2"]))
         elif stripped.startswith("### "):
+            flush()
             flow.append(Paragraph(inline(stripped[4:]), S["h3"]))
         elif stripped == "---":
+            flush()
             flow.append(HRFlowable(width="100%", thickness=0.5, color=BROWN,
                                    spaceBefore=4, spaceAfter=4))
         elif stripped.startswith("|") and stripped.endswith("|"):
+            flush()
             rows = []
             while i < n and lines[i].strip().startswith("|"):
                 cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
                 rows.append(cells)
                 i += 1
             i -= 1
-            # drop the |---| separator row
             rows = [r for r in rows if not all(set(c) <= set("-: ") for c in r)]
             if rows:
                 header, *bodyrows = rows
@@ -103,8 +121,7 @@ def render(md_path: Path, out_path: Path) -> None:
                 tbl.setStyle(TableStyle([
                     ("BACKGROUND", (0, 0), (-1, 0), GREEN),
                     ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-                     [colors.white, LIGHT]),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
                     ("LEFTPADDING", (0, 0), (-1, -1), 4),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 4),
@@ -114,12 +131,17 @@ def render(md_path: Path, out_path: Path) -> None:
                 flow.append(tbl)
                 flow.append(Spacer(1, 6))
         elif stripped.startswith(("- ", "* ", "• ")):
-            flow.append(Paragraph(inline(stripped[2:]), S["bullet"], bulletText="•"))
+            flush()                                  # start a new list item
+            kind["v"] = "li"
+            buf.append(stripped[2:])
         elif stripped == "":
-            flow.append(Spacer(1, 4))
-        else:
-            flow.append(Paragraph(inline(stripped), S["body"]))
+            flush()
+        else:                                        # continuation of para / li
+            if kind["v"] is None:
+                kind["v"] = "p"
+            buf.append(stripped)
         i += 1
+    flush()
 
     SimpleDocTemplate(
         str(out_path), pagesize=A4, leftMargin=17 * mm, rightMargin=17 * mm,
