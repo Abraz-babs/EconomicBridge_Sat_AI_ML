@@ -22,6 +22,8 @@ import logging
 import math
 from dataclasses import dataclass
 from datetime import date
+from functools import lru_cache
+from pathlib import Path
 from statistics import mean, pstdev
 from uuid import UUID, uuid4
 
@@ -30,6 +32,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import PILOT_TENANT_IDS, get_session_factory, set_tenant_schema
 from sources.nasa_firms import PILOT_BBOX
+
+# Per-LGA centroids (built by scripts/build_lga_centroids.py) — used to label
+# each ROI-level alert with a representative LGA name + real coordinates.
+_LGA_CENTROIDS_PATH = Path(__file__).resolve().parents[1] / "data" / "lga_centroids.json"
 
 log = logging.getLogger(__name__)
 
@@ -60,6 +66,31 @@ class EncroachmentSignal:
 def _tanh01(z: float, scale: float) -> float:
     """Map a magnitude (>=0) to 0..1 with soft saturation."""
     return math.tanh(max(0.0, z) / scale)
+
+
+@lru_cache(maxsize=1)
+def _lga_index() -> dict:
+    try:
+        return json.loads(_LGA_CENTROIDS_PATH.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 — labelling is best-effort
+        return {}
+
+
+def representative_lga(tenant: str) -> tuple[str | None, float, float]:
+    """An LGA name + coordinates representing the tenant ROI for display.
+
+    Picks the LGA whose centroid is closest to the ROI centre, so the alert
+    shows a real place instead of bare coordinates. The alert remains an
+    ROI-level (whole-territory) indicator — the LGA is representative, not a
+    pinpointed location.
+    """
+    bbox = PILOT_BBOX[tenant]
+    cx, cy = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
+    lgas = _lga_index().get(tenant, [])
+    if not lgas:
+        return None, cx, cy
+    nearest = min(lgas, key=lambda g: (g["lon"] - cx) ** 2 + (g["lat"] - cy) ** 2)
+    return nearest["lga"], nearest["lon"], nearest["lat"]
 
 
 def _severity(score: float) -> str:
@@ -172,8 +203,7 @@ async def _insert_alert(
     session: AsyncSession, *, tenant: str, signal: EncroachmentSignal,
     input_hash: str, trace_id: UUID,
 ) -> None:
-    bbox = PILOT_BBOX[tenant]
-    lon, lat = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
+    lga_name, lon, lat = representative_lga(tenant)
     parts = []
     if signal.ndvi_z <= -0.5:
         parts.append(f"vegetation loss {signal.ndvi_z:.1f}σ")
@@ -182,7 +212,8 @@ async def _insert_alert(
     if signal.fire_count:
         parts.append(f"{signal.fire_count} fire(s)")
     trigger = ", ".join(parts) if parts else "low-level land anomaly"
-    zone = f"Land-surface change risk: {trigger}"
+    where = f" near {lga_name}" if lga_name else ""
+    zone = f"Land-surface change risk (ROI-level){where}: {trigger}"
     await session.execute(text("""
         INSERT INTO alert_events (
             id, tenant_id, alert_type, severity, status, zone_name, lga,
@@ -192,7 +223,7 @@ async def _insert_alert(
             model_name, model_version, model_input_hash, shap_values,
             human_review_required, created_at, updated_at, created_by
         ) VALUES (
-            :id, :tenant_id, 'conflict', :severity, 'pending_review', :zone, NULL,
+            :id, :tenant_id, 'conflict', :severity, 'pending_review', :zone, :lga,
             ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :confidence,
             NULL, NULL, NULL,
             NULL,
@@ -203,7 +234,8 @@ async def _insert_alert(
         )
     """), {
         "id": uuid4(), "tenant_id": tenant, "severity": signal.severity,
-        "zone": zone, "lon": lon, "lat": lat, "confidence": signal.score,
+        "zone": zone, "lga": lga_name, "lon": lon, "lat": lat,
+        "confidence": signal.score,
         "model_name": MODEL_VERSION, "model_version": MODEL_VERSION,
         "hash": input_hash, "shap": json.dumps(signal.components),
         "trace_id": trace_id,
