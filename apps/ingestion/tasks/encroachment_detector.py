@@ -47,7 +47,7 @@ MIN_POINTS = 6        # need this many obs in a series to judge
 NDVI_SCALE = 2.0      # z-score magnitude -> 0..1 saturation
 SAR_SCALE = 2.0
 FIRE_SATURATION = 8   # this many recent fires -> full fire component
-ALERT_THRESHOLD = 0.45  # fused score at/above this raises a watch alert
+ALERT_THRESHOLD = 0.42  # fused score at/above this raises a watch alert
 
 
 @dataclass
@@ -94,11 +94,14 @@ def representative_lga(tenant: str) -> tuple[str | None, float, float]:
 
 
 def _severity(score: float) -> str:
-    if score >= 0.85:
+    # Single-signal scores cap at ~0.6 (the corroboration floor), so they land
+    # in "medium" (a watch). high/critical require corroborating signals and
+    # are reached only in the dry/conflict season — see compute_encroachment.
+    if score >= 0.80:
         return "critical"
-    if score >= 0.70:
+    if score >= 0.62:
         return "high"
-    if score >= 0.55:
+    if score >= 0.42:
         return "medium"
     return "low"
 
