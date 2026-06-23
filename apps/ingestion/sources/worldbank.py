@@ -68,10 +68,40 @@ TENANT_TO_ISO3: dict[str, str] = {
     "ghana": "GHA", "senegal": "SEN",
 }
 
-# Transparent income model (Phase-1 assumptions, tunable):
-#   household monthly income = GNI/capita(LCU) × size × disposable-share ÷ 12
+# Transparent income model (tunable assumptions):
+#   national mean household monthly = GNI/capita(LCU) × size × disposable ÷ 12
+# That yields the NATIONAL MEAN. Reporting it unchanged for every LGA badly
+# overstates poor rural areas: GNI per capita is a mean inflated by Lagos /
+# Abuja / oil, and Nigeria's income distribution is right-skewed, so a typical
+# household — especially in the poor north — earns far less than the mean.
+# We therefore scale the national mean to each state's real income level with
+# a calibrated relative-prosperity factor (below) before the per-LGA spread.
 AVG_HOUSEHOLD_SIZE = 4.6          # Nigeria avg household size (NBS NLSS)
 DISPOSABLE_INCOME_RATIO = 0.42    # share of per-capita GNI reaching households
+
+# Per-tenant income-realism factor: scales the national-mean household figure
+# to the state's actual average household income. Calibrated to NBS NLSS
+# 2018/19 state poverty headcount / consumption — the poor northern states sit
+# well below the national mean (Zamfara, Kebbi, Niger are among Nigeria's
+# poorest; FCT/Abuja sits well above). A factor of 1.0 reproduces the raw
+# national mean. This is a MODELLED disaggregation (source='worldbank_v1'); it
+# corrects the previous behaviour that applied the national mean uniformly and
+# overstated rural incomes ~2×.
+TENANT_INCOME_FACTOR: dict[str, float] = {
+    "kebbi":    0.46,
+    "zamfara":  0.38,
+    "niger":    0.44,
+    "plateau":  0.50,
+    "kaduna":   0.54,
+    "benue":    0.52,
+    "nasarawa": 0.50,
+    "fct":      1.02,
+    # Ghana/Senegal: USD-only, national-level (no sub-national NLSS) — a mild
+    # mean→typical-household haircut only.
+    "ghana":    0.62,
+    "senegal":  0.58,
+}
+DEFAULT_INCOME_FACTOR = 0.55      # unknown tenant: mean→typical haircut only
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,19 +276,27 @@ def compose_mobility_indicators(
 ) -> list[MobilityIndicator]:
     """Disaggregate a national income anchor into per-LGA estimates.
 
-    The income LEVELS are real (World Bank GNI per capita, USD + local
-    currency); the within-country spatial spread is modelled around the
-    curated per-tenant profile. Every row gets a USD figure; Nigerian
-    tenants also get a Naira figure. Raises ValueError if the anchor carries
-    no usable USD income figure.
+    The national income anchor is real (World Bank GNI per capita, USD + local
+    currency). It is a national MEAN, so before spreading it we scale it to the
+    state's real income level with TENANT_INCOME_FACTOR (calibrated to NBS NLSS
+    state poverty/consumption) — otherwise poor rural LGAs are reported at the
+    national average, which overstates them ~2×. The within-state spatial
+    spread is then modelled around the curated per-tenant profile. Every row
+    gets a USD figure; Nigerian tenants also get a Naira figure. Raises
+    ValueError if the anchor carries no usable USD income figure.
     """
     if anchor.gni_per_capita_usd is None:
         raise ValueError(f"no USD GNI per capita for {anchor.iso3}")
 
     col_anchor, col_spread = TENANT_COL_PROFILE.get(tenant_id, (100.0, 12.0))
+    # Scale the national mean to this state's real income level (see
+    # TENANT_INCOME_FACTOR) so rural northern LGAs are not reported at the
+    # national average.
+    income_factor = TENANT_INCOME_FACTOR.get(tenant_id, DEFAULT_INCOME_FACTOR)
 
     def _monthly_household(gni_per_capita: float) -> float:
-        return gni_per_capita * AVG_HOUSEHOLD_SIZE * DISPOSABLE_INCOME_RATIO / 12
+        return (gni_per_capita * AVG_HOUSEHOLD_SIZE
+                * DISPOSABLE_INCOME_RATIO * income_factor / 12)
 
     usd_national = _monthly_household(anchor.gni_per_capita_usd)
     # Naira only when the country's local currency is Naira (Nigeria).

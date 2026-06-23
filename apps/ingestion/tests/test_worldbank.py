@@ -200,6 +200,27 @@ def test_compose_income_scales_with_usd_anchor():
         assert hi.avg_household_income_usd > lo.avg_household_income_usd
 
 
+def test_compose_applies_state_prosperity_factor_to_income():
+    """Rural-northern income must sit well below the raw national MEAN — the
+    old behaviour applied the national mean uniformly and overstated it ~2×."""
+    anchor = _anchor()  # LCU 1.5M
+    national_mean = 1_500_000 * 4.6 * 0.42 / 12   # pre-factor mean household
+    rows = compose_mobility_indicators("kebbi", ["Argungu", "Jega", "Suru"], anchor)
+    avg = sum(r.avg_household_income_ngn for r in rows) / len(rows)
+    assert avg < national_mean * 0.65   # meaningfully below the national mean
+    assert avg > national_mean * 0.30   # but not absurdly low
+
+
+def test_compose_richer_state_outearns_poorer_state():
+    """The prosperity gradient orders states correctly: FCT/Abuja > rural Kebbi."""
+    anchor = _anchor()
+    kebbi = compose_mobility_indicators("kebbi", ["Argungu", "Jega"], anchor)
+    fct = compose_mobility_indicators("fct", ["AMAC", "Kuje"], anchor)
+    kebbi_avg = sum(r.avg_household_income_ngn for r in kebbi) / len(kebbi)
+    fct_avg = sum(r.avg_household_income_ngn for r in fct) / len(fct)
+    assert fct_avg > kebbi_avg
+
+
 def test_compose_anchors_opportunity_to_employment():
     """The income-opportunity score tracks the national employment ratio."""
     hi = compose_mobility_indicators(

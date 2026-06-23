@@ -120,13 +120,22 @@ export default function SkillsBridgePanel() {
           </div>
           <div className="fp-stat-sub">% of population with reliable connectivity</div>
         </div>
-        <div className="fp-stat ok">
+        <div
+          className="fp-stat ok"
+          title={
+            'Every GIGA-mapped school facility — all levels, predominantly ' +
+            'primary. Nigeria has ~110,000 primary schools (~140 per LGA), so ' +
+            'per-LGA counts in the hundreds are the real figure, not an error.'
+          }
+        >
           <div className="fp-stat-label">Schools Mapped</div>
           <div className="fp-stat-val">
             {stats ? fmtPop(stats.total_schools) : '—'}
           </div>
           <div className="fp-stat-sub">
-            {stats ? `serving ${fmtPop(stats.total_youth_population)} youth` : 'primary + secondary'}
+            {stats
+              ? `all levels · ${fmtPop(stats.total_youth_population)} youth`
+              : 'all levels · primary-dominant'}
           </div>
         </div>
         <div className="fp-stat crit">
@@ -181,7 +190,9 @@ export default function SkillsBridgePanel() {
                   <th>Mobile</th>
                   <th>Connectivity</th>
                   <th>Schools / 10k</th>
-                  <th>Schools</th>
+                  <th title="GIGA-mapped school facilities, all levels (primary-dominant). Hundreds per LGA is expected for Nigeria.">
+                    Schools
+                  </th>
                   <th>Electricity</th>
                   <th>Gap</th>
                 </tr>
@@ -274,6 +285,19 @@ export default function SkillsBridgePanel() {
                   Derived from internet coverage %: ≥ 60% broadband, 30-60%
                   basic, 10-30% limited, &lt; 10% no signal. Mobile (2G+)
                   coverage tracked separately for SMS-fallback planning.
+                </div>
+              </div>
+            </div>
+            <div className="fp-tl-row">
+              <div className="fp-tl-dot fp-tl-ok">●</div>
+              <div className="fp-tl-content">
+                <div className="fp-tl-time">School counts</div>
+                <div className="fp-tl-event">
+                  Real GIGA-mapped school locations, all levels and
+                  predominantly primary, binned to each LGA. Nigeria has
+                  ~110,000 primary schools across 774 LGAs (~140 each), so
+                  per-LGA counts in the hundreds are the true figure — not
+                  secondary schools alone.
                 </div>
               </div>
             </div>
