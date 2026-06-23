@@ -203,22 +203,13 @@ def build_one_pager():
             "centres.<br/>"
             "&bull; A path to a <b>data-sharing memorandum of understanding</b>.",
             body),
-        Spacer(1, 5),
-        Paragraph("How EconomicBridge compares in the EO landscape", h2),
-        _comparison_table(),
-        Spacer(1, 2),
-        Paragraph(
-            f"{_legend()} EconomicBridge competes on the applied-intelligence "
-            "and last-mile layer over open Copernicus/NASA data. It does not "
-            "own satellites — NASRDA's satellites and NCRS archives are its "
-            "natural complement, not a competitor.", small),
-        Spacer(1, 8),
+        Spacer(1, 10),
         HRFlowable(width="100%", thickness=0.5, color=BROWN, spaceAfter=4),
         footer_line(),
     ]
     SimpleDocTemplate(
-        str(out), pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm,
-        topMargin=9 * mm, bottomMargin=9 * mm,
+        str(out), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
+        topMargin=12 * mm, bottomMargin=12 * mm,
         title="EconomicBridge - Executive Brief (NASRDA)",
     ).build(story)
     shutil.copy(out, DOWNLOADS / out.name)
@@ -291,6 +282,38 @@ def build_demo_script():
     return out
 
 
+# ─── 3. Standalone EO-landscape comparison sheet ──────────────────────────
+def build_comparison_sheet():
+    out = HERE / "EconomicBridge_EO_Comparison.pdf"
+    story = []
+    header(story)
+    story += [
+        Paragraph("<b>EconomicBridge in the Earth-Observation Landscape</b>", h2),
+        Paragraph(
+            "EconomicBridge competes on the applied-intelligence and last-mile "
+            "layer over open Copernicus/NASA data — turning satellite data into "
+            "decisions and alerts that reach the farmer. Compared with the major "
+            "EO providers:", body),
+        Spacer(1, 4),
+        _comparison_table(),
+        Spacer(1, 5),
+        Paragraph(
+            f"{_legend()} EconomicBridge does not own satellites; national "
+            "space assets such as NASRDA's NigeriaSat and NCRS archives are its "
+            "natural complement, not a competitor.", small),
+        Spacer(1, 10),
+        HRFlowable(width="100%", thickness=0.5, color=BROWN, spaceAfter=4),
+        footer_line(),
+    ]
+    SimpleDocTemplate(
+        str(out), pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm,
+        topMargin=12 * mm, bottomMargin=12 * mm,
+        title="EconomicBridge - EO Landscape Comparison",
+    ).build(story)
+    shutil.copy(out, DOWNLOADS / out.name)
+    return out
+
+
 if __name__ == "__main__":
-    for p in (build_one_pager(), build_demo_script()):
+    for p in (build_one_pager(), build_demo_script(), build_comparison_sheet()):
         print(f"  wrote {p.name} ({p.stat().st_size} bytes); copied to Downloads")
