@@ -17,9 +17,24 @@ from reportlab.platypus import (
     HRFlowable, Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
 )
 
+from reportlab.pdfbase import pdfmetrics  # noqa: E402
+from reportlab.pdfbase.ttfonts import TTFont  # noqa: E402
+
 HERE = Path(__file__).parent
 DOWNLOADS = Path(r"C:\Users\HP\Downloads")
 LOGO = Path(r"C:\Users\HP\Downloads\Company Logo.jpg")
+
+# Register a glyph font that has check/cross/half symbols (Helvetica lacks
+# them). Falls back to plain text marks if no candidate font is present.
+SYMBOL_FONT = "Helvetica"
+for _cand in (r"C:\Windows\Fonts\seguisym.ttf", r"C:\Windows\Fonts\arial.ttf"):
+    try:
+        pdfmetrics.registerFont(TTFont("EBSym", _cand))
+        SYMBOL_FONT = "EBSym"
+        break
+    except Exception:  # noqa: BLE001
+        pass
+_HAS_SYM = SYMBOL_FONT != "Helvetica"
 
 GREEN = colors.HexColor("#1f8a3b")
 DGREEN = colors.HexColor("#0a5c2e")
@@ -52,6 +67,73 @@ def header(story):
         HRFlowable(width="100%", thickness=1.4, color=GREEN, spaceAfter=1),
         HRFlowable(width="100%", thickness=0.5, color=BROWN, spaceAfter=8),
     ]
+
+
+# EO competitor comparison. Honest: ✓ full · ◑ partial · ✗ none. Columns:
+# EconomicBridge, Planet/Maxar, EOS/Farmonaut, Digital Earth Africa.
+_CAPS = [
+    ("AI crop-disease diagnosis (from a leaf photo)", "ynnn"),
+    ("Satellite crop / vegetation monitoring (NDVI)", "yyyy"),
+    ("Flood & drought early warning", "yyny"),
+    ("Farmer-herder conflict & encroachment warning", "ynnn"),
+    ("Poverty & population mapping", "ypnp"),
+    ("Aid-coordination & multi-agency coverage", "ynnn"),
+    ("Unified multi-domain platform (ag + disaster + economy)", "ynnp"),
+    ("Last-mile SMS alerts to farmers, local languages", "ynnn"),
+    ("Honest live-vs-modelled data labelling", "ynnn"),
+    ("Built for West-African governments (multi-tenant)", "yppp"),
+    ("Owns a satellite constellation (imagery source)", "nynn"),
+]
+_SYM = {"y": ("✓", "#1f8a3b"), "p": ("◑", "#e8a81a"),
+        "n": ("✗", "#c0c0c0")}
+
+
+def _mark(kind: str):
+    glyph, hexc = _SYM[kind]
+    if not _HAS_SYM:                      # ASCII fallback
+        glyph = {"y": "Yes", "p": "~", "n": "-"}[kind]
+    cell = ParagraphStyle("mk", parent=ss["Normal"], alignment=1, fontSize=8)
+    return Paragraph(
+        f'<font name="{SYMBOL_FONT}" size="11" color="{hexc}">{glyph}</font>', cell)
+
+
+def _legend() -> str:
+    if not _HAS_SYM:
+        return "Yes = full, ~ = partial, - = none."
+    g, a, r = _SYM["y"][0], _SYM["p"][0], _SYM["n"][0]
+    return (f'<font name="{SYMBOL_FONT}" color="#1f8a3b">{g}</font> full &nbsp; '
+            f'<font name="{SYMBOL_FONT}" color="#e8a81a">{a}</font> partial &nbsp; '
+            f'<font name="{SYMBOL_FONT}" color="#999999">{r}</font> none.')
+
+
+def _comparison_table() -> Table:
+    capc = ParagraphStyle("capc", parent=ss["Normal"], fontSize=8.3, leading=10,
+                          textColor=INK)
+    hdr = ParagraphStyle("hdrc", parent=ss["Normal"], fontSize=7.4, leading=8.6,
+                         textColor=colors.white, fontName="Helvetica-Bold",
+                         alignment=1)
+    header = [
+        Paragraph("Capability", ParagraphStyle("h0", parent=hdr, alignment=0)),
+        Paragraph("Economic<br/>Bridge", hdr), Paragraph("Planet /<br/>Maxar", hdr),
+        Paragraph("EOS /<br/>Farmonaut", hdr), Paragraph("Digital Earth<br/>Africa", hdr),
+    ]
+    data = [header] + [
+        [Paragraph(cap, capc)] + [_mark(m) for m in marks] for cap, marks in _CAPS
+    ]
+    t = Table(data, colWidths=[70 * mm, 26 * mm, 26 * mm, 26 * mm, 26 * mm],
+              repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), GREEN),
+        ("BACKGROUND", (1, 1), (1, -1), LIGHT),          # highlight EB column
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 1.8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1.8),
+    ]))
+    return t
 
 
 def footer_line():
@@ -121,13 +203,22 @@ def build_one_pager():
             "centres.<br/>"
             "&bull; A path to a <b>data-sharing memorandum of understanding</b>.",
             body),
-        Spacer(1, 10),
+        Spacer(1, 5),
+        Paragraph("How EconomicBridge compares in the EO landscape", h2),
+        _comparison_table(),
+        Spacer(1, 2),
+        Paragraph(
+            f"{_legend()} EconomicBridge competes on the applied-intelligence "
+            "and last-mile layer over open Copernicus/NASA data. It does not "
+            "own satellites — NASRDA's satellites and NCRS archives are its "
+            "natural complement, not a competitor.", small),
+        Spacer(1, 8),
         HRFlowable(width="100%", thickness=0.5, color=BROWN, spaceAfter=4),
         footer_line(),
     ]
     SimpleDocTemplate(
-        str(out), pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
-        topMargin=12 * mm, bottomMargin=12 * mm,
+        str(out), pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm,
+        topMargin=9 * mm, bottomMargin=9 * mm,
         title="EconomicBridge - Executive Brief (NASRDA)",
     ).build(story)
     shutil.copy(out, DOWNLOADS / out.name)
