@@ -79,9 +79,11 @@ export interface ShockEventRow {
   confidence: number;
   confidence_band: ConfidenceBand;
   requires_human_review: boolean;
-  projected_onset_hours: number;
-  affected_area_km2: number;
-  population_at_risk: number;
+  // Null for ROI-level satellite scans that flag a signal without quantifying
+  // onset / area / population (the on-demand detector + seed fill these).
+  projected_onset_hours: number | null;
+  affected_area_km2: number | null;
+  population_at_risk: number | null;
   lga: string | null;
   zone_name: string | null;
   location: { lon: number; lat: number } | null;

@@ -308,3 +308,40 @@ def test_event_row_location_none_when_geometry_missing():
     row = _base_event_row() | {"lon": None, "lat": None}
     event = _event_row(row)
     assert event.location is None
+
+
+def test_event_row_uses_representative_fallback_for_placeless_event():
+    """A tenant-level event with no LGA/geometry gets the representative
+    (lga, lon, lat) so the feed + map always show a real place."""
+    row = _base_event_row() | {
+        "lon": None, "lat": None, "lga": None, "zone_name": None,
+    }
+    event = _event_row(row, fallback=("Gwandu", 4.65, 12.50))
+    assert event.lga == "Gwandu"
+    assert event.location is not None
+    assert (event.location.lon, event.location.lat) == (4.65, 12.50)
+
+
+def test_event_row_tolerates_null_onset_area_population():
+    """ROI-level satellite scans write NULL onset/area/population — the mapper
+    must not crash (int(None)) and the fields surface as None."""
+    row = _base_event_row() | {
+        "lon": 4.20, "lat": 12.45,
+        "projected_onset_hours": None,
+        "affected_area_km2": None,
+        "population_at_risk": None,
+        "source": "shockguard_scan_v1",
+    }
+    event = _event_row(row)
+    assert event.projected_onset_hours is None
+    assert event.affected_area_km2 is None
+    assert event.population_at_risk is None
+
+
+def test_representative_lga_returns_real_place():
+    """The api-side representative_lga gives a real LGA + coords per tenant."""
+    from services.lga_geo import representative_lga
+    lga, lon, lat = representative_lga("kebbi")
+    assert lga is not None
+    assert lon is not None and lat is not None
+    assert representative_lga("does-not-exist") == (None, None, None)

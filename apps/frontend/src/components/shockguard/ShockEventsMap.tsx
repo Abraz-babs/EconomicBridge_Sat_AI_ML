@@ -61,10 +61,18 @@ function tooltipFor(obj: unknown): string | null {
   const lines = [
     `${icon} ${e.event_type.toUpperCase()} · ${e.severity}`,
     `Location: ${e.lga ?? '—'}`,
-    `~${Math.round(e.population_at_risk).toLocaleString()} at risk · ${e.affected_area_km2.toFixed(0)} km²`,
-    `Onset in ${e.projected_onset_hours}h · ${e.confidence_band}`,
-    `${e.detector_name} ${e.detector_version}`,
   ];
+  if (e.population_at_risk != null && e.affected_area_km2 != null) {
+    lines.push(
+      `~${Math.round(e.population_at_risk).toLocaleString()} at risk · ${e.affected_area_km2.toFixed(0)} km²`,
+    );
+  }
+  lines.push(
+    e.projected_onset_hours != null
+      ? `Onset in ${e.projected_onset_hours}h · ${e.confidence_band}`
+      : `Satellite signal · ${e.confidence_band}`,
+  );
+  lines.push(`${e.detector_name} ${e.detector_version}`);
   if (e.synthetic_location) lines.push('⚠ synthesised position');
   return lines.join('\n');
 }
@@ -153,7 +161,7 @@ export default function ShockEventsMap({ tenant, events }: Props) {
           getPosition: (p) => p.position,
           // Radius scales with affected area. Tidy meter scale (Slice 25):
           // comparable band to Poverty so dots stay small at default zoom.
-          getRadius: (p) => 4000 + Math.sqrt(p.affected_area_km2) * 800,
+          getRadius: (p) => 4000 + Math.sqrt(p.affected_area_km2 ?? 0) * 800,
           getFillColor: (p) => colourFor(p),
           getLineColor: [255, 255, 255, 220],
           lineWidthMinPixels: 1.5,

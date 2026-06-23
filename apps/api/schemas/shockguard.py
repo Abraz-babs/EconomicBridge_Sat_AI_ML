@@ -108,9 +108,11 @@ class ShockEventRow(BaseModel):
     confidence: float
     confidence_band: ConfidenceBand
     requires_human_review: bool
-    projected_onset_hours: int
-    affected_area_km2: float
-    population_at_risk: int
+    # Null for ROI-level satellite scans that flag a signal but don't quantify
+    # onset / area / population (the on-demand detector + seed do fill these).
+    projected_onset_hours: int | None = None
+    affected_area_km2: float | None = None
+    population_at_risk: int | None = None
     lga: str | None = None
     zone_name: str | None = None
     # Real point geometry when the detector/seed attached one — drives the

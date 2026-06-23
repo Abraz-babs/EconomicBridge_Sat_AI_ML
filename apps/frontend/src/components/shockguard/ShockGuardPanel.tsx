@@ -342,9 +342,17 @@ export default function ShockGuardPanel() {
                 </span>
               </div>
               <div className="fp-alert-desc">
-                ~{fmtNum(ev.population_at_risk)} at risk over{' '}
-                {ev.affected_area_km2.toFixed(0)} km²
-                {' · '}onset in {ev.projected_onset_hours}h.
+                {ev.population_at_risk != null && ev.affected_area_km2 != null ? (
+                  <>
+                    ~{fmtNum(ev.population_at_risk)} at risk over{' '}
+                    {ev.affected_area_km2.toFixed(0)} km²
+                    {ev.projected_onset_hours != null
+                      ? ` · onset in ${ev.projected_onset_hours}h.`
+                      : '.'}
+                  </>
+                ) : (
+                  ev.zone_name ?? 'Satellite-detected signal · ROI-level · under review'
+                )}
               </div>
               <div className="fp-alert-meta">
                 <span>{ev.detector_name} {ev.detector_version}</span>

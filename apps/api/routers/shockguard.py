@@ -30,7 +30,7 @@ from schemas.shockguard import (
     ShockScanData,
     ShockScanRequest,
 )
-from services import shock_detector
+from services import lga_geo, shock_detector
 from services.auto_notify import fire_conflict_notification
 from services.live_satellite import LiveDataMissingError, load_flood_series
 from services.shock_detector import to_utc_dt
@@ -54,15 +54,36 @@ def _require_tenant(request: Request) -> str:
     return tenant_id
 
 
-def _event_row(r: Mapping[str, Any]) -> ShockEventRow:
+def _event_row(
+    r: Mapping[str, Any],
+    fallback: tuple[str | None, float | None, float | None] | None = None,
+) -> ShockEventRow:
     """Map a `shock_events` row mapping to its API shape.
 
-    `lon`/`lat` come from ST_X/ST_Y(location); both are NULL for events with
-    no geometry, in which case `location` is omitted and the map synthesises
-    a position.
+    `lon`/`lat` come from ST_X/ST_Y(location). When a row has no LGA / geometry
+    (e.g. an older tenant-level scan), `fallback` — the tenant's representative
+    (lga, lon, lat) — fills them so the feed and map always show a real place.
+    Onset / area / population are nullable (ROI-level scans don't quantify them).
     """
     lon, lat = r.get("lon"), r.get("lat")
-    location = LonLat(lon=float(lon), lat=float(lat)) if lon is not None and lat is not None else None
+    lga = r.get("lga")
+    if fallback is not None:
+        fb_lga, fb_lon, fb_lat = fallback
+        if lga is None:
+            lga = fb_lga
+        if lon is None or lat is None:
+            lon, lat = fb_lon, fb_lat
+    location = (
+        LonLat(lon=float(lon), lat=float(lat))
+        if lon is not None and lat is not None else None
+    )
+
+    def _opt_int(v: Any) -> int | None:
+        return int(v) if v is not None else None
+
+    def _opt_float(v: Any) -> float | None:
+        return float(v) if v is not None else None
+
     return ShockEventRow(
         id=r["id"],
         tenant_id=r["tenant_id"],
@@ -73,10 +94,10 @@ def _event_row(r: Mapping[str, Any]) -> ShockEventRow:
         confidence=float(r["confidence"]),
         confidence_band=r["confidence_band"],
         requires_human_review=bool(r["requires_human_review"]),
-        projected_onset_hours=int(r["projected_onset_hours"]),
-        affected_area_km2=float(r["affected_area_km2"]),
-        population_at_risk=int(r["population_at_risk"]),
-        lga=r.get("lga"),
+        projected_onset_hours=_opt_int(r.get("projected_onset_hours")),
+        affected_area_km2=_opt_float(r.get("affected_area_km2")),
+        population_at_risk=_opt_int(r.get("population_at_risk")),
+        lga=lga,
         zone_name=r.get("zone_name"),
         location=location,
         metrics=r.get("metrics") or {},
@@ -262,7 +283,8 @@ async def list_events(
     )
     rows = result.mappings().all()
 
-    events = [_event_row(r) for r in rows]
+    fallback = lga_geo.representative_lga(tenant_id)
+    events = [_event_row(r, fallback) for r in rows]
 
     # Monitoring status — the scheduled scan stamps public.ingestion_runs each
     # run, so the panel can show "scanned today, all clear" instead of looking
@@ -307,6 +329,13 @@ async def _persist_event(
     from services.tenants import tenant_schema_name
     schema = tenant_schema_name(tenant_id)
     await session.execute(text(f"SET search_path TO {schema}, public"))
+
+    # The scan is tenant/ROI-level (no per-LGA input), so attach a
+    # representative LGA + coordinates instead of leaving the event placeless.
+    lga, lon, lat = lga_geo.representative_lga(tenant_id)
+    where = f" near {lga}" if lga else ""
+    zone_name = f"{detection.event_type.capitalize()} signal (ROI-level){where}"
+
     await session.execute(
         text(
             """
@@ -314,11 +343,13 @@ async def _persist_event(
                 id, tenant_id, event_type, detector_name, detector_version,
                 severity, confidence, confidence_band, requires_human_review,
                 projected_onset_hours, affected_area_km2, population_at_risk,
+                location, lga, zone_name,
                 metrics, source, trace_id, created_at
             ) VALUES (
                 :id, :tenant_id, :event_type, :detector_name, :detector_version,
                 :severity, :confidence, :confidence_band, :requires_human_review,
                 :projected_onset_hours, :affected_area_km2, :population_at_risk,
+                ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :lga, :zone_name,
                 CAST(:metrics AS JSONB), :source, :trace_id, :created_at
             )
             """
@@ -336,6 +367,7 @@ async def _persist_event(
             "projected_onset_hours": detection.projected_onset_hours,
             "affected_area_km2": detection.affected_area_km2,
             "population_at_risk": detection.population_at_risk,
+            "lon": lon, "lat": lat, "lga": lga, "zone_name": zone_name,
             "metrics": json.dumps(detection.metrics),
             "source": "detector_v1",
             "trace_id": trace_id,

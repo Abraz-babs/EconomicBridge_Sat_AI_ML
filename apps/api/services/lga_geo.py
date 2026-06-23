@@ -188,6 +188,31 @@ def all_lgas(tenant_id: str) -> list[str]:
     return sorted(LGA_CENTROIDS.get(tenant_id, {}).keys())
 
 
+def representative_lga(
+    tenant_id: str,
+) -> tuple[str | None, float | None, float | None]:
+    """A representative LGA + coordinates for a whole-tenant (ROI-level) event.
+
+    Tenant-level detectors (e.g. the ShockGuard flood/drought scan) have no
+    per-LGA input, so instead of leaving the event with no place we attach the
+    LGA whose centroid is closest to the tenant's mean centroid. The result is
+    a real LGA name + coordinates the map and feed can show; the event is still
+    an ROI-level indicator, the LGA is representative. Returns (None, None,
+    None) for an unknown tenant.
+    """
+    centroids = LGA_CENTROIDS.get(tenant_id)
+    if not centroids:
+        return None, None, None
+    lons = [lon for lon, _ in centroids.values()]
+    lats = [lat for _, lat in centroids.values()]
+    cx, cy = sum(lons) / len(lons), sum(lats) / len(lats)
+    lga, (lon, lat) = min(
+        centroids.items(),
+        key=lambda kv: (kv[1][0] - cx) ** 2 + (kv[1][1] - cy) ** 2,
+    )
+    return lga, lon, lat
+
+
 def centroid_for(tenant_id: str, lga: str) -> tuple[float, float]:
     """Return `(lon, lat)` for the given LGA.
 
