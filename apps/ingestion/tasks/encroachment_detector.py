@@ -49,6 +49,20 @@ SAR_SCALE = 2.0
 FIRE_SATURATION = 8   # this many recent fires -> full fire component
 ALERT_THRESHOLD = 0.42  # fused score at/above this raises a watch alert
 
+# Impact ESTIMATES shown on the alert card (model-derived, human_review_required
+# — NOT measured). Anchored to smallholder reality and the seed alerts' own
+# ratios (~4.6 livelihoods/ha, ~₦200k gross crop value/ha/season). Severity sets
+# the base disturbed extent + the conflict-risk window the module advertises
+# (24-72h); the score modulates the extent within the band.
+SEVERITY_IMPACT_HA_HOURS = {
+    "critical": (160, 24),
+    "high":     (90, 48),
+    "medium":   (45, 72),
+    "low":      (20, 96),
+}
+LIVELIHOODS_PER_HA = 4.6
+CROP_VALUE_NGN_PER_HA = 200_000
+
 
 @dataclass
 class EncroachmentSignal:
@@ -196,12 +210,16 @@ def _input_hash(tenant: str, latest_obs: date | None) -> str:
     ).encode("utf-8")).hexdigest()
 
 
-async def _alert_exists(session: AsyncSession, input_hash: str) -> bool:
-    r = (await session.execute(
-        text("SELECT 1 FROM alert_events WHERE model_input_hash = :h LIMIT 1"),
-        {"h": input_hash},
-    )).first()
-    return r is not None
+def _impact_estimate(severity: str, score: float) -> tuple[int, int, int, int]:
+    """Model-derived (area_ha, livelihoods, economic_value_ngn, breach_hours)
+    for the alert card. ESTIMATES, not measurements — the alert stays
+    human_review_required. Extent scales within the severity band by score.
+    """
+    base_ha, breach_h = SEVERITY_IMPACT_HA_HOURS.get(severity, (20, 96))
+    area_ha = max(1, round(base_ha * (0.7 + 0.6 * min(1.0, score))))
+    livelihoods = round(area_ha * LIVELIHOODS_PER_HA)
+    econ_ngn = round(area_ha * CROP_VALUE_NGN_PER_HA)
+    return area_ha, livelihoods, econ_ngn, breach_h
 
 
 async def _insert_alert(
@@ -219,6 +237,8 @@ async def _insert_alert(
     trigger = ", ".join(parts) if parts else "low-level land anomaly"
     where = f" near {lga_name}" if lga_name else ""
     zone = f"Land-surface change risk (ROI-level){where}: {trigger}"
+    area_ha, livelihoods, econ_ngn, breach_h = _impact_estimate(
+        signal.severity, signal.score)
     await session.execute(text("""
         INSERT INTO alert_events (
             id, tenant_id, alert_type, severity, status, zone_name, lga,
@@ -230,8 +250,8 @@ async def _insert_alert(
         ) VALUES (
             :id, :tenant_id, 'conflict', :severity, 'pending_review', :zone, :lga,
             ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :confidence,
-            NULL, NULL, NULL,
-            NULL,
+            :area_ha, :livelihoods, :econ_ngn,
+            :breach_h,
             'Sentinel-2 NDVI + Sentinel-1 SAR + NASA FIRMS (fused land-disturbance risk)',
             NOW(),
             :model_name, :model_version, :hash, CAST(:shap AS JSONB),
@@ -241,6 +261,8 @@ async def _insert_alert(
         "id": uuid4(), "tenant_id": tenant, "severity": signal.severity,
         "zone": zone, "lga": lga_name, "lon": lon, "lat": lat,
         "confidence": signal.score,
+        "area_ha": area_ha, "livelihoods": livelihoods, "econ_ngn": econ_ngn,
+        "breach_h": breach_h,
         "model_name": MODEL_VERSION, "model_version": MODEL_VERSION,
         "hash": input_hash, "shap": json.dumps(signal.components),
         "trace_id": trace_id,
@@ -248,18 +270,25 @@ async def _insert_alert(
 
 
 async def detect_for_tenant(session: AsyncSession, tenant: str) -> str:
-    """Evaluate one tenant; insert an alert if the fused score clears the bar."""
+    """Evaluate one tenant; refresh its current watch from the latest scan.
+
+    The encroachment watch is a continuously-refreshed ROI signal, so each run
+    clears the prior un-actioned (pending_review) auto-watch and writes the
+    current one. Officer-actioned rows (acknowledged/resolved) are preserved.
+    """
     await set_tenant_schema(session, tenant)
     ndvi, sar, latest = await _load_series(session)
     fires = await _recent_fire_count(session)
     signal = compute_encroachment(ndvi, sar, fires, latest)
+    await session.execute(text(
+        "DELETE FROM alert_events "
+        "WHERE model_name = :m AND status = 'pending_review'"
+    ), {"m": MODEL_VERSION})
     if signal is None:
         return "skipped: insufficient observations"
     if signal.score < ALERT_THRESHOLD:
         return f"no alert (score {signal.score})"
     h = _input_hash(tenant, latest)
-    if await _alert_exists(session, h):
-        return f"exists (score {signal.score})"
     await _insert_alert(session, tenant=tenant, signal=signal,
                         input_hash=h, trace_id=uuid4())
     return f"ALERT {signal.severity} (score {signal.score})"

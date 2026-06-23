@@ -9,8 +9,28 @@ if str(ING_ROOT) not in sys.path:
     sys.path.insert(0, str(ING_ROOT))
 
 from tasks.encroachment_detector import (  # noqa: E402
-    ALERT_THRESHOLD, MIN_POINTS, compute_encroachment,
+    ALERT_THRESHOLD, MIN_POINTS, _impact_estimate, compute_encroachment,
 )
+
+
+def test_impact_estimate_scales_with_severity():
+    """Higher severity → bigger extent + shorter conflict-risk window."""
+    crit = _impact_estimate("critical", 0.85)
+    med = _impact_estimate("medium", 0.50)
+    # (area_ha, livelihoods, econ_ngn, breach_hours)
+    assert crit[0] > med[0]                 # critical covers more ha
+    assert crit[1] > med[1]                 # more livelihoods
+    assert crit[2] > med[2]                 # more economic value
+    assert crit[3] < med[3]                 # critical breaches sooner
+
+
+def test_impact_estimate_is_internally_consistent():
+    """Livelihoods and economic value derive from the area at fixed ratios."""
+    area, livelihoods, econ_ngn, breach = _impact_estimate("medium", 0.52)
+    assert area >= 1
+    assert livelihoods == round(area * 4.6)
+    assert econ_ngn == area * 200_000
+    assert breach in (24, 48, 72, 96)
 
 
 def test_thin_data_returns_none():
