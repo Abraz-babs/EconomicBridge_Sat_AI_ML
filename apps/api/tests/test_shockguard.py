@@ -259,6 +259,15 @@ def test_events_endpoint_declares_limit_constraints():
     assert limit["schema"]["maximum"] == 100
 
 
+def test_events_response_declares_monitoring_status_fields():
+    """The events response carries last_scan_at + active_shock_count so the
+    panel can show 'scanned today, all clear' instead of looking stale."""
+    spec = client.get("/api/openapi.json").json()
+    props = spec["components"]["schemas"]["ShockEventListData"]["properties"]
+    assert "last_scan_at" in props
+    assert "active_shock_count" in props
+
+
 # ─── _event_row location mapping (DB-free row → ShockEventRow) ─────────────
 
 

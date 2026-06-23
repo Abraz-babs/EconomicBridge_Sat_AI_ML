@@ -18,7 +18,9 @@ import json
 import logging
 import math
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from statistics import mean, pstdev
+from uuid import uuid4
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -128,8 +130,31 @@ async def _insert_event(session: AsyncSession, *, tenant: str, sig: ShockSignal)
     })
 
 
-async def detect_for_tenant(session: AsyncSession, tenant: str) -> str:
-    """Re-scan one tenant; replace its prior scan events with current ones."""
+async def _record_run(
+    session: AsyncSession, *, tenant: str, written: int,
+    started_at: datetime, trigger: str,
+) -> None:
+    """Stamp public.ingestion_runs so the dashboard can show 'last scan' and
+    prove the detector is live even when no shock is active."""
+    await session.execute(text("""
+        INSERT INTO public.ingestion_runs (
+            id, source, tenant_id, trigger, started_at, finished_at,
+            status, records_ingested, dry_run
+        ) VALUES (
+            :id, :source, :tenant, :trigger, :started_at, NOW(),
+            'succeeded', :written, FALSE
+        )
+    """), {
+        "id": uuid4(), "source": SOURCE, "tenant": tenant, "trigger": trigger,
+        "started_at": started_at, "written": written,
+    })
+
+
+async def detect_for_tenant(session: AsyncSession, tenant: str) -> int:
+    """Re-scan one tenant; replace its prior scan events with current ones.
+
+    Returns the number of shock events written (0 = scanned, all clear).
+    """
     await set_tenant_schema(session, tenant)
     ndvi, sar = await _load_series(session)
     # Idempotent: clear the previous scan's events before writing fresh ones.
@@ -140,21 +165,32 @@ async def detect_for_tenant(session: AsyncSession, tenant: str) -> str:
     written = [s for s in (flood, drought) if s is not None]
     for sig in written:
         await _insert_event(session, tenant=tenant, sig=sig)
-    if not written:
-        return "clear (no flood/drought signal)"
-    return ", ".join(f"{s.event_type} {s.severity} ({s.confidence})" for s in written)
+    return len(written)
 
 
-async def run_shockguard_scan(tenants: list[str] | None = None) -> dict[str, str]:
-    """Re-scan every pilot tenant. Failures isolated; one session per tenant."""
+async def run_shockguard_scan(
+    tenants: list[str] | None = None, *, trigger: str = "scheduled",
+) -> dict[str, str]:
+    """Re-scan every pilot tenant. Failures isolated; one session per tenant.
+
+    Every successful tenant scan stamps public.ingestion_runs (even a clear
+    result) so the ShockGuard panel can show a 'last scan' time.
+    """
     target = list(tenants) if tenants is not None else sorted(PILOT_TENANT_IDS)
     factory = get_session_factory()
     out: dict[str, str] = {}
     for t in target:
         async with factory() as session:
+            started = datetime.now(timezone.utc)
             try:
-                out[t] = await detect_for_tenant(session, t)
+                count = await detect_for_tenant(session, t)
+                await _record_run(
+                    session, tenant=t, written=count,
+                    started_at=started, trigger=trigger,
+                )
                 await session.commit()
+                out[t] = "clear (no flood/drought signal)" if count == 0 \
+                    else f"{count} shock event(s)"
             except Exception as exc:  # noqa: BLE001 — isolate per tenant
                 out[t] = f"failed: {exc!s}"
                 log.exception("shockguard scan failed tenant=%s", t)

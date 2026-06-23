@@ -92,6 +92,16 @@ export interface ShockEventRow {
 
 interface ShockEventListData {
   events: ShockEventRow[];
+  // Monitoring status — proves the detector scanned recently even when no
+  // shock is active (0 = scanned, all clear).
+  last_scan_at?: string | null;
+  active_shock_count?: number;
+}
+
+export interface ShockEventsResult {
+  events: ShockEventRow[];
+  lastScanAt: string | null;
+  activeShockCount: number;
 }
 
 
@@ -130,9 +140,9 @@ export interface UseShockEventsParams {
 
 export function useShockEvents(
   params: UseShockEventsParams,
-): UseQueryResult<{ events: ShockEventRow[] }, ApiException> {
+): UseQueryResult<ShockEventsResult, ApiException> {
   const limit = params.limit ?? 10;
-  return useQuery<{ events: ShockEventRow[] }, ApiException>({
+  return useQuery<ShockEventsResult, ApiException>({
     queryKey: ['shockguard-events', params.tenantId, limit, params.eventType ?? null],
     enabled: params.enabled !== false && Boolean(params.tenantId),
     queryFn: async ({ signal }) => {
@@ -143,7 +153,11 @@ export function useShockEvents(
           `/shockguard/events?${search.toString()}`,
           { tenantId: params.tenantId, signal },
         );
-      return { events: envelope.data.events };
+      return {
+        events: envelope.data.events,
+        lastScanAt: envelope.data.last_scan_at ?? null,
+        activeShockCount: envelope.data.active_shock_count ?? 0,
+      };
     },
   });
 }

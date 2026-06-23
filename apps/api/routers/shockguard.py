@@ -231,7 +231,7 @@ async def list_events(
         str | None, Query(description="Filter to 'flood' or 'drought'.")
     ] = None,
 ) -> SuccessResponse[ShockEventListData]:
-    _require_tenant(request)
+    tenant_id = _require_tenant(request)
 
     where_clause = ""
     params: dict[str, object] = {"limit": limit}
@@ -264,8 +264,28 @@ async def list_events(
 
     events = [_event_row(r) for r in rows]
 
+    # Monitoring status — the scheduled scan stamps public.ingestion_runs each
+    # run, so the panel can show "scanned today, all clear" instead of looking
+    # stale when shocks are (correctly) absent. active_shock_count is how many
+    # signals the latest scan currently flags (its rows replace each run).
+    last_scan_at = (await session.execute(
+        text(
+            "SELECT MAX(finished_at) FROM public.ingestion_runs "
+            "WHERE source = 'shockguard_scan_v1' AND tenant_id = :t "
+            "AND status = 'succeeded'"
+        ),
+        {"t": tenant_id},
+    )).scalar()
+    active_shock_count = int((await session.execute(
+        text("SELECT count(*) FROM shock_events WHERE source = 'shockguard_scan_v1'")
+    )).scalar() or 0)
+
     return SuccessResponse(
-        data=ShockEventListData(events=events),
+        data=ShockEventListData(
+            events=events,
+            last_scan_at=last_scan_at,
+            active_shock_count=active_shock_count,
+        ),
         meta=ResponseMeta(
             tenant_id=None, trace_id=_trace_id(request),
             timestamp=datetime.now(timezone.utc), pagination=None,

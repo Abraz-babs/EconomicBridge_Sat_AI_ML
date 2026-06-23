@@ -107,6 +107,8 @@ export default function ShockGuardPanel() {
 
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
   const events = eventsQuery.data?.events ?? [];
+  const lastScanAt = eventsQuery.data?.lastScanAt ?? null;
+  const activeShockCount = eventsQuery.data?.activeShockCount ?? 0;
 
   return (
     <div>
@@ -152,6 +154,37 @@ export default function ShockGuardPanel() {
           {eventsQuery.isFetching ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
+
+      {/* MONITORING STATUS — proves the daily scan is live even when (correctly)
+          no flood/drought is active, so an episodic feed never reads as stale. */}
+      {lastScanAt && (
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            margin: '4px 0 12px', padding: '7px 12px', borderRadius: '6px',
+            fontSize: '12.5px',
+            background: activeShockCount > 0 ? 'rgba(234,179,8,0.10)' : 'rgba(34,197,94,0.10)',
+            border: `1px solid ${activeShockCount > 0 ? 'rgba(234,179,8,0.35)' : 'rgba(34,197,94,0.30)'}`,
+            color: 'var(--text-secondary, #94a3b8)',
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: '8px', height: '8px', borderRadius: '50%',
+              background: activeShockCount > 0 ? '#eab308' : '#22c55e',
+              boxShadow: `0 0 6px ${activeShockCount > 0 ? '#eab308' : '#22c55e'}`,
+              flexShrink: 0,
+            }}
+          />
+          <span>
+            Continuously monitored · last scan <strong>{fmtAge(lastScanAt)}</strong> ·{' '}
+            {activeShockCount > 0
+              ? `${activeShockCount} active shock${activeShockCount > 1 ? 's' : ''}`
+              : 'no active flood/drought signal'}
+          </span>
+        </div>
+      )}
 
       {/* STATS */}
       {lastScan && (

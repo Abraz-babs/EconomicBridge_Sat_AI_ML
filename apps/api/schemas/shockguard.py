@@ -123,3 +123,9 @@ class ShockEventRow(BaseModel):
 
 class ShockEventListData(BaseModel):
     events: list[ShockEventRow] = Field(default_factory=list)
+    # Monitoring status — proves the detector is live even when (correctly)
+    # no shock is active. `last_scan_at` is the most recent scheduled scan;
+    # `active_shock_count` is how many flood/drought signals that scan is
+    # currently flagging (0 = scanned, all clear).
+    last_scan_at: datetime | None = None
+    active_shock_count: int = 0
