@@ -86,6 +86,29 @@ def test_alert_response_fields_are_present() -> None:
         assert "lon" in first["location"] and "lat" in first["location"]
 
 
+# ─── Fire-status (live NASA FIRMS monitoring indicator) ────────────────────
+
+
+def test_fire_status_requires_tenant_header() -> None:
+    response = client.get("/api/v1/farmland/fire-status")
+    assert response.status_code == 400
+    assert "X-Tenant-Id" in response.text
+
+
+def test_fire_status_returns_monitoring_shape() -> None:
+    response = client.get("/api/v1/farmland/fire-status", headers=_kebbi())
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    # Counts are always present integers; last_scan_at may be null if FIRMS
+    # has not run for this tenant yet. detections never negative.
+    assert isinstance(data["detections_24h"], int)
+    assert isinstance(data["detections_7d"], int)
+    assert data["detections_24h"] >= 0
+    assert data["detections_7d"] >= data["detections_24h"] or data["detections_7d"] >= 0
+    assert "FIRMS" in data["source"]
+    assert "last_scan_at" in data
+
+
 # ─── Pagination ────────────────────────────────────────────────────────────
 
 

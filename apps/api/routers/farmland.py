@@ -12,6 +12,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.engine import get_session
@@ -24,6 +25,7 @@ from schemas.farmland import (
     AlertStatus,
     AlertStatusPatch,
     AlertType,
+    FireStatusData,
 )
 from services import farmland as farmland_service
 from services.auto_notify import fire_conflict_notification
@@ -120,6 +122,61 @@ async def list_alerts(
             trace_id=_trace_id(request),
             timestamp=datetime.now(timezone.utc),
             pagination=Pagination(page=page, per_page=per_page, total=total),
+        ),
+    )
+
+
+@router.get(
+    "/fire-status",
+    response_model=SuccessResponse[FireStatusData],
+    summary="Live NASA FIRMS fire-monitoring status for a tenant",
+    description=(
+        "How recently the daily FIRMS feed ran for this tenant and how many "
+        "fire detections it has over the ROI (last 24h / 7 days). Lets the "
+        "Farmland panel show the fire feed is monitored even out of fire "
+        "season (detections are seasonally low in the wet months)."
+    ),
+)
+async def fire_status(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[FireStatusData]:
+    """Surface the live FIRMS feed status (last scan + recent detection counts)."""
+    tenant_id = _require_tenant(request)
+
+    last_scan_at = (await session.execute(
+        text(
+            "SELECT MAX(finished_at) FROM public.ingestion_runs "
+            "WHERE tenant_id = :t AND status = 'succeeded' "
+            "AND (source LIKE 'MODIS%' OR source LIKE 'VIIRS%')"
+        ),
+        {"t": tenant_id},
+    )).scalar()
+
+    # heat_signatures lives in the tenant schema (search_path set by get_session).
+    # Guard so a tenant without the table degrades to zero rather than erroring.
+    detections_24h = detections_7d = 0
+    try:
+        detections_24h = int((await session.execute(text(
+            "SELECT count(*) FROM heat_signatures "
+            "WHERE detected_at > now() - interval '24 hours'"
+        ))).scalar() or 0)
+        detections_7d = int((await session.execute(text(
+            "SELECT count(*) FROM heat_signatures "
+            "WHERE detected_at > now() - interval '7 days'"
+        ))).scalar() or 0)
+    except Exception:  # noqa: BLE001 — status indicator must never 500 the panel
+        pass
+
+    return SuccessResponse(
+        data=FireStatusData(
+            last_scan_at=last_scan_at,
+            detections_24h=detections_24h,
+            detections_7d=detections_7d,
+        ),
+        meta=ResponseMeta(
+            tenant_id=None, trace_id=_trace_id(request),
+            timestamp=datetime.now(timezone.utc),
         ),
     )
 

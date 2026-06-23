@@ -6,6 +6,7 @@ import { useTenant } from '@/context/TenantContext';
 import { formatLatLon } from '@/lib/display';
 import {
   useFarmlandAlerts,
+  useFireStatus,
   useResolveAlert,
   type AlertResponse,
   type AlertSeverity,
@@ -247,6 +248,25 @@ function fmtUsd(value: number): string {
   return `$${value.toLocaleString()}`;
 }
 
+function fmtScanAgo(iso: string | null): string {
+  if (!iso) return 'awaiting first scan';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return 'just now';
+  const min = Math.round(ms / 60_000);
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 48) return `${hr} hr ago`;
+  return `${Math.round(hr / 24)} d ago`;
+}
+
+// Fire activity in the pilot region peaks in the dry season (Nov–Mar);
+// the wet months (Apr–Oct) are naturally near-zero. Used to label a 0-count
+// honestly as "seasonally low" rather than implying the feed is dead.
+function isLowFireSeason(): boolean {
+  const m = new Date().getMonth(); // 0=Jan … 9=Oct
+  return m >= 3 && m <= 9; // Apr–Oct
+}
+
 // Provenance buckets — derived from alert_events.model_name. Live rows
 // come from real pipeline runs (conflict_predictor, ndvi_anomaly_detector,
 // flood_detector, …); seed rows come from `scripts/seed_farmland_alerts.py`
@@ -276,6 +296,7 @@ export default function FarmlandPanel() {
   const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
 
   const query = useFarmlandAlerts({ tenantId: activeTenantId, perPage: 50 });
+  const fireStatus = useFireStatus(activeTenantId);
   // Stabilise the alerts reference so downstream useMemo deps don't
   // re-fire every render (the `?? []` fallback would otherwise create
   // a fresh array each call).
@@ -446,6 +467,42 @@ export default function FarmlandPanel() {
           ))}
         </div>
       </div>
+
+      {/* NASA FIRMS fire-feed status — proves the daily fire ingest is live
+          even out of fire season (detections are seasonally near-zero in the
+          wet months). Amber when fires are currently detected. */}
+      {fireStatus.data && (() => {
+        const fs = fireStatus.data;
+        const active = fs.detections24h > 0;
+        return (
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              margin: '0 0 12px', padding: '7px 12px', borderRadius: '6px',
+              fontSize: '12.5px',
+              background: active ? 'rgba(234,179,8,0.10)' : 'rgba(34,197,94,0.10)',
+              border: `1px solid ${active ? 'rgba(234,179,8,0.35)' : 'rgba(34,197,94,0.30)'}`,
+              color: 'var(--text-secondary, #94a3b8)',
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0,
+                background: active ? '#eab308' : '#22c55e',
+                boxShadow: `0 0 6px ${active ? '#eab308' : '#22c55e'}`,
+              }}
+            />
+            <span>
+              Fire detections (NASA FIRMS):{' '}
+              <strong>{fs.detections24h} today</strong>
+              {fs.detections7d > 0 ? ` · ${fs.detections7d} in 7d` : ''}
+              {!active && isLowFireSeason() ? ' · seasonally low' : ''}
+              {' · last scan '}{fmtScanAgo(fs.lastScanAt)}
+            </span>
+          </div>
+        );
+      })()}
 
       {/* STATS (live) */}
       <div className="fp-grid">

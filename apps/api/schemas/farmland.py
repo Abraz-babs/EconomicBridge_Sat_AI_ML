@@ -82,6 +82,20 @@ class AlertListData(BaseModel):
     alerts: list[AlertResponse]
 
 
+class FireStatusData(BaseModel):
+    """Payload of SuccessResponse[FireStatusData] for GET /farmland/fire-status.
+
+    Surfaces the live NASA FIRMS feed's status so the Farmland panel shows it is
+    monitored daily even when (correctly) no fires are burning out of season —
+    fire activity here peaks in the dry season (Nov-Mar).
+    """
+
+    last_scan_at: AwareDatetime | None = None
+    detections_24h: int = 0
+    detections_7d: int = 0
+    source: str = "NASA FIRMS (MODIS + VIIRS)"
+
+
 class AlertStatusPatch(BaseModel):
     """Request body for PATCH /farmland/alerts/{id} — lifecycle transitions only."""
 

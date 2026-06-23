@@ -104,6 +104,45 @@ export function useFarmlandAlerts(
   });
 }
 
+// ─── Live NASA FIRMS fire-monitoring status ──────────────────────────────
+
+export interface FireStatus {
+  lastScanAt: string | null;
+  detections24h: number;
+  detections7d: number;
+  source: string;
+}
+
+interface FireStatusData {
+  last_scan_at: string | null;
+  detections_24h: number;
+  detections_7d: number;
+  source: string;
+}
+
+/** GET /api/v1/farmland/fire-status — last FIRMS scan + recent detection counts. */
+export function useFireStatus(
+  tenantId: string,
+  enabled = true,
+): UseQueryResult<FireStatus, ApiException> {
+  return useQuery<FireStatus, ApiException>({
+    queryKey: ['farmland-fire-status', tenantId],
+    enabled: enabled && Boolean(tenantId),
+    queryFn: async ({ signal }) => {
+      const envelope: SuccessEnvelope<FireStatusData> = await apiFetch<FireStatusData>(
+        '/farmland/fire-status',
+        { tenantId, signal },
+      );
+      return {
+        lastScanAt: envelope.data.last_scan_at,
+        detections24h: envelope.data.detections_24h,
+        detections7d: envelope.data.detections_7d,
+        source: envelope.data.source,
+      };
+    },
+  });
+}
+
 // ─── Mutation: mark an alert resolved / acknowledged / dismissed ─────────
 
 export interface ResolveAlertInput {
