@@ -35,6 +35,7 @@ from scheduler import (
     JOB_ID_PASS_IMAGERY_SWEEP,
     JOB_ID_POVERTY_WEEKLY,
     JOB_ID_SATOBS_WEEKLY,
+    JOB_ID_SHOCKGUARD_DAILY,
     JOB_ID_SKILLS_MONTHLY,
     JOB_ID_WORLDPOP_WEEKLY,
     run_daily_firms_ingest,
@@ -48,6 +49,7 @@ from scheduler import (
 )
 from tasks.conflict_pipeline import run_daily_conflict_pipeline
 from tasks.pass_imagery_sweep import run_pass_imagery_sweep
+from tasks.shockguard_scan import run_shockguard_scan
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/scheduler", tags=["scheduler"])
@@ -106,6 +108,7 @@ _TRIGGERABLE_JOBS = {
     JOB_ID_SKILLS_MONTHLY: run_monthly_skills_ingest,
     JOB_ID_POVERTY_WEEKLY: run_weekly_poverty_ingest,
     JOB_ID_ENCROACHMENT_DAILY: run_encroachment_sweep,
+    JOB_ID_SHOCKGUARD_DAILY: run_shockguard_scan,
     JOB_ID_PASS_IMAGERY_SWEEP: None,  # adapted below — returns a dataclass
 }
 

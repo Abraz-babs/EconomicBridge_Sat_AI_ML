@@ -18,6 +18,7 @@ import pytest
 from db import PILOT_TENANT_IDS
 from scheduler import (
     JOB_ID_FIRMS_DAILY,
+    JOB_ID_SHOCKGUARD_DAILY,
     JOB_ID_WORLDPOP_WEEKLY,
     run_daily_firms_ingest,
     setup_scheduler,
@@ -52,6 +53,21 @@ def test_setup_scheduler_registers_worldpop_weekly_job():
         trigger_repr = str(job.trigger)
         assert "day_of_week='sun'" in trigger_repr
         assert "hour='7'" in trigger_repr
+    finally:
+        sched.remove_all_jobs()
+
+
+def test_setup_scheduler_registers_shockguard_daily_job():
+    """ShockGuard flood + drought scan — daily 07:30 UTC. Keeps the
+    shock_events feed fresh instead of going stale between on-demand scans."""
+    sched = setup_scheduler()
+    try:
+        job = sched.get_job(JOB_ID_SHOCKGUARD_DAILY)
+        assert job is not None
+        assert "ShockGuard" in job.name
+        trigger_repr = str(job.trigger)
+        assert "hour='7'" in trigger_repr
+        assert "minute='30'" in trigger_repr
     finally:
         sched.remove_all_jobs()
 
