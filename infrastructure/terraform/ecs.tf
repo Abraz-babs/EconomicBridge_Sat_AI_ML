@@ -205,13 +205,16 @@ resource "aws_ecs_service" "service" {
   name            = "${local.name_prefix}-${each.key}"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.service[each.key].arn
-  desired_count   = var.ecs_min_count
-  launch_type     = "FARGATE"
+  # Parked services start at 0 tasks (cost saving); bring up manually for a demo.
+  desired_count = contains(var.parked_services, each.key) ? 0 : var.ecs_min_count
+  launch_type   = "FARGATE"
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    # Budget mode (no NAT): run in public subnets with a public IP so tasks
+    # egress via the IGW. Inbound is still ALB-only via the task security group.
+    subnets          = var.use_nat_gateway ? aws_subnet.private[*].id : aws_subnet.public[*].id
     security_groups  = [aws_security_group.ecs_tasks.id]
-    assign_public_ip = false
+    assign_public_ip = var.use_nat_gateway ? false : true
   }
 
   load_balancer {
@@ -248,7 +251,9 @@ resource "aws_ecs_service" "service" {
 # ─── Autoscaling (CPU target tracking) ────────────────────────────────
 
 resource "aws_appautoscaling_target" "service" {
-  for_each = local.services
+  # Parked services are excluded from autoscaling so a manual `--desired-count 1`
+  # for a demo isn't immediately scaled back to 0.
+  for_each = { for k, v in local.services : k => v if !contains(var.parked_services, k) }
 
   service_namespace  = "ecs"
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.service[each.key].name}"
@@ -258,7 +263,7 @@ resource "aws_appautoscaling_target" "service" {
 }
 
 resource "aws_appautoscaling_policy" "service_cpu" {
-  for_each = local.services
+  for_each = { for k, v in local.services : k => v if !contains(var.parked_services, k) }
 
   name               = "${local.name_prefix}-${each.key}-cpu-tt"
   policy_type        = "TargetTrackingScaling"

@@ -54,6 +54,32 @@ variable "single_nat_gateway" {
   default     = true
 }
 
+variable "use_nat_gateway" {
+  description = <<-EOT
+    Provision a NAT gateway (~$33/mo) for private-subnet egress. When false
+    (budget staging), ECS tasks run in PUBLIC subnets with a public IP and
+    egress straight through the internet gateway (free) — the task security
+    group still only allows inbound from the ALB, so this does NOT expose the
+    tasks. RDS/Redis stay private. Set true for production.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "parked_services" {
+  description = <<-EOT
+    Services to "park" at 0 tasks to save cost (no autoscaling, desired_count
+    0). The dashboard reads predictions from the database via the api, so
+    parking on-demand services like 'ml' keeps every page working — only LIVE
+    inference (e.g. uploading a new leaf to CropGuard) needs the service up.
+    Bring one back for a demo with:
+      aws ecs update-service --cluster <cluster> --service <svc> --desired-count 1
+    (the manual count sticks — Terraform ignores desired_count changes.)
+  EOT
+  type        = list(string)
+  default     = []
+}
+
 # ─── RDS ───────────────────────────────────────────────────────────────
 
 variable "rds_instance_class" {

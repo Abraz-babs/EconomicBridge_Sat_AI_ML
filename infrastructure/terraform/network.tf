@@ -71,8 +71,14 @@ resource "aws_subnet" "private" {
 # Single NAT for staging, one-per-AZ for production. Driven by
 # var.single_nat_gateway. Each NAT needs its own Elastic IP.
 
+# NAT count: 0 when use_nat_gateway=false (budget mode — tasks egress via the
+# IGW from public subnets instead), else 1 (single) or one-per-AZ.
+locals {
+  nat_count = var.use_nat_gateway ? (var.single_nat_gateway ? 1 : var.az_count) : 0
+}
+
 resource "aws_eip" "nat" {
-  count  = var.single_nat_gateway ? 1 : var.az_count
+  count  = local.nat_count
   domain = "vpc"
 
   tags = {
@@ -85,7 +91,7 @@ resource "aws_eip" "nat" {
 }
 
 resource "aws_nat_gateway" "main" {
-  count         = var.single_nat_gateway ? 1 : var.az_count
+  count         = local.nat_count
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
 
@@ -120,19 +126,23 @@ resource "aws_route_table_association" "public" {
 }
 
 # Private route tables — one per AZ when multi-NAT, one shared when single-NAT.
-# Each routes 0.0.0.0/0 via its corresponding NAT gateway.
+# The default (0.0.0.0/0 → NAT) route is a separate resource so it can be
+# omitted entirely in budget mode (use_nat_gateway=false), where the private
+# subnets carry only RDS/Redis (which need no internet egress).
 resource "aws_route_table" "private" {
   count  = var.single_nat_gateway ? 1 : var.az_count
   vpc_id = aws_vpc.main.id
 
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main[count.index].id
-  }
-
   tags = {
     Name = "${local.name_prefix}-rt-private-${count.index}"
   }
+}
+
+resource "aws_route" "private_nat" {
+  count                  = local.nat_count
+  route_table_id         = aws_route_table.private[count.index].id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.main[count.index].id
 }
 
 resource "aws_route_table_association" "private" {
@@ -150,7 +160,9 @@ resource "aws_vpc_endpoint" "s3" {
   vpc_id            = aws_vpc.main.id
   service_name      = "com.amazonaws.${var.aws_region}.s3"
   vpc_endpoint_type = "Gateway"
-  route_table_ids   = aws_route_table.private[*].id
+  # Private route tables always; add the public one too so tasks running in
+  # public subnets (budget mode) also reach S3 over the free gateway endpoint.
+  route_table_ids = concat(aws_route_table.private[*].id, [aws_route_table.public.id])
 
   tags = {
     Name = "${local.name_prefix}-vpce-s3"

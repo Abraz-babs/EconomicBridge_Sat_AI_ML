@@ -65,9 +65,11 @@ locals {
       needs_redis  = false
     }
     notifications = {
-      port         = 8003
-      cpu          = 512
-      memory       = 1024
+      port = 8003
+      # Light SMS-dispatch service — 0.25 vCPU / 0.5 GB is plenty (saves ~$9/mo
+      # vs 0.5/1). Bump back to 512/1024 if it ever gets CPU-starved.
+      cpu          = 256
+      memory       = 512
       path_pattern = "/notifications/*"
       health_path  = "/api/v1/health"
       url_prefix   = "/notifications"
