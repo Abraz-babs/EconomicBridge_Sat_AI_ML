@@ -46,6 +46,12 @@ export interface EBMapProps {
    * even though the values come from the DB.
    */
   getTooltip?: (object: unknown) => string | null;
+  /**
+   * Opt-in click handler — when provided, clicking the map calls this with
+   * the clicked (lng, lat) and the cursor becomes a crosshair. Used by the
+   * CropGuard Farm Check "drop a pin" flow; other modules omit it (no change).
+   */
+  onMapClick?: (lng: number, lat: number) => void;
 }
 
 
@@ -72,12 +78,15 @@ export default function EBMap(props: EBMapProps) {
     height = '420px',
     zoom = 6,
     ariaLabel = `Satellite intelligence map — ${tenant.name}`,
-    overlay, legend, errorOverlay, getTooltip,
+    overlay, legend, errorOverlay, getTooltip, onMapClick,
   } = props;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<unknown>(null);
   const overlayRef = useRef<unknown>(null);
+  // Latest click handler via ref so the one-time init effect never re-runs.
+  const clickRef = useRef<EBMapProps['onMapClick']>(onMapClick);
+  useEffect(() => { clickRef.current = onMapClick; }, [onMapClick]);
   // Keep the latest formatter in a ref so the overlay's getTooltip
   // closure (built once at init) always calls the current one without
   // recreating the overlay when the prop identity changes per render.
@@ -116,6 +125,15 @@ export default function EBMap(props: EBMapProps) {
           preserveDrawingBuffer: false,
         });
         mapRef.current = map;
+
+        // Opt-in "drop a pin" — only does anything when a caller passed
+        // onMapClick. Crosshair cursor signals the map is clickable.
+        map.on('click', (e: { lngLat: { lng: number; lat: number } }) => {
+          clickRef.current?.(e.lngLat.lng, e.lngLat.lat);
+        });
+        if (clickRef.current) {
+          map.getCanvas().style.cursor = 'crosshair';
+        }
 
         map.on('error', (e) => {
           if (cancelled) return;

@@ -16,6 +16,7 @@ import {
 } from '@/hooks/useCropPredictions';
 import CropGuardMap from './CropGuardMap';
 import CropMarketPanel from './CropMarketPanel';
+import FarmCheckPanel from './FarmCheckPanel';
 import NdviAnomalyPanel from './NdviAnomalyPanel';
 import YieldForecastPanel from './YieldForecastPanel';
 
@@ -357,6 +358,9 @@ export default function CropGuardPanel() {
           {recent.map((row) => <RecentRow key={row.id} row={row} />)}
         </div>
       </div>
+
+      {/* FARM CHECK — per-coordinate vegetation health (NASRDA field-level ask) */}
+      <FarmCheckPanel />
 
       {/* PRE-SYMPTOMATIC NDVI ANOMALY (Slice 04.d) */}
       <NdviAnomalyPanel />

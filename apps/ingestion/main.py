@@ -38,7 +38,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException  # noqa
 
 from config import get_settings  # noqa: E402
 from errors import http_exception_handler, validation_exception_handler  # noqa: E402
-from routers import health, imagery, jobs, passes, triggers  # noqa: E402
+from routers import farm_check, health, imagery, jobs, passes, triggers  # noqa: E402
 from scheduler import setup_scheduler  # noqa: E402
 
 settings = get_settings()
@@ -138,3 +138,4 @@ app.include_router(triggers.router, prefix="/api/v1")
 app.include_router(passes.router, prefix="/api/v1")
 app.include_router(jobs.router, prefix="/api/v1")
 app.include_router(imagery.router, prefix="/api/v1")
+app.include_router(farm_check.router, prefix="/api/v1")
