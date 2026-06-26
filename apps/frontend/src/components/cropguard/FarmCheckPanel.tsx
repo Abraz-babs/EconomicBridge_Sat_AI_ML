@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { PolygonLayer, ScatterplotLayer } from '@deck.gl/layers';
 
 import EBMap from '@/components/map/EBMap';
@@ -54,12 +54,6 @@ export default function FarmCheckPanel() {
   const [focus, setFocus] = useState<{ lng: number; lat: number; zoom: number } | null>(null);
   const check = useFarmCheck();
   const r = check.data;
-
-  // After a result, fly to the exact analysed coordinate so the pointer + box
-  // are centred and the ~5.76 ha box is visible at this zoom.
-  useEffect(() => {
-    if (r) setFocus({ lng: r.lon, lat: r.lat, zoom: 15 });
-  }, [r]);
 
   const pilot = pilotTenants.find((t) => t.id === pilotId) ?? activeTenant;
   const latN = Number(lat);
@@ -125,7 +119,14 @@ export default function FarmCheckPanel() {
 
   const runCheck = () => {
     if (!coordsValid || !crop.trim()) return;
-    check.mutate({ lat: latN, lon: lonN, crop: crop.trim(), half_m: HALF_M });
+    check.mutate(
+      { lat: latN, lon: lonN, crop: crop.trim(), half_m: HALF_M },
+      {
+        // Fly to the exact analysed coordinate so the pointer + area box are
+        // centred and the ~5.76 ha box is visible at this zoom.
+        onSuccess: (data) => setFocus({ lng: data.lon, lat: data.lat, zoom: 15 }),
+      },
+    );
   };
 
   const hs = r ? HEALTH_STYLE[r.health] : null;
