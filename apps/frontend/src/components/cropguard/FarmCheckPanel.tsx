@@ -22,14 +22,16 @@ const SIZE_OPTIONS = [
   { label: 'Large (~25 ha)', half: 250 },
 ];
 
+// Match the theme (light/cream): --ink text on --surface, like .fp-tenant-select.
 const inputStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.18)',
-  borderRadius: '6px',
-  color: 'var(--text-primary, #f5f2ee)',
-  padding: '6px 8px',
-  fontSize: '13px',
-  width: '110px',
+  background: 'var(--surface)',
+  border: '1px solid var(--border2)',
+  borderRadius: '3px',
+  color: 'var(--ink)',
+  padding: '5px 10px',
+  fontSize: '12px',
+  fontFamily: "'DM Mono', monospace",
+  width: '120px',
 };
 
 export default function FarmCheckPanel() {
