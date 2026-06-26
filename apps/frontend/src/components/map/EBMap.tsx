@@ -55,6 +55,9 @@ export interface EBMapProps {
   /** Override the Mapbox style (default: minimal dark). Farm Check uses a
    *  labelled satellite style so state/place names and real land are visible. */
   mapStyle?: string;
+  /** When set/changed, fly the map to this point + zoom (e.g. after a Farm
+   *  Check, to centre the pin + analysed-area box on the exact coordinate). */
+  focus?: { lng: number; lat: number; zoom?: number } | null;
 }
 
 
@@ -82,7 +85,7 @@ export default function EBMap(props: EBMapProps) {
     zoom = 6,
     ariaLabel = `Satellite intelligence map — ${tenant.name}`,
     overlay, legend, errorOverlay, getTooltip, onMapClick,
-    mapStyle = MAPBOX_STYLE,
+    mapStyle = MAPBOX_STYLE, focus,
   } = props;
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -212,6 +215,16 @@ export default function EBMap(props: EBMapProps) {
       | null;
     map?.flyTo({ center: tenant.centroid, zoom, duration: 1200 });
   }, [tenant.id, tenant.centroid, zoom, status]);
+
+  // Explicit fly-to-focus (e.g. centre on a Farm Check result).
+  useEffect(() => {
+    if (!focus || status !== 'ready') return;
+    const map = mapRef.current as
+      | { flyTo: (o: { center: [number, number]; zoom: number; duration: number }) => void }
+      | null;
+    map?.flyTo({ center: [focus.lng, focus.lat], zoom: focus.zoom ?? zoom, duration: 1200 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus, status]);
 
   // Push layer updates to deck.gl.
   useEffect(() => {

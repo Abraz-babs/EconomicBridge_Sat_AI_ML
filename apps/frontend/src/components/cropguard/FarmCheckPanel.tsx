@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { ScatterplotLayer } from '@deck.gl/layers';
+import { useEffect, useMemo, useState } from 'react';
+import { PolygonLayer, ScatterplotLayer } from '@deck.gl/layers';
 
 import EBMap from '@/components/map/EBMap';
 import { useTenant } from '@/context/TenantContext';
@@ -21,6 +21,18 @@ const HEALTH_STYLE: Record<FarmHealth, { label: string; color: string }> = {
   unknown: { label: 'No reading', color: '#9ca3af' },
 };
 
+/** The exact analysed box (a square of side 2*halfM m) as a [lng,lat] ring —
+ *  matches sources/farm_check.bbox_around so the map shows precisely the ground
+ *  the NDVI reading covers (for field ground-truthing). */
+function boxRing(lat: number, lon: number, halfM: number): [number, number][] {
+  const dlat = halfM / 111_320;
+  const dlon = halfM / (111_320 * Math.cos((lat * Math.PI) / 180));
+  return [
+    [lon - dlon, lat - dlat], [lon + dlon, lat - dlat],
+    [lon + dlon, lat + dlat], [lon - dlon, lat + dlat], [lon - dlon, lat - dlat],
+  ];
+}
+
 // Match the theme (light/cream): --ink text on --surface, like .fp-tenant-select.
 const inputStyle: React.CSSProperties = {
   background: 'var(--surface)',
@@ -39,7 +51,15 @@ export default function FarmCheckPanel() {
   const [lat, setLat] = useState(() => activeTenant.centroid[1].toFixed(4));
   const [lon, setLon] = useState(() => activeTenant.centroid[0].toFixed(4));
   const [crop, setCrop] = useState('maize');
+  const [focus, setFocus] = useState<{ lng: number; lat: number; zoom: number } | null>(null);
   const check = useFarmCheck();
+  const r = check.data;
+
+  // After a result, fly to the exact analysed coordinate so the pointer + box
+  // are centred and the ~5.76 ha box is visible at this zoom.
+  useEffect(() => {
+    if (r) setFocus({ lng: r.lon, lat: r.lat, zoom: 15 });
+  }, [r]);
 
   const pilot = pilotTenants.find((t) => t.id === pilotId) ?? activeTenant;
   const latN = Number(lat);
@@ -56,25 +76,47 @@ export default function FarmCheckPanel() {
       setLat(t.centroid[1].toFixed(4));
     }
     check.reset();
+    setFocus(null);
   };
 
   const layers = useMemo(() => {
-    if (!coordsValid) return [];
-    return [
-      new ScatterplotLayer({
-        id: 'farm-pin',
-        data: [{ position: [lonN, latN] as [number, number] }],
-        getPosition: (d: { position: [number, number] }) => d.position,
-        getFillColor: [232, 121, 26],
-        getLineColor: [255, 255, 255],
-        stroked: true,
-        lineWidthMinPixels: 2,
-        radiusUnits: 'pixels',
-        getRadius: 8,
-        radiusMinPixels: 8,
-      }),
-    ];
-  }, [coordsValid, lonN, latN]);
+    const ls: unknown[] = [];
+    // Analysed-area box at the RESULT coordinate — the exact ground the NDVI
+    // reading covers (shown after a check, for field ground-truthing).
+    if (r) {
+      ls.push(
+        new PolygonLayer({
+          id: 'farm-box',
+          data: [{ polygon: boxRing(r.lat, r.lon, HALF_M) }],
+          getPolygon: (d: { polygon: [number, number][] }) => d.polygon,
+          stroked: true,
+          filled: true,
+          getFillColor: [232, 121, 26, 45],
+          getLineColor: [232, 121, 26, 230],
+          getLineWidth: 2,
+          lineWidthUnits: 'pixels',
+        }),
+      );
+    }
+    // Live pointer at the current input coordinate.
+    if (coordsValid) {
+      ls.push(
+        new ScatterplotLayer({
+          id: 'farm-pin',
+          data: [{ position: [lonN, latN] as [number, number] }],
+          getPosition: (d: { position: [number, number] }) => d.position,
+          getFillColor: [232, 121, 26],
+          getLineColor: [255, 255, 255],
+          stroked: true,
+          lineWidthMinPixels: 2,
+          radiusUnits: 'pixels',
+          getRadius: 8,
+          radiusMinPixels: 8,
+        }),
+      );
+    }
+    return ls;
+  }, [r, coordsValid, lonN, latN]);
 
   const onMapClick = (lng: number, la: number) => {
     setLon(lng.toFixed(4));
@@ -86,7 +128,6 @@ export default function FarmCheckPanel() {
     check.mutate({ lat: latN, lon: lonN, crop: crop.trim(), half_m: HALF_M });
   };
 
-  const r = check.data;
   const hs = r ? HEALTH_STYLE[r.health] : null;
 
   return (
@@ -135,6 +176,7 @@ export default function FarmCheckPanel() {
         height="320px"
         zoom={9}
         mapStyle={FARM_MAP_STYLE}
+        focus={focus}
         ariaLabel="Farm check map — click to drop a pin"
         onMapClick={onMapClick}
         overlay={<span className="ev-map-meta">Click the map to drop a pin</span>}
