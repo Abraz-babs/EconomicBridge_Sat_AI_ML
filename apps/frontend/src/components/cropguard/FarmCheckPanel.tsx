@@ -9,8 +9,13 @@ import { useFarmCheck, type FarmHealth } from '@/hooks/useFarmCheck';
 
 // Labelled satellite base so state/place names AND the real land are visible.
 const FARM_MAP_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
-// Fixed analysis box; the resulting hectares are reported back in the result.
-const HALF_M = 120; // ~240 m box ≈ 5.76 ha
+// Analysis precision = half the box side in metres. Tight isolates a single
+// plot (best for ground-truthing one plantation); Standard averages a larger
+// uniform field. The resulting hectares are reported back in the result.
+const PRECISION_OPTIONS = [
+  { label: 'Tight (~1.4 ha)', half: 60 },
+  { label: 'Standard (~5.8 ha)', half: 120 },
+];
 
 const HEALTH_STYLE: Record<FarmHealth, { label: string; color: string }> = {
   healthy: { label: 'Healthy', color: '#22c55e' },
@@ -51,6 +56,7 @@ export default function FarmCheckPanel() {
   const [lat, setLat] = useState(() => activeTenant.centroid[1].toFixed(4));
   const [lon, setLon] = useState(() => activeTenant.centroid[0].toFixed(4));
   const [crop, setCrop] = useState('maize');
+  const [halfM, setHalfM] = useState(60); // default Tight, for single-plot accuracy
   const [focus, setFocus] = useState<{ lng: number; lat: number; zoom: number } | null>(null);
   const check = useFarmCheck();
   const r = check.data;
@@ -78,10 +84,13 @@ export default function FarmCheckPanel() {
     // Analysed-area box at the RESULT coordinate — the exact ground the NDVI
     // reading covers (shown after a check, for field ground-truthing).
     if (r) {
+      // Derive the box half-side from the analysed area so the drawn box
+      // exactly matches what was measured, regardless of the current toggle.
+      const halfFromArea = Math.sqrt(r.area_ha * 10_000) / 2;
       ls.push(
         new PolygonLayer({
           id: 'farm-box',
-          data: [{ polygon: boxRing(r.lat, r.lon, HALF_M) }],
+          data: [{ polygon: boxRing(r.lat, r.lon, halfFromArea) }],
           getPolygon: (d: { polygon: [number, number][] }) => d.polygon,
           stroked: true,
           filled: true,
@@ -120,7 +129,7 @@ export default function FarmCheckPanel() {
   const runCheck = () => {
     if (!coordsValid || !crop.trim()) return;
     check.mutate(
-      { lat: latN, lon: lonN, crop: crop.trim(), half_m: HALF_M },
+      { lat: latN, lon: lonN, crop: crop.trim(), half_m: halfM },
       {
         // Fly to the exact analysed coordinate so the pointer + area box are
         // centred and the ~5.76 ha box is visible at this zoom.
@@ -160,6 +169,14 @@ export default function FarmCheckPanel() {
         <label style={{ fontSize: '12px' }}>
           <div className="fp-tenant-label">Crop</div>
           <input style={inputStyle} value={crop} onChange={(e) => setCrop(e.target.value)} placeholder="e.g. maize" />
+        </label>
+        <label style={{ fontSize: '12px' }}>
+          <div className="fp-tenant-label">Precision</div>
+          <select className="fp-tenant-select" value={halfM} onChange={(e) => setHalfM(Number(e.target.value))}>
+            {PRECISION_OPTIONS.map((o) => (
+              <option key={o.half} value={o.half}>{o.label}</option>
+            ))}
+          </select>
         </label>
         <button
           type="button"
