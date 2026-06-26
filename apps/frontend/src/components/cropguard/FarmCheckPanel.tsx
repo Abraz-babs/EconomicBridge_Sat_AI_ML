@@ -7,6 +7,11 @@ import EBMap from '@/components/map/EBMap';
 import { useTenant } from '@/context/TenantContext';
 import { useFarmCheck, type FarmHealth } from '@/hooks/useFarmCheck';
 
+// Labelled satellite base so state/place names AND the real land are visible.
+const FARM_MAP_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
+// Fixed analysis box; the resulting hectares are reported back in the result.
+const HALF_M = 120; // ~240 m box ≈ 5.76 ha
+
 const HEALTH_STYLE: Record<FarmHealth, { label: string; color: string }> = {
   healthy: { label: 'Healthy', color: '#22c55e' },
   moderate: { label: 'Moderate', color: '#84cc16' },
@@ -15,12 +20,6 @@ const HEALTH_STYLE: Record<FarmHealth, { label: string; color: string }> = {
   bare: { label: 'Bare soil', color: '#9ca3af' },
   unknown: { label: 'No reading', color: '#9ca3af' },
 };
-
-const SIZE_OPTIONS = [
-  { label: 'Small (~2.5 ha)', half: 80 },
-  { label: 'Medium (~6 ha)', half: 120 },
-  { label: 'Large (~25 ha)', half: 250 },
-];
 
 // Match the theme (light/cream): --ink text on --surface, like .fp-tenant-select.
 const inputStyle: React.CSSProperties = {
@@ -35,18 +34,29 @@ const inputStyle: React.CSSProperties = {
 };
 
 export default function FarmCheckPanel() {
-  const { activeTenant } = useTenant();
-  const [lat, setLat] = useState('9.0610');
-  const [lon, setLon] = useState('7.4910');
+  const { activeTenant, pilotTenants } = useTenant();
+  const [pilotId, setPilotId] = useState(activeTenant.id);
+  const [lat, setLat] = useState(() => activeTenant.centroid[1].toFixed(4));
+  const [lon, setLon] = useState(() => activeTenant.centroid[0].toFixed(4));
   const [crop, setCrop] = useState('maize');
-  const [halfM, setHalfM] = useState(120);
   const check = useFarmCheck();
 
+  const pilot = pilotTenants.find((t) => t.id === pilotId) ?? activeTenant;
   const latN = Number(lat);
   const lonN = Number(lon);
   const coordsValid =
     Number.isFinite(latN) && Number.isFinite(lonN) &&
     latN >= -90 && latN <= 90 && lonN >= -180 && lonN <= 180;
+
+  const onPilotChange = (id: string) => {
+    setPilotId(id);
+    const t = pilotTenants.find((x) => x.id === id);
+    if (t) {
+      setLon(t.centroid[0].toFixed(4));
+      setLat(t.centroid[1].toFixed(4));
+    }
+    check.reset();
+  };
 
   const layers = useMemo(() => {
     if (!coordsValid) return [];
@@ -73,7 +83,7 @@ export default function FarmCheckPanel() {
 
   const runCheck = () => {
     if (!coordsValid || !crop.trim()) return;
-    check.mutate({ lat: latN, lon: lonN, crop: crop.trim(), half_m: halfM });
+    check.mutate({ lat: latN, lon: lonN, crop: crop.trim(), half_m: HALF_M });
   };
 
   const r = check.data;
@@ -83,11 +93,20 @@ export default function FarmCheckPanel() {
     <div className="sb-table-wrap" style={{ marginTop: '16px' }}>
       <div className="cg-section-header">Farm Check — pinpoint vegetation health</div>
       <div className="cg-subtitle" style={{ marginBottom: '10px' }}>
-        Type a coordinate or click the map, choose the crop, and we read
-        Sentinel-2 NDVI + Sentinel-1 SAR for that exact farm.
+        Pick a pilot, then type a coordinate or click the map to drop a pin and
+        choose the crop. We read Sentinel-2 NDVI + Sentinel-1 SAR for that exact
+        farm and report the area analysed.
       </div>
 
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end', margin: '4px 0 12px' }}>
+        <label style={{ fontSize: '12px' }}>
+          <div className="fp-tenant-label">Pilot</div>
+          <select className="fp-tenant-select" value={pilotId} onChange={(e) => onPilotChange(e.target.value)}>
+            {pilotTenants.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </label>
         <label style={{ fontSize: '12px' }}>
           <div className="fp-tenant-label">Latitude</div>
           <input style={inputStyle} value={lat} onChange={(e) => setLat(e.target.value)} inputMode="decimal" />
@@ -100,14 +119,6 @@ export default function FarmCheckPanel() {
           <div className="fp-tenant-label">Crop</div>
           <input style={inputStyle} value={crop} onChange={(e) => setCrop(e.target.value)} placeholder="e.g. maize" />
         </label>
-        <label style={{ fontSize: '12px' }}>
-          <div className="fp-tenant-label">Farm size</div>
-          <select className="fp-tenant-select" value={halfM} onChange={(e) => setHalfM(Number(e.target.value))}>
-            {SIZE_OPTIONS.map((o) => (
-              <option key={o.half} value={o.half}>{o.label}</option>
-            ))}
-          </select>
-        </label>
         <button
           type="button"
           className="fp-refresh-btn"
@@ -119,10 +130,11 @@ export default function FarmCheckPanel() {
       </div>
 
       <EBMap
-        tenant={activeTenant}
+        tenant={pilot}
         layers={layers}
-        height="300px"
-        zoom={12}
+        height="320px"
+        zoom={9}
+        mapStyle={FARM_MAP_STYLE}
         ariaLabel="Farm check map — click to drop a pin"
         onMapClick={onMapClick}
         overlay={<span className="ev-map-meta">Click the map to drop a pin</span>}
@@ -138,7 +150,7 @@ export default function FarmCheckPanel() {
         <div
           style={{
             marginTop: '12px', padding: '12px 14px', borderRadius: '8px',
-            background: 'rgba(255,255,255,0.04)',
+            background: 'rgba(0,0,0,0.03)',
             borderLeft: `4px solid ${hs?.color ?? '#9ca3af'}`,
           }}
         >
@@ -151,10 +163,14 @@ export default function FarmCheckPanel() {
               NDVI {r.ndvi != null ? r.ndvi.toFixed(2) : '—'}
             </strong>
             <span className="ev-map-meta">
-              {r.crop} · {r.ndvi_date ?? 'no optical pass'} · {r.area_ha} ha · ~{r.resolution_m} m/px
+              {r.crop} · {r.ndvi_date ?? 'no optical pass'}
             </span>
           </div>
           <div style={{ margin: '8px 0', fontSize: '13.5px' }}>{r.verdict}</div>
+          <div style={{ fontSize: '12.5px', marginBottom: '4px' }}>
+            <strong>Area analysed: {r.area_ha} ha</strong>
+            <span className="ev-map-meta"> · ~{r.resolution_m} m/pixel · {r.sample_count} pixels at {r.lat.toFixed(4)}, {r.lon.toFixed(4)}</span>
+          </div>
           <div className="ev-map-meta">
             All-weather SAR: {r.sar_db != null ? `${r.sar_db} dB` : '—'}
             {r.sar_date ? ` (${r.sar_date})` : ''}

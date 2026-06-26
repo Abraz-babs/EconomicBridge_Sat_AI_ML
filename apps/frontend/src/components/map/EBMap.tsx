@@ -52,6 +52,9 @@ export interface EBMapProps {
    * CropGuard Farm Check "drop a pin" flow; other modules omit it (no change).
    */
   onMapClick?: (lng: number, lat: number) => void;
+  /** Override the Mapbox style (default: minimal dark). Farm Check uses a
+   *  labelled satellite style so state/place names and real land are visible. */
+  mapStyle?: string;
 }
 
 
@@ -79,6 +82,7 @@ export default function EBMap(props: EBMapProps) {
     zoom = 6,
     ariaLabel = `Satellite intelligence map — ${tenant.name}`,
     overlay, legend, errorOverlay, getTooltip, onMapClick,
+    mapStyle = MAPBOX_STYLE,
   } = props;
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -115,7 +119,7 @@ export default function EBMap(props: EBMapProps) {
         mapboxgl.accessToken = MAPBOX_TOKEN;
         const map = new mapboxgl.Map({
           container: containerRef.current,
-          style: MAPBOX_STYLE,
+          style: mapStyle,
           center: tenant.centroid,
           zoom,
           attributionControl: false,
