@@ -71,6 +71,9 @@ class FarmCheckResult:
     sar_db: float | None
     sar_date: str | None
     trend: list[dict] = field(default_factory=list)   # [{date, ndvi}]
+    # Every usable optical pass, oldest→newest, each classified — lets the UI
+    # scrub through the field's history (pre-clearance → bare → canopy).
+    passes: list[dict] = field(default_factory=list)
     sample_count: int = 0
     area_ha: float = 0.0
     resolution_m: int = 11
@@ -162,6 +165,16 @@ async def check_farm(
         {"date": p.interval_from.date().isoformat(), "ndvi": round(p.mean, 3)}
         for p in valid_ndvi[-TREND_POINTS:]
     ]
+    passes = []
+    for p in valid_ndvi:
+        nv = round(p.mean, 3)
+        ph, pv = classify_health(nv, crop)
+        passes.append({
+            "date": p.interval_from.date().isoformat(),
+            "ndvi": nv, "health": ph, "verdict": pv,
+            "sample_count": p.sample_count,
+            "cloud_affected": bool(max_clear and p.sample_count < 0.7 * max_clear),
+        })
     side_m = 2 * half_m
     return FarmCheckResult(
         lat=lat, lon=lon, crop=crop,
@@ -171,6 +184,7 @@ async def check_farm(
         sar_db=round(latest_sar.mean, 2) if latest_sar else None,
         sar_date=latest_sar.interval_from.date().isoformat() if latest_sar else None,
         trend=trend,
+        passes=passes,
         sample_count=latest.sample_count if latest else 0,
         area_ha=round((side_m * side_m) / 10_000.0, 2),
         note=("Sentinel-2 (~10 m) NDVI from the latest usable pass "

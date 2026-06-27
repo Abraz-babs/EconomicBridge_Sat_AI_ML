@@ -56,6 +56,24 @@ function parseCoord(raw: string): number | null {
   return val;
 }
 
+/** Reverse-geocode a coordinate to a place name (village / area / district)
+ *  via Mapbox, so the result reads "near Kuje, FCT" instead of bare numbers. */
+async function fetchPlaceName(lon: number, lat: number): Promise<string | null> {
+  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  if (!token) return null;
+  try {
+    const res = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json` +
+        `?access_token=${token}&types=neighborhood,locality,place,district,region&limit=1`,
+    );
+    if (!res.ok) return null;
+    const j = (await res.json()) as { features?: { place_name?: string }[] };
+    return j.features?.[0]?.place_name ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Match the theme (light/cream): --ink text on --surface, like .fp-tenant-select.
 const inputStyle: React.CSSProperties = {
   background: 'var(--surface)',
@@ -76,6 +94,8 @@ export default function FarmCheckPanel() {
   const [crop, setCrop] = useState('maize');
   const [halfM, setHalfM] = useState(60); // default Tight, for single-plot accuracy
   const [focus, setFocus] = useState<{ lng: number; lat: number; zoom: number } | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [placeName, setPlaceName] = useState<string | null>(null);
   const check = useFarmCheck();
   const r = check.data;
 
@@ -97,6 +117,8 @@ export default function FarmCheckPanel() {
     }
     check.reset();
     setFocus(null);
+    setPlaceName(null);
+    setSelectedDate(null);
   };
 
   const layers = useMemo(() => {
@@ -151,14 +173,27 @@ export default function FarmCheckPanel() {
     check.mutate(
       { lat: latN, lon: lonN, crop: crop.trim(), half_m: halfM },
       {
-        // Fly to the exact analysed coordinate so the pointer + area box are
-        // centred and the ~5.76 ha box is visible at this zoom.
-        onSuccess: (data) => setFocus({ lng: data.lon, lat: data.lat, zoom: 15 }),
+        onSuccess: (data) => {
+          // Fly to the exact analysed coordinate; default the pass selector to
+          // the latest usable pass; reverse-geocode the place name.
+          setFocus({ lng: data.lon, lat: data.lat, zoom: 15 });
+          setSelectedDate(data.ndvi_date);
+          setPlaceName(null);
+          fetchPlaceName(data.lon, data.lat).then(setPlaceName).catch(() => {});
+        },
       },
     );
   };
 
-  const hs = r ? HEALTH_STYLE[r.health] : null;
+  // The pass currently shown (selected from the history, default = latest).
+  const passes = r?.passes ?? [];
+  const shown = passes.find((p) => p.date === selectedDate) ?? null;
+  const dHealth = shown?.health ?? r?.health;
+  const dNdvi = shown ? shown.ndvi : r?.ndvi ?? null;
+  const dVerdict = shown?.verdict ?? r?.verdict ?? '';
+  const dDate = shown?.date ?? r?.ndvi_date ?? null;
+  const dCloud = shown?.cloud_affected ?? false;
+  const hs = dHealth ? HEALTH_STYLE[dHealth] : null;
 
   return (
     <div className="sb-table-wrap" style={{ marginTop: '16px' }}>
@@ -240,19 +275,46 @@ export default function FarmCheckPanel() {
             borderLeft: `4px solid ${hs?.color ?? '#9ca3af'}`,
           }}
         >
+          {placeName && (
+            <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '8px' }}>
+              📍 {placeName}
+            </div>
+          )}
+
+          {passes.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+              <span className="fp-tenant-label" style={{ margin: 0 }}>Satellite pass</span>
+              <select
+                className="fp-tenant-select"
+                value={selectedDate ?? ''}
+                onChange={(e) => setSelectedDate(e.target.value)}
+              >
+                {[...passes].reverse().map((p) => (
+                  <option key={p.date} value={p.date}>
+                    {p.date} — {HEALTH_STYLE[p.health].label} (NDVI {p.ndvi.toFixed(2)})
+                    {p.cloud_affected ? ' ⚠ cloudy' : ''}
+                  </option>
+                ))}
+              </select>
+              <span className="ev-map-meta">
+                {passes.length} pass{passes.length > 1 ? 'es' : ''} in 60 days — scrub the field&apos;s history
+              </span>
+            </div>
+          )}
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <span style={{
               background: hs?.color, color: '#10130f', fontWeight: 700,
               fontSize: '12px', padding: '3px 10px', borderRadius: '12px',
             }}>{hs?.label}</span>
             <strong style={{ fontSize: '15px' }}>
-              NDVI {r.ndvi != null ? r.ndvi.toFixed(2) : '—'}
+              NDVI {dNdvi != null ? dNdvi.toFixed(2) : '—'}
             </strong>
             <span className="ev-map-meta">
-              {r.crop} · {r.ndvi_date ?? 'no optical pass'}
+              {r.crop} · {dDate ?? 'no optical pass'}{dCloud ? ' · partly cloud-affected' : ''}
             </span>
           </div>
-          <div style={{ margin: '8px 0', fontSize: '13.5px' }}>{r.verdict}</div>
+          <div style={{ margin: '8px 0', fontSize: '13.5px' }}>{dVerdict}</div>
           <div style={{ fontSize: '12.5px', marginBottom: '4px' }}>
             <strong>Area analysed: {r.area_ha} ha</strong>
             <span className="ev-map-meta"> · ~{r.resolution_m} m/pixel · {r.sample_count} pixels at {r.lat.toFixed(4)}, {r.lon.toFixed(4)}</span>

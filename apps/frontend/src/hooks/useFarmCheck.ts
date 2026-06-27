@@ -17,6 +17,15 @@ export interface FarmCheckTrendPoint {
   ndvi: number;
 }
 
+export interface FarmCheckPass {
+  date: string;
+  ndvi: number;
+  health: FarmHealth;
+  verdict: string;
+  sample_count: number;
+  cloud_affected: boolean;
+}
+
 export type FarmHealth =
   | 'healthy' | 'moderate' | 'stressed' | 'poor' | 'bare' | 'unknown';
 
@@ -31,6 +40,7 @@ export interface FarmCheckResult {
   sar_db: number | null;
   sar_date: string | null;
   trend: FarmCheckTrendPoint[];
+  passes: FarmCheckPass[];
   sample_count: number;
   area_ha: number;
   resolution_m: number;

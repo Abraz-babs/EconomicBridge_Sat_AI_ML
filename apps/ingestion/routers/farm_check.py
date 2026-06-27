@@ -45,6 +45,15 @@ class TrendPoint(BaseModel):
     ndvi: float
 
 
+class PassPoint(BaseModel):
+    date: str
+    ndvi: float
+    health: str
+    verdict: str
+    sample_count: int
+    cloud_affected: bool
+
+
 class FarmCheckResponse(BaseModel):
     lat: float
     lon: float
@@ -56,6 +65,7 @@ class FarmCheckResponse(BaseModel):
     sar_db: float | None
     sar_date: str | None
     trend: list[TrendPoint]
+    passes: list[PassPoint]
     sample_count: int
     area_ha: float
     resolution_m: int
@@ -70,6 +80,7 @@ def _to_response(r: FarmCheckResult) -> FarmCheckResponse:
         health=r.health, verdict=r.verdict,
         sar_db=r.sar_db, sar_date=r.sar_date,
         trend=[TrendPoint(**p) for p in r.trend],
+        passes=[PassPoint(**p) for p in r.passes],
         sample_count=r.sample_count, area_ha=r.area_ha,
         resolution_m=r.resolution_m, source=r.source, note=r.note,
     )
