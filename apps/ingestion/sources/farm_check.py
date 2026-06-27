@@ -20,8 +20,9 @@ from datetime import datetime, timedelta, timezone
 
 from sources.sentinel_statistical import (
     EVALSCRIPT_S1_VV_DB,
-    EVALSCRIPT_S2_NDVI,
+    EVALSCRIPT_S2_NDVI_CLOUDMASKED,
     SentinelStatisticalClient,
+    StatPoint,
 )
 
 log = logging.getLogger(__name__)
@@ -32,9 +33,12 @@ SOURCE = "copernicus_sentinel_v1"
 # 10 m. (State-scale ingest uses ~1.4 km — far too coarse for one farm.)
 FARM_RESOLUTION_DEG = 0.0001
 DEFAULT_HALF_M = 120          # half box side → ~240 m box ≈ 5.8 ha
-NDVI_WINDOW_DAYS = 60         # look back this far for a cloud-free optical pass
+NDVI_WINDOW_DAYS = 60         # look back this far for usable optical passes
 SAR_WINDOW_DAYS = 30
-S2_MAX_CLOUD_COVER_PCT = 40.0
+# A pass is "usable" if its cloud-free pixel count is at least this fraction of
+# the clearest pass in the window — lets us take the LATEST usable pass rather
+# than the latest fully-clear one (clouds are masked per pixel via SCL).
+MIN_CLEAR_FRACTION = 0.25
 TREND_POINTS = 8
 
 # Indicative PEAK-season healthy NDVI per crop (real value depends on growth
@@ -99,6 +103,21 @@ def classify_health(ndvi: float | None, crop: str) -> tuple[str, str]:
                     "is established here.")
 
 
+def latest_usable_pass(
+    points: list[StatPoint], min_fraction: float = MIN_CLEAR_FRACTION,
+) -> StatPoint | None:
+    """The MOST RECENT pass whose clear-pixel count is >= `min_fraction` of the
+    clearest pass — so the headline uses the freshest imagery that still has
+    enough cloud-free ground to trust, not the latest fully-clear pass.
+    """
+    valid = [p for p in points if p.mean is not None and p.sample_count > 0]
+    if not valid:
+        return None
+    max_count = max(p.sample_count for p in valid)
+    acceptable = [p for p in valid if p.sample_count >= min_fraction * max_count]
+    return acceptable[-1] if acceptable else valid[-1]
+
+
 def bbox_around(lat: float, lon: float, half_m: float) -> tuple[float, float, float, float]:
     """A (W, S, E, N) WGS84 box of side 2*half_m metres centred on the point."""
     dlat = half_m / 111_320.0
@@ -120,12 +139,14 @@ async def check_farm(
 
     ndvi_points = await client.compute_time_series(
         bbox=bbox, start=end - timedelta(days=NDVI_WINDOW_DAYS), end=end,
-        dataset="sentinel-2-l2a", evalscript=EVALSCRIPT_S2_NDVI,
-        max_cloud_cover_pct=S2_MAX_CLOUD_COVER_PCT,
+        dataset="sentinel-2-l2a", evalscript=EVALSCRIPT_S2_NDVI_CLOUDMASKED,
+        max_cloud_cover_pct=None,  # per-pixel SCL masking replaces scene filtering
         resolution_deg=FARM_RESOLUTION_DEG,
     )
-    valid_ndvi = [p for p in ndvi_points if p.mean is not None]
-    latest = valid_ndvi[-1] if valid_ndvi else None
+    valid_ndvi = [p for p in ndvi_points if p.mean is not None and p.sample_count > 0]
+    latest = latest_usable_pass(valid_ndvi)
+    max_clear = max((p.sample_count for p in valid_ndvi), default=0)
+    cloud_affected = bool(latest and max_clear and latest.sample_count < 0.7 * max_clear)
 
     sar_points = await client.compute_time_series(
         bbox=bbox, start=end - timedelta(days=SAR_WINDOW_DAYS), end=end,
@@ -152,8 +173,10 @@ async def check_farm(
         trend=trend,
         sample_count=latest.sample_count if latest else 0,
         area_ha=round((side_m * side_m) / 10_000.0, 2),
-        note=("Sentinel-2 (~10 m) NDVI, latest cloud-free pass within "
-              f"{NDVI_WINDOW_DAYS} days; SAR is all-weather. One farm is a small "
-              "pixel cluster at this resolution — NASRDA higher-resolution "
+        note=("Sentinel-2 (~10 m) NDVI from the latest usable pass "
+              "(clouds masked per-pixel)"
+              + (" — this pass was partly cloud-affected" if cloud_affected else "")
+              + "; SAR is all-weather and typically more recent. One farm is a "
+              "small pixel cluster at this resolution — NASRDA higher-resolution "
               "imagery would sharpen it to sub-field."),
     )

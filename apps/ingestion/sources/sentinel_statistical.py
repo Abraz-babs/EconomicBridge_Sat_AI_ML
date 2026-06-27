@@ -77,6 +77,35 @@ function evaluatePixel(s) {
 }
 """
 
+# Same NDVI, but cloud-MASKED per pixel using the Sentinel-2 L2A Scene
+# Classification Layer (SCL). Cloudy / shadow / cirrus / saturated / no-data
+# pixels are dropped from the aggregation, so a partly-cloudy pass still
+# contributes its clear ground. This lets the on-demand Farm Check use the
+# LATEST usable pass instead of waiting for a fully cloud-free one — important
+# in the rainy season. SCL codes masked: 0 no-data, 1 saturated, 3 shadow,
+# 8/9 cloud, 10 cirrus. Kept: 2 dark, 4 veg, 5 bare, 6 water, 7 unclassified, 11 snow.
+EVALSCRIPT_S2_NDVI_CLOUDMASKED: str = """//VERSION=3
+function setup() {
+  return {
+    input: [{ bands: ["B04", "B08", "SCL", "dataMask"] }],
+    output: [
+      { id: "default", bands: 1, sampleType: "FLOAT32" },
+      { id: "dataMask", bands: 1 }
+    ]
+  };
+}
+function evaluatePixel(s) {
+  var scl = s.SCL;
+  var cloudy = (scl == 0 || scl == 1 || scl == 3 || scl == 8 || scl == 9 || scl == 10);
+  var denom = s.B08 + s.B04;
+  var ndvi = denom > 0 ? (s.B08 - s.B04) / denom : 0;
+  return {
+    default: [ndvi],
+    dataMask: [cloudy ? 0 : s.dataMask]
+  };
+}
+"""
+
 
 # Output resolution for the aggregation grid, in degrees (bounds CRS is
 # EPSG:4326). CDSE's Statistical API rejects requests coarser than 1500 m/px;
