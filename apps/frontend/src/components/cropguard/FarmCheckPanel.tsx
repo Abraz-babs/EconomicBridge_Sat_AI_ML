@@ -38,6 +38,24 @@ function boxRing(lat: number, lon: number, halfM: number): [number, number][] {
   ];
 }
 
+/** Parse a coordinate given in decimal degrees ("9.2616", "-2.33") OR DMS
+ *  ("9°15'41.6\"N", "7 21 21.4", "2°19'W") into decimal degrees. Returns null
+ *  if it can't be parsed. Lets users paste straight from Google Maps / GPS. */
+function parseCoord(raw: string): number | null {
+  const s = raw.trim();
+  if (!s) return null;
+  if (/^[+-]?\d+(\.\d+)?$/.test(s)) return Number(s); // plain decimal degrees
+  const nums = s.match(/\d+(?:\.\d+)?/g); // degrees, minutes, seconds
+  if (!nums || nums.length === 0) return null;
+  const deg = parseFloat(nums[0]);
+  const min = nums[1] ? parseFloat(nums[1]) : 0;
+  const sec = nums[2] ? parseFloat(nums[2]) : 0;
+  if (min >= 60 || sec >= 60) return null;
+  let val = deg + min / 60 + sec / 3600;
+  if (/^-/.test(s) || /[SWsw]/.test(s)) val = -val; // hemisphere / sign
+  return val;
+}
+
 // Match the theme (light/cream): --ink text on --surface, like .fp-tenant-select.
 const inputStyle: React.CSSProperties = {
   background: 'var(--surface)',
@@ -62,11 +80,13 @@ export default function FarmCheckPanel() {
   const r = check.data;
 
   const pilot = pilotTenants.find((t) => t.id === pilotId) ?? activeTenant;
-  const latN = Number(lat);
-  const lonN = Number(lon);
+  const parsedLat = parseCoord(lat);
+  const parsedLon = parseCoord(lon);
   const coordsValid =
-    Number.isFinite(latN) && Number.isFinite(lonN) &&
-    latN >= -90 && latN <= 90 && lonN >= -180 && lonN <= 180;
+    parsedLat != null && parsedLon != null &&
+    parsedLat >= -90 && parsedLat <= 90 && parsedLon >= -180 && parsedLon <= 180;
+  const latN = parsedLat ?? 0;
+  const lonN = parsedLon ?? 0;
 
   const onPilotChange = (id: string) => {
     setPilotId(id);
@@ -186,6 +206,12 @@ export default function FarmCheckPanel() {
         >
           {check.isPending ? 'Checking…' : 'Check farm'}
         </button>
+      </div>
+
+      <div className="ev-map-meta" style={{ marginBottom: '8px' }}>
+        {coordsValid
+          ? `Decimal: ${latN.toFixed(5)}, ${lonN.toFixed(5)} — accepts decimal (9.2616) or DMS (9°15'41.6"N)`
+          : 'Enter a coordinate — decimal (9.2616) or DMS (9°15\'41.6"N) both work'}
       </div>
 
       <EBMap
