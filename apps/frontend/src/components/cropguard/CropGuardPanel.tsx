@@ -9,6 +9,7 @@ import {
   useCropPredictions,
   usePredictCropDisease,
   usePredictCropDiseaseTiled,
+  useTenantLgas,
   type CropPredictionData,
   type CropPredictionRow,
   type CropTiledPredictionData,
@@ -37,6 +38,23 @@ const STATE_NAMES: Record<string, string> = {
 
 const MAX_INLINE_BYTES = 8 * 1024 * 1024;
 const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+// Field mode tiles the land photo into an N×N grid — selectable, not fixed 4×4.
+// A finer grid pinpoints disease to a smaller patch but needs a larger photo
+// (each tile must be ≥ a usable crop). Backend allows 1..8 per side.
+const TILE_OPTIONS = [2, 3, 4, 5, 6, 8];
+
+// Record-tag inputs, themed to match the Leaf Diagnosis panel (--ink on --surface).
+const tagInputStyle: React.CSSProperties = {
+  background: 'var(--surface)',
+  border: '1px solid var(--border2)',
+  borderRadius: '3px',
+  color: 'var(--ink)',
+  padding: '5px 10px',
+  fontSize: '12px',
+  fontFamily: "'DM Mono', monospace",
+  minWidth: '130px',
+};
 
 
 function prettifyClass(name: string): string {
@@ -75,8 +93,15 @@ export default function CropGuardPanel() {
   const [lastResult, setLastResult] = useState<CropPredictionData | null>(null);
   const [lastTiledResult, setLastTiledResult] = useState<CropTiledPredictionData | null>(null);
   const [requestSaliency, setRequestSaliency] = useState(true);
+  // Record tags — so every upload (leaf OR field/land photo) is saved as a
+  // recallable, place-tagged field record, like the Leaf Diagnosis panel.
+  const [lga, setLga] = useState('');
+  const [cropName, setCropName] = useState('');
+  const [gridDim, setGridDim] = useState(4);   // N for the N×N field grid
+  const [savedTag, setSavedTag] = useState<{ state: string; lga: string; crop: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const lgasQuery = useTenantLgas(activeTenantId);
   const recentQuery = useCropPredictions({ tenantId: activeTenantId, limit: 10 });
   const recent = useMemo(
     () => recentQuery.data?.predictions ?? [],
@@ -111,6 +136,7 @@ export default function CropGuardPanel() {
     setUploadError(null);
     setLastResult(null);
     setLastTiledResult(null);
+    setSavedTag(null);
     if (!ACCEPTED_TYPES.includes(file.type)) {
       setUploadError(`Unsupported file type: ${file.type}. Use JPEG, PNG, or WebP.`);
       return;
@@ -133,6 +159,7 @@ export default function CropGuardPanel() {
     setLastResult(null);
     setLastTiledResult(null);
     setUploadError(null);
+    setSavedTag(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -141,6 +168,7 @@ export default function CropGuardPanel() {
     setUploadError(null);
     try {
       const base64 = await fileToBase64(selectedFile);
+      const tags = { lga: lga || undefined, zone_name: cropName.trim() || undefined };
       if (analysisMode === 'leaf') {
         const result = await predictMutation.mutateAsync({
           tenant_id: activeTenantId,
@@ -148,19 +176,23 @@ export default function CropGuardPanel() {
           top_k: 5,
           compute_saliency: requestSaliency,
           persist: true,
+          ...tags,
         });
         setLastResult(result);
         setLastTiledResult(null);
+        if (result.persisted) setSavedTag({ state: stateLabel, lga, crop: cropName.trim() });
       } else {
         const result = await predictTiledMutation.mutateAsync({
           tenant_id: activeTenantId,
           image_base64: base64,
-          rows: 4, cols: 4,
+          rows: gridDim, cols: gridDim,
           top_k: 3,
           persist: true,
+          ...tags,
         });
         setLastTiledResult(result);
         setLastResult(null);
+        if (result.persisted) setSavedTag({ state: stateLabel, lga, crop: cropName.trim() });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Prediction failed';
@@ -201,7 +233,7 @@ export default function CropGuardPanel() {
           id="cg-tenant-select"
           className="fp-tenant-select"
           value={activeTenantId}
-          onChange={(e) => setActiveTenant(e.target.value)}
+          onChange={(e) => { setActiveTenant(e.target.value); setLga(''); setSavedTag(null); }}
         >
           {pilotTenants.map((t) => (
             <option key={t.id} value={t.id}>
@@ -254,9 +286,57 @@ export default function CropGuardPanel() {
                 onClick={() => setAnalysisMode('field')}
                 disabled={isPending}
               >
-                Field (4×4 tiles)
+                Field (land photo)
               </button>
             </div>
+          </div>
+
+          {/* RECORD TAGS — state · LGA · crop (+ tile grid in field mode), so
+              every upload is saved as a recallable, place-tagged field record. */}
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end', margin: '0 0 12px' }}>
+            <label style={{ fontSize: '12px' }}>
+              <div className="fp-tenant-label">State</div>
+              <div style={{ ...tagInputStyle, display: 'inline-block' }}>{stateLabel}</div>
+            </label>
+            <label style={{ fontSize: '12px' }}>
+              <div className="fp-tenant-label">LGA</div>
+              <select
+                className="fp-tenant-select"
+                value={lga}
+                onChange={(e) => setLga(e.target.value)}
+                disabled={isPending}
+              >
+                <option value="">{lgasQuery.isLoading ? 'Loading…' : 'Select LGA…'}</option>
+                {(lgasQuery.data ?? []).map((l) => (
+                  <option key={l} value={l}>{l}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ fontSize: '12px' }}>
+              <div className="fp-tenant-label">Crop</div>
+              <input
+                style={tagInputStyle}
+                value={cropName}
+                onChange={(e) => setCropName(e.target.value)}
+                placeholder="e.g. maize"
+                disabled={isPending}
+              />
+            </label>
+            {analysisMode === 'field' && (
+              <label style={{ fontSize: '12px' }}>
+                <div className="fp-tenant-label">Tiles</div>
+                <select
+                  className="fp-tenant-select"
+                  value={gridDim}
+                  onChange={(e) => setGridDim(Number(e.target.value))}
+                  disabled={isPending}
+                >
+                  {TILE_OPTIONS.map((n) => (
+                    <option key={n} value={n}>{n}×{n}</option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
 
           <label
@@ -274,12 +354,12 @@ export default function CropGuardPanel() {
                 <div className="cg-dropzone-text">
                   {analysisMode === 'leaf'
                     ? <>Drop a leaf photo here or <span className="cg-link">click to choose</span></>
-                    : <>Drop a wide field photo here or <span className="cg-link">click to choose</span></>}
+                    : <>Drop a field / land photo here or <span className="cg-link">click to choose</span></>}
                 </div>
                 <div className="cg-dropzone-hint">
                   {analysisMode === 'leaf'
                     ? 'Best results: ONE leaf filling the frame, top side, good light — the model is trained on single-leaf close-ups. For whole-field shots switch to Field mode.'
-                    : 'Wide canopy shot — analysed as 4×4 tiles and aggregated.'}
+                    : `Wide canopy / land shot — analysed as a ${gridDim}×${gridDim} tile grid and aggregated; the worst (hottest) tile is flagged. Pick a finer grid above to pinpoint a smaller patch.`}
                 </div>
                 <div className="cg-dropzone-hint">JPEG / PNG / WebP · max 8 MB</div>
               </div>
@@ -335,6 +415,13 @@ export default function CropGuardPanel() {
 
           {lastResult && <ResultCard result={lastResult} />}
           {lastTiledResult && <TiledResultCard result={lastTiledResult} />}
+          {savedTag && (
+            <div className="cg-result-footnote" style={{ color: '#16a34a' }}>
+              ✓ Saved to field records — {savedTag.state}
+              {savedTag.lga ? ` · ${savedTag.lga}` : ''}
+              {savedTag.crop ? ` · ${savedTag.crop}` : ''}. Recall it in “Recent predictions”.
+            </div>
+          )}
         </div>
 
         {/* RIGHT: RECENT FEED */}
