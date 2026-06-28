@@ -1,5 +1,5 @@
 # EconomicBridge Notifications — Termii + Twilio + Mock SMS dispatcher.
-FROM python:3.12-slim AS builder
+FROM public.ecr.aws/docker/library/python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -16,7 +16,7 @@ WORKDIR /build
 COPY requirements.txt ./
 RUN pip wheel --wheel-dir /wheels -r requirements.txt
 
-FROM python:3.12-slim AS runtime
+FROM public.ecr.aws/docker/library/python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

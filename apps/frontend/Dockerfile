@@ -12,13 +12,13 @@
 #     -t economicbridge/frontend:dev apps/frontend
 
 # ─── deps ────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS deps
+FROM public.ecr.aws/docker/library/node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --no-audit --no-fund
 
 # ─── builder ─────────────────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM public.ecr.aws/docker/library/node:22-alpine AS builder
 WORKDIR /app
 
 # Mapbox token + service base URLs are baked into the client bundle at build
@@ -44,7 +44,7 @@ COPY . .
 RUN npm run build
 
 # ─── runner ──────────────────────────────────────────────────────────────
-FROM node:22-alpine AS runner
+FROM public.ecr.aws/docker/library/node:22-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production \

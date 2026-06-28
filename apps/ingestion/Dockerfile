@@ -1,6 +1,6 @@
 # EconomicBridge Ingestion — NASA FIRMS / Copernicus / N2YO satellite fetcher.
 # Same shape as apps/api/Dockerfile. Runtime image is slim, no build tools.
-FROM python:3.12-slim AS builder
+FROM public.ecr.aws/docker/library/python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -16,7 +16,7 @@ WORKDIR /build
 COPY requirements.txt ./
 RUN pip wheel --wheel-dir /wheels -r requirements.txt
 
-FROM python:3.12-slim AS runtime
+FROM public.ecr.aws/docker/library/python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

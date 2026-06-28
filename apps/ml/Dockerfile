@@ -1,7 +1,7 @@
 # EconomicBridge ML — Random Forest conflict predictor + SHAP.
 # scikit-learn + shap have a heavier compile footprint, so the build stage
 # is larger. Runtime stays slim once wheels are pre-built.
-FROM python:3.12-slim AS builder
+FROM public.ecr.aws/docker/library/python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -19,7 +19,7 @@ WORKDIR /build
 COPY requirements.txt ./
 RUN pip wheel --wheel-dir /wheels -r requirements.txt
 
-FROM python:3.12-slim AS runtime
+FROM public.ecr.aws/docker/library/python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
