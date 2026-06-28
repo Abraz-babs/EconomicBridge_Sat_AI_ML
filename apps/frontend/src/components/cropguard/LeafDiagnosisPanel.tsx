@@ -3,7 +3,11 @@
 import { useRef, useState } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
-import { fileToBase64, usePredictCropDisease } from '@/hooks/useCropPredictions';
+import {
+  fileToBase64,
+  usePredictCropDisease,
+  useTenantLgas,
+} from '@/hooks/useCropPredictions';
 
 function fmtClass(c: string): string {
   return c
@@ -12,11 +16,25 @@ function fmtClass(c: string): string {
     .join(' ');
 }
 
+const inputStyle: React.CSSProperties = {
+  background: 'var(--surface)',
+  border: '1px solid var(--border2)',
+  borderRadius: '3px',
+  color: 'var(--ink)',
+  padding: '5px 10px',
+  fontSize: '12px',
+  fontFamily: "'DM Mono', monospace",
+  width: '130px',
+};
+
 export default function LeafDiagnosisPanel() {
-  const { activeTenantId } = useTenant();
+  const { activeTenantId, activeTenant } = useTenant();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [lga, setLga] = useState('');
+  const [crop, setCrop] = useState('');
   const predict = usePredictCropDisease(activeTenantId);
+  const lgasQuery = useTenantLgas(activeTenantId);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const onPick = (f: File | null) => {
@@ -29,7 +47,16 @@ export default function LeafDiagnosisPanel() {
   const diagnose = async () => {
     if (!file) return;
     const image_base64 = await fileToBase64(file);
-    predict.mutate({ tenant_id: activeTenantId, image_base64, top_k: 3, persist: false });
+    // Persist the record, tagged by state (tenant) + LGA + crop, so it can be
+    // recalled later in the recent-diagnoses feed.
+    predict.mutate({
+      tenant_id: activeTenantId,
+      image_base64,
+      top_k: 3,
+      persist: true,
+      lga: lga || undefined,
+      zone_name: crop.trim() || undefined,
+    });
   };
 
   const r = predict.data;
@@ -47,6 +74,28 @@ export default function LeafDiagnosisPanel() {
       <div className="ev-map-meta" style={{ marginBottom: '10px' }}>
         📷 Best results: one affected leaf, plain background, good light. For
         field-/landscape-level monitoring, use the satellite <em>Farm Check</em> above.
+      </div>
+
+      {/* Record tag — state (the panel's tenant selector) + LGA + crop. */}
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end', margin: '4px 0 10px' }}>
+        <label style={{ fontSize: '12px' }}>
+          <div className="fp-tenant-label">State</div>
+          <div style={{ ...inputStyle, width: 'auto', minWidth: '130px' }}>{activeTenant.name}</div>
+        </label>
+        <label style={{ fontSize: '12px' }}>
+          <div className="fp-tenant-label">LGA</div>
+          <select className="fp-tenant-select" value={lga} onChange={(e) => setLga(e.target.value)}>
+            <option value="">{lgasQuery.isLoading ? 'Loading…' : 'Select LGA…'}</option>
+            {(lgasQuery.data ?? []).map((l) => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ fontSize: '12px' }}>
+          <div className="fp-tenant-label">Crop</div>
+          <input style={inputStyle} value={crop} onChange={(e) => setCrop(e.target.value)} placeholder="e.g. maize" />
+        </label>
+        <span className="ev-map-meta">State follows the selector at the top of CropGuard.</span>
       </div>
 
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 12px' }}>
@@ -108,6 +157,17 @@ export default function LeafDiagnosisPanel() {
               of one affected leaf (a field/landscape photo can&apos;t be diagnosed per-leaf).
             </div>
           )}
+          <div className="ev-map-meta" style={{ marginTop: '8px' }}>
+            {r.persisted ? (
+              <span style={{ color: '#16a34a' }}>
+                ✓ Saved to field records — {activeTenant.name}
+                {lga ? ` · ${lga}` : ''}{crop.trim() ? ` · ${crop.trim()}` : ''}.
+                Recall it in “Recent predictions” below.
+              </span>
+            ) : (
+              'Not saved (add an LGA/crop and re-run to keep a record).'
+            )}
+          </div>
           <div className="ev-map-meta" style={{ marginTop: '8px', opacity: 0.85 }}>
             AI diagnosis from the leaf image (model {r.model_version}). Trained on
             specific crops/diseases — confirm in‑field before treatment; local

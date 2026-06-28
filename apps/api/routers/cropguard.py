@@ -12,6 +12,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,7 @@ from schemas.cropguard import (
     YieldForecastRow,
 )
 from schemas.envelope import ResponseMeta, SuccessResponse
+from services import lga_geo
 
 
 router = APIRouter(prefix="/cropguard", tags=["cropguard"])
@@ -42,6 +44,29 @@ def _require_tenant(request: Request) -> str:
             detail="X-Tenant-Id header is required for this endpoint",
         )
     return tenant_id
+
+
+class LgaListData(BaseModel):
+    tenant_id: str
+    lgas: list[str]
+
+
+@router.get(
+    "/lgas",
+    response_model=SuccessResponse[LgaListData],
+    summary="List the LGAs/districts for the active tenant (for record tagging)",
+)
+async def list_lgas(request: Request) -> SuccessResponse[LgaListData]:
+    """LGA names for the active tenant — populates the Leaf Diagnosis LGA picker
+    so saved field records carry a consistent place tag."""
+    tenant_id = _require_tenant(request)
+    return SuccessResponse(
+        data=LgaListData(tenant_id=tenant_id, lgas=lga_geo.all_lgas(tenant_id)),
+        meta=ResponseMeta(
+            tenant_id=None, trace_id=_trace_id(request),
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
 
 
 @router.get(
@@ -70,7 +95,7 @@ async def list_predictions(
                    requires_human_review, top_k,
                    image_source, image_s3_bucket, image_s3_key,
                    model_name, model_version, inference_time_ms,
-                   created_at, lga,
+                   created_at, lga, zone_name,
                    ST_X(location) AS lon, ST_Y(location) AS lat
               FROM crop_predictions
              ORDER BY created_at DESC
@@ -125,6 +150,7 @@ def _row_to_response(row: dict) -> CropPredictionRow:
             else None
         ),
         lga=row.get("lga"),
+        zone_name=row.get("zone_name"),
         model_name=row["model_name"],
         model_version=row["model_version"],
         inference_time_ms=row.get("inference_time_ms"),

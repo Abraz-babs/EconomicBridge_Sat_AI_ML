@@ -519,6 +519,11 @@ function RecentRow({ row }: { row: CropPredictionRow }) {
         {row.model_version}
         {row.requires_human_review && <span className="cg-review-flag"> · review</span>}
       </div>
+      {(row.lga || row.zone_name) && (
+        <div className="cg-recent-meta">
+          📍 {[row.zone_name, row.lga].filter(Boolean).join(' · ')}
+        </div>
+      )}
     </div>
   );
 }

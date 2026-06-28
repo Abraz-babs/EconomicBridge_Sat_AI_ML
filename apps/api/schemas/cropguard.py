@@ -52,6 +52,8 @@ class CropPredictionRow(BaseModel):
     location: LonLat | None = None
     # LGA the sample was captured in (where the disease was seen), when known.
     lga: str | None = None
+    # Free-text tag — used to record the crop the observer entered at upload.
+    zone_name: str | None = None
 
     model_name: str
     model_version: str

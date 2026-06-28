@@ -74,6 +74,8 @@ export interface CropPredictionRow {
   location: { lon: number; lat: number } | null;
   /** LGA where the sample was captured (the target area), when known. */
   lga: string | null;
+  /** Free-text tag — the crop the observer entered at upload, when given. */
+  zone_name: string | null;
   model_name: string;
   model_version: string;
   inference_time_ms: number | null;
@@ -184,6 +186,27 @@ export function usePredictCropDisease(
     onSuccess: () => {
       // Newly-persisted row should appear in the recent-feed soon.
       qc.invalidateQueries({ queryKey: ['crop-predictions', tenantId] });
+    },
+  });
+}
+
+interface LgaListData {
+  tenant_id: string;
+  lgas: string[];
+}
+
+/** GET /api/v1/cropguard/lgas — LGA names for the tenant, for the Leaf
+ *  Diagnosis record tag (so saved observations carry a consistent place). */
+export function useTenantLgas(
+  tenantId: string,
+): UseQueryResult<string[], ApiException> {
+  return useQuery<string[], ApiException>({
+    queryKey: ['cropguard-lgas', tenantId],
+    enabled: Boolean(tenantId),
+    staleTime: 60 * 60 * 1000, // LGA lists never change within a session
+    queryFn: async ({ signal }) => {
+      const env = await apiFetch<LgaListData>('/cropguard/lgas', { tenantId, signal });
+      return env.data.lgas;
     },
   });
 }
