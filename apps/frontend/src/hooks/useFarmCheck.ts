@@ -1,8 +1,14 @@
 'use client';
 
-import { useMutation, type UseMutationResult } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseMutationResult,
+  type UseQueryResult,
+} from '@tanstack/react-query';
 
-import { ApiException, ingestionFetch } from '@/lib/api';
+import { ApiException, apiFetch, ingestionFetch } from '@/lib/api';
 
 /** Mirrors apps/ingestion/routers/farm_check.py. */
 export interface FarmCheckRequest {
@@ -72,5 +78,84 @@ export function useFarmCheck(): UseMutationResult<
         method: 'POST',
         body,
       }),
+  });
+}
+
+// ─── Save + recall records (apps/api GET/POST /cropguard/farm-checks) ───────
+
+/** One saved Farm Check — mirrors apps/api schemas/farm_check.FarmCheckRecordRow.
+ *  The computed reading PLUS the lga/crop record tags, kept for recall. */
+export interface FarmCheckRecord {
+  id: string;
+  tenant_id: string;
+  lat: number;
+  lon: number;
+  crop: string;
+  lga: string | null;
+  ndvi: number | null;
+  ndvi_date: string | null;
+  health: FarmHealth;
+  verdict: string;
+  sar_db: number | null;
+  sar_date: string | null;
+  stress: FarmStress | null;
+  trend: FarmCheckTrendPoint[];
+  passes: FarmCheckPass[];
+  sample_count: number;
+  area_ha: number;
+  resolution_m: number;
+  source: string;
+  note: string | null;
+  created_at: string;
+}
+
+/** POST body: the whole result plus the LGA tag (state = X-Tenant-Id header). */
+export type FarmCheckSaveBody = FarmCheckResult & { lga?: string };
+
+interface FarmCheckSaveResponse {
+  record_id: string;
+  saved: boolean;
+}
+
+interface FarmCheckRecordsData {
+  records: FarmCheckRecord[];
+}
+
+/** POST /cropguard/farm-checks — persist a Farm Check as a recallable record. */
+export function useSaveFarmCheck(
+  tenantId: string,
+): UseMutationResult<FarmCheckSaveResponse, ApiException, FarmCheckSaveBody> {
+  const qc = useQueryClient();
+  return useMutation<FarmCheckSaveResponse, ApiException, FarmCheckSaveBody>({
+    mutationFn: async (body) => {
+      const env = await apiFetch<FarmCheckSaveResponse>('/cropguard/farm-checks', {
+        method: 'POST',
+        body,
+        tenantId,
+      });
+      return env.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['farm-check-records', tenantId] });
+    },
+  });
+}
+
+/** GET /cropguard/farm-checks — recent saved checks for the tenant (state). */
+export function useFarmCheckRecords(
+  tenantId: string,
+  enabled = true,
+): UseQueryResult<FarmCheckRecord[], ApiException> {
+  return useQuery<FarmCheckRecord[], ApiException>({
+    queryKey: ['farm-check-records', tenantId],
+    enabled: enabled && Boolean(tenantId),
+    staleTime: 30 * 1000,
+    queryFn: async ({ signal }) => {
+      const env = await apiFetch<FarmCheckRecordsData>(
+        '/cropguard/farm-checks?limit=20',
+        { tenantId, signal },
+      );
+      return env.data.records;
+    },
   });
 }

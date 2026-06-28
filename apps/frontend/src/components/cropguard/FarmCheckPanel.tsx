@@ -5,7 +5,13 @@ import { PolygonLayer, ScatterplotLayer } from '@deck.gl/layers';
 
 import EBMap from '@/components/map/EBMap';
 import { useTenant } from '@/context/TenantContext';
-import { useFarmCheck, type FarmHealth } from '@/hooks/useFarmCheck';
+import { useTenantLgas } from '@/hooks/useCropPredictions';
+import {
+  useFarmCheck,
+  useFarmCheckRecords,
+  useSaveFarmCheck,
+  type FarmHealth,
+} from '@/hooks/useFarmCheck';
 
 // Labelled satellite base so state/place names AND the real land are visible.
 const FARM_MAP_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
@@ -99,11 +105,16 @@ export default function FarmCheckPanel() {
   const [lat, setLat] = useState(() => activeTenant.centroid[1].toFixed(4));
   const [lon, setLon] = useState(() => activeTenant.centroid[0].toFixed(4));
   const [crop, setCrop] = useState('maize');
+  const [lga, setLga] = useState('');
   const [halfM, setHalfM] = useState(60); // default Tight, for single-plot accuracy
   const [focus, setFocus] = useState<{ lng: number; lat: number; zoom: number } | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [placeName, setPlaceName] = useState<string | null>(null);
   const check = useFarmCheck();
+  // Records save + recall to the SELECTED pilot's schema (the state checked).
+  const lgasQuery = useTenantLgas(pilotId);
+  const save = useSaveFarmCheck(pilotId);
+  const records = useFarmCheckRecords(pilotId);
   const r = check.data;
 
   const pilot = pilotTenants.find((t) => t.id === pilotId) ?? activeTenant;
@@ -123,6 +134,8 @@ export default function FarmCheckPanel() {
       setLat(t.centroid[1].toFixed(4));
     }
     check.reset();
+    save.reset();
+    setLga('');
     setFocus(null);
     setPlaceName(null);
     setSelectedDate(null);
@@ -177,6 +190,7 @@ export default function FarmCheckPanel() {
 
   const runCheck = () => {
     if (!coordsValid || !crop.trim()) return;
+    save.reset();
     check.mutate(
       { lat: latN, lon: lonN, crop: crop.trim(), half_m: halfM },
       {
@@ -190,6 +204,11 @@ export default function FarmCheckPanel() {
         },
       },
     );
+  };
+
+  const saveRecord = () => {
+    if (!r) return;
+    save.mutate({ ...r, lga: lga || undefined });
   };
 
   // The pass currently shown (selected from the history, default = latest).
@@ -231,6 +250,15 @@ export default function FarmCheckPanel() {
         <label style={{ fontSize: '12px' }}>
           <div className="fp-tenant-label">Crop</div>
           <input style={inputStyle} value={crop} onChange={(e) => setCrop(e.target.value)} placeholder="e.g. maize" />
+        </label>
+        <label style={{ fontSize: '12px' }}>
+          <div className="fp-tenant-label">LGA (for the record)</div>
+          <select className="fp-tenant-select" value={lga} onChange={(e) => setLga(e.target.value)}>
+            <option value="">{lgasQuery.isLoading ? 'Loading…' : 'Select LGA…'}</option>
+            {(lgasQuery.data ?? []).map((l) => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
         </label>
         <label style={{ fontSize: '12px' }}>
           <div className="fp-tenant-label">Precision</div>
@@ -348,6 +376,73 @@ export default function FarmCheckPanel() {
             )}
           </div>
           <div className="ev-map-meta" style={{ marginTop: '8px', opacity: 0.85 }}>{r.note}</div>
+
+          {/* Keep this reading as a recallable field record. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '10px' }}>
+            <button
+              type="button"
+              className="fp-refresh-btn"
+              onClick={saveRecord}
+              disabled={save.isPending || save.isSuccess}
+            >
+              {save.isPending ? 'Saving…' : save.isSuccess ? '✓ Saved' : 'Save to records'}
+            </button>
+            {save.isSuccess ? (
+              <span className="ev-map-meta" style={{ color: '#16a34a' }}>
+                Saved to {pilot.name}
+                {lga ? ` · ${lga}` : ''} · {r.crop} — recall it below.
+              </span>
+            ) : (
+              <span className="ev-map-meta">
+                {lga ? `Records to ${pilot.name} · ${lga}` : `Pick an LGA to tag the record (optional)`}
+              </span>
+            )}
+            {save.isError && (
+              <span className="ev-map-meta" style={{ color: '#b45309' }}>
+                Couldn&apos;t save: {save.error.message}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(records.data?.length ?? 0) > 0 && (
+        <div style={{ marginTop: '16px' }}>
+          <div className="cg-section-header">Saved field checks — {pilot.name}</div>
+          <div className="cg-subtitle" style={{ marginBottom: '8px' }}>
+            Recalled satellite Farm Checks for this state, newest first.
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {(records.data ?? []).map((rec) => {
+              const rhs = HEALTH_STYLE[rec.health] ?? HEALTH_STYLE.unknown;
+              return (
+                <div
+                  key={rec.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+                    padding: '7px 10px', borderRadius: '6px', background: 'rgba(0,0,0,0.03)',
+                    borderLeft: `3px solid ${rhs.color}`, fontSize: '12.5px',
+                  }}
+                >
+                  <span style={{
+                    background: rhs.color, color: '#10130f', fontWeight: 700,
+                    fontSize: '11px', padding: '2px 8px', borderRadius: '10px',
+                  }}>{rhs.label}</span>
+                  <strong>{rec.crop}</strong>
+                  <span>NDVI {rec.ndvi != null ? rec.ndvi.toFixed(2) : '—'}</span>
+                  {rec.stress && rec.stress.level !== 'none' && rec.stress.level !== 'unknown' && (
+                    <span style={{ color: STRESS_STYLE[rec.stress.level]?.color }}>
+                      {STRESS_STYLE[rec.stress.level]?.label}
+                    </span>
+                  )}
+                  <span className="ev-map-meta">
+                    📍 {[rec.lga, `${rec.lat.toFixed(4)}, ${rec.lon.toFixed(4)}`].filter(Boolean).join(' · ')}
+                    {rec.ndvi_date ? ` · ${rec.ndvi_date}` : ''} · saved {rec.created_at.slice(0, 10)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
