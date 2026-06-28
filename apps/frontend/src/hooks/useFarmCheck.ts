@@ -26,6 +26,14 @@ export interface FarmCheckPass {
   cloud_affected: boolean;
 }
 
+export type StressLevel = 'none' | 'moderate' | 'high' | 'unknown';
+
+export interface FarmStress {
+  level: StressLevel;
+  z: number | null;
+  message: string;
+}
+
 export type FarmHealth =
   | 'healthy' | 'moderate' | 'stressed' | 'poor' | 'bare' | 'unknown';
 
@@ -41,6 +49,7 @@ export interface FarmCheckResult {
   sar_date: string | null;
   trend: FarmCheckTrendPoint[];
   passes: FarmCheckPass[];
+  stress: FarmStress;
   sample_count: number;
   area_ha: number;
   resolution_m: number;

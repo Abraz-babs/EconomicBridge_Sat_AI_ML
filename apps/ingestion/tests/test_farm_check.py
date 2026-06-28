@@ -11,8 +11,27 @@ if str(ING_ROOT) not in sys.path:
 from datetime import datetime, timezone  # noqa: E402
 
 from sources.farm_check import (  # noqa: E402
-    bbox_around, classify_health, latest_usable_pass, normalise_crop,
+    assess_stress, bbox_around, classify_health, latest_usable_pass,
+    normalise_crop,
 )
+
+
+def test_assess_stress_flags_decline():
+    # Stable ~0.6 then a sharp recent drop -> significant stress.
+    s = assess_stress([0.61, 0.60, 0.62, 0.59, 0.30, 0.28])
+    assert s["level"] in ("high", "moderate")
+    assert s["z"] < 0
+
+
+def test_assess_stress_no_signal_when_stable_or_rising():
+    s = assess_stress([0.39, 0.35, 0.40, 0.56])  # greening field
+    assert s["level"] == "none"
+
+
+def test_assess_stress_unknown_when_too_few_passes():
+    s = assess_stress([0.5, 0.5])
+    assert s["level"] == "unknown"
+    assert s["z"] is None
 from sources.sentinel_statistical import StatPoint  # noqa: E402
 
 

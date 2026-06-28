@@ -17,6 +17,7 @@ import {
 import CropGuardMap from './CropGuardMap';
 import CropMarketPanel from './CropMarketPanel';
 import FarmCheckPanel from './FarmCheckPanel';
+import LeafDiagnosisPanel from './LeafDiagnosisPanel';
 import NdviAnomalyPanel from './NdviAnomalyPanel';
 import YieldForecastPanel from './YieldForecastPanel';
 
@@ -359,8 +360,11 @@ export default function CropGuardPanel() {
         </div>
       </div>
 
-      {/* FARM CHECK — per-coordinate vegetation health (NASRDA field-level ask) */}
+      {/* FARM CHECK — per-coordinate vegetation health + stress early-warning */}
       <FarmCheckPanel />
+
+      {/* LEAF DIAGNOSIS — AI disease ID from a leaf photo (confirms the stress) */}
+      <LeafDiagnosisPanel />
 
       {/* PRE-SYMPTOMATIC NDVI ANOMALY (Slice 04.d) */}
       <NdviAnomalyPanel />

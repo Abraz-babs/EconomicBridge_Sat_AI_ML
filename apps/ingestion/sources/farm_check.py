@@ -17,6 +17,7 @@ import logging
 import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from statistics import mean, pstdev
 
 from sources.sentinel_statistical import (
     EVALSCRIPT_S1_VV_DB,
@@ -40,6 +41,12 @@ SAR_WINDOW_DAYS = 30
 # than the latest fully-clear one (clouds are masked per pixel via SCL).
 MIN_CLEAR_FRACTION = 0.25
 TREND_POINTS = 8
+# Per-plot stress / pre-symptomatic early-warning: z-score of the most recent
+# clear passes vs the field's own baseline. A DROP (negative z) flags emerging
+# stress — an early signal that warrants a closer look (disease, pest, or water
+# stress), NOT a disease diagnosis on its own.
+MIN_STRESS_POINTS = 4
+STRESS_RECENT_N = 2
 
 # Indicative PEAK-season healthy NDVI per crop (real value depends on growth
 # stage). Used only to phrase a crop-aware verdict — NDVI itself is the
@@ -74,6 +81,8 @@ class FarmCheckResult:
     # Every usable optical pass, oldest→newest, each classified — lets the UI
     # scrub through the field's history (pre-clearance → bare → canopy).
     passes: list[dict] = field(default_factory=list)
+    # Vegetation-stress early-warning {level, z, message} from the NDVI history.
+    stress: dict = field(default_factory=dict)
     sample_count: int = 0
     area_ha: float = 0.0
     resolution_m: int = 11
@@ -104,6 +113,34 @@ def classify_health(ndvi: float | None, crop: str) -> tuple[str, str]:
         return "stressed", f"Stressed / sparse canopy — {label} below its healthy range."
     return "poor", (f"Poor — very sparse or senesced; check whether {label} "
                     "is established here.")
+
+
+def assess_stress(ndvi_series: list[float]) -> dict:
+    """Per-plot vegetation-stress early-warning from the NDVI history.
+
+    Compares the most recent clear passes to the field's own baseline (z-score).
+    A drop flags emerging stress to investigate — it is NOT a disease diagnosis;
+    a decline can also be water stress, pests, harvest or land clearing. The
+    leaf-photo classifier confirms whether it is disease.
+    """
+    if len(ndvi_series) < MIN_STRESS_POINTS:
+        return {"level": "unknown", "z": None,
+                "message": "Not enough clear passes yet to judge a stress trend."}
+    recent = ndvi_series[-STRESS_RECENT_N:]
+    baseline = ndvi_series[:-STRESS_RECENT_N]
+    b_mean = mean(baseline)
+    b_std = pstdev(baseline) or 1e-6
+    z = (mean(recent) - b_mean) / b_std
+    if z <= -2.0:
+        return {"level": "high", "z": round(z, 2),
+                "message": "Significant vegetation decline vs the field's "
+                           "baseline — investigate for disease, pest, or water stress."}
+    if z <= -1.0:
+        return {"level": "moderate", "z": round(z, 2),
+                "message": "Mild decline vs baseline — worth monitoring."}
+    return {"level": "none", "z": round(z, 2),
+            "message": "No vegetation-stress signal — tracking at or above the "
+                       "field's baseline."}
 
 
 def latest_usable_pass(
@@ -175,6 +212,7 @@ async def check_farm(
             "sample_count": p.sample_count,
             "cloud_affected": bool(max_clear and p.sample_count < 0.7 * max_clear),
         })
+    stress = assess_stress([p.mean for p in valid_ndvi])
     side_m = 2 * half_m
     return FarmCheckResult(
         lat=lat, lon=lon, crop=crop,
@@ -185,6 +223,7 @@ async def check_farm(
         sar_date=latest_sar.interval_from.date().isoformat() if latest_sar else None,
         trend=trend,
         passes=passes,
+        stress=stress,
         sample_count=latest.sample_count if latest else 0,
         area_ha=round((side_m * side_m) / 10_000.0, 2),
         note=("Sentinel-2 (~10 m) NDVI from the latest usable pass "

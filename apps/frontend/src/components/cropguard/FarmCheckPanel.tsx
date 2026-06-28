@@ -17,6 +17,13 @@ const PRECISION_OPTIONS = [
   { label: 'Standard (~5.8 ha)', half: 120 },
 ];
 
+const STRESS_STYLE: Record<string, { label: string; color: string }> = {
+  none: { label: '✓ No stress signal', color: '#22c55e' },
+  moderate: { label: '⚠ Mild decline — monitor', color: '#eab308' },
+  high: { label: '⚠ Significant decline — investigate', color: '#ef4444' },
+  unknown: { label: 'Stress: insufficient history', color: '#9ca3af' },
+};
+
 const HEALTH_STYLE: Record<FarmHealth, { label: string; color: string }> = {
   healthy: { label: 'Healthy', color: '#22c55e' },
   moderate: { label: 'Moderate', color: '#84cc16' },
@@ -301,6 +308,20 @@ export default function FarmCheckPanel() {
               </span>
             </div>
           )}
+
+          {r.stress && r.stress.level !== 'unknown' && (() => {
+            const ss = STRESS_STYLE[r.stress.level] ?? STRESS_STYLE.unknown;
+            return (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+                margin: '0 0 10px', padding: '7px 10px', borderRadius: '6px',
+                background: `${ss.color}1f`, border: `1px solid ${ss.color}66`,
+              }}>
+                <strong style={{ color: ss.color, fontSize: '12.5px' }}>{ss.label}</strong>
+                <span className="ev-map-meta">Early-warning · {r.stress.message}</span>
+              </div>
+            );
+          })()}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <span style={{

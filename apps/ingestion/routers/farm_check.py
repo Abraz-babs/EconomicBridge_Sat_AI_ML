@@ -54,6 +54,12 @@ class PassPoint(BaseModel):
     cloud_affected: bool
 
 
+class StressInfo(BaseModel):
+    level: str          # none | moderate | high | unknown
+    z: float | None
+    message: str
+
+
 class FarmCheckResponse(BaseModel):
     lat: float
     lon: float
@@ -66,6 +72,7 @@ class FarmCheckResponse(BaseModel):
     sar_date: str | None
     trend: list[TrendPoint]
     passes: list[PassPoint]
+    stress: StressInfo
     sample_count: int
     area_ha: float
     resolution_m: int
@@ -81,6 +88,7 @@ def _to_response(r: FarmCheckResult) -> FarmCheckResponse:
         sar_db=r.sar_db, sar_date=r.sar_date,
         trend=[TrendPoint(**p) for p in r.trend],
         passes=[PassPoint(**p) for p in r.passes],
+        stress=StressInfo(**r.stress),
         sample_count=r.sample_count, area_ha=r.area_ha,
         resolution_m=r.resolution_m, source=r.source, note=r.note,
     )
