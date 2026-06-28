@@ -39,10 +39,14 @@ export default function LeafDiagnosisPanel() {
   return (
     <div className="sb-table-wrap" style={{ marginTop: '16px' }}>
       <div className="cg-section-header">Leaf Diagnosis — AI disease ID from a photo</div>
-      <div className="cg-subtitle" style={{ marginBottom: '10px' }}>
-        Upload a clear photo of a crop leaf. Our trained ResNet-50 identifies the
-        disease (or confirms it is healthy) with a confidence score — the
-        ground-level complement to the satellite stress early-warning.
+      <div className="cg-subtitle" style={{ marginBottom: '4px' }}>
+        Upload a <strong>close-up of a single leaf that fills the frame</strong> —
+        not a whole field or landscape. The trained ResNet-50 then identifies the
+        disease (or confirms it is healthy) with a confidence score.
+      </div>
+      <div className="ev-map-meta" style={{ marginBottom: '10px' }}>
+        📷 Best results: one affected leaf, plain background, good light. For
+        field-/landscape-level monitoring, use the satellite <em>Farm Check</em> above.
       </div>
 
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 12px' }}>
@@ -96,6 +100,12 @@ export default function LeafDiagnosisPanel() {
             <div className="ev-map-meta" style={{ marginTop: '8px' }}>
               Also considered:{' '}
               {r.top_k.slice(1).map((t) => `${fmtClass(t.class_name)} ${(t.probability * 100).toFixed(0)}%`).join(' · ')}
+            </div>
+          )}
+          {r.confidence < 0.6 && (
+            <div className="ev-map-meta" style={{ marginTop: '8px', color: '#b45309' }}>
+              ⚠ Low confidence — if this looks wrong, retake as a tighter close-up
+              of one affected leaf (a field/landscape photo can&apos;t be diagnosed per-leaf).
             </div>
           )}
           <div className="ev-map-meta" style={{ marginTop: '8px', opacity: 0.85 }}>
