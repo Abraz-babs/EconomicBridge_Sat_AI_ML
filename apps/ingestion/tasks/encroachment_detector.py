@@ -63,15 +63,23 @@ FIRE_SATURATION = 8   # this many recent fires -> full fire component
 # (no NDVI loss, negligible SAR change) score below this and stay un-flagged.
 ALERT_THRESHOLD = float(os.environ.get("ENCROACHMENT_ALERT_THRESHOLD", "0.30"))
 
-# ─── Per-LGA sweep (spreads the watch across the state instead of one
-#     ROI-averaged point). Each sampled LGA gets its OWN Sentinel-2 NDVI +
-#     Sentinel-1 SAR series from CDSE (small box around the centroid), so local
-#     land disturbance surfaces where it happens — ROI-averaging washes it out.
-#     Capped per state for cost: 2 CDSE calls × cap × tenants per sweep. ──────
-LGA_SAMPLE_CAP = int(os.environ.get("ENCROACHMENT_LGA_CAP", "8"))
+# ─── Per-LGA sweep (statewide coverage instead of one ROI-averaged point).
+#     Each LGA gets its OWN Sentinel-2 NDVI + Sentinel-1 SAR series from CDSE
+#     (small box around the centroid), so local land disturbance surfaces where
+#     it happens — ROI-averaging washes it out.
+#
+#     COVERAGE = every LGA in every state, refreshed on a REVISIT_DAYS rolling
+#     cadence: each daily run scans ~1/REVISIT_DAYS of the LGAs (the ones "due"),
+#     so all are covered over one Sentinel revisit (~6 days) while daily CDSE
+#     cost stays bounded (~150 requests/day ≈ ~4.5k PU/month for ~450 LGAs).
+#     A `full=True` sweep scans every LGA at once (initial seed / on-demand,
+#     ~900 requests). Rolling refresh is per-LGA (we re-evaluate only the due
+#     LGAs and keep the others' current watch), so the map stays fully populated.
 LGA_BOX_HALF_M = 1500   # ~3 km box around an LGA centroid — captures local farmland
 LGA_NDVI_WINDOW_DAYS = 90
 LGA_SAR_WINDOW_DAYS = 120
+# Sentinel revisit ~5-6 days; refresh each LGA on that cadence (env-tunable).
+REVISIT_DAYS = max(1, int(os.environ.get("ENCROACHMENT_REVISIT_DAYS", "6")))
 
 # Impact ESTIMATES shown on the alert card (model-derived, human_review_required
 # — NOT measured). Anchored to smallholder reality and the seed alerts' own
@@ -326,14 +334,22 @@ async def detect_for_tenant(session: AsyncSession, tenant: str) -> str:
 # ─── Per-LGA sweep (statewide coverage) ────────────────────────────────────
 
 
-def select_lgas(tenant: str, cap: int = LGA_SAMPLE_CAP) -> list[dict]:
-    """Up to `cap` LGAs for a tenant, evenly spread across its centroid list so
-    the sampled points cover the state rather than clustering in one corner."""
+def select_lgas(
+    tenant: str, *, full: bool = False, day: int | None = None,
+) -> list[dict]:
+    """LGAs to scan this run.
+
+    full=True  → every LGA (initial seed sweep / on-demand full refresh).
+    otherwise  → the rolling 1/REVISIT_DAYS slice that is "due" today, so every
+                 LGA is refreshed once per Sentinel revisit while daily CDSE cost
+                 stays bounded. The slice rotates by ordinal day, deterministic
+                 and state-free (no per-LGA bookkeeping table needed).
+    """
     lgas = _lga_index().get(tenant, [])
-    if len(lgas) <= cap:
+    if full or len(lgas) <= REVISIT_DAYS:
         return list(lgas)
-    step = len(lgas) / cap
-    return [lgas[int(i * step)] for i in range(cap)]
+    d = day if day is not None else date.today().toordinal()
+    return [g for i, g in enumerate(lgas) if (i + d) % REVISIT_DAYS == 0]
 
 
 async def _fetch_lga_series(
@@ -362,25 +378,30 @@ async def _fetch_lga_series(
 
 async def detect_per_lga_for_tenant(
     session: AsyncSession, client: SentinelStatisticalClient,
-    tenant: str, cap: int = LGA_SAMPLE_CAP,
+    tenant: str, *, full: bool = False, day: int | None = None,
 ) -> str:
-    """Evaluate a spread of LGAs across the state, each from its OWN satellite
-    series, and refresh the tenant's auto-watch with one alert per disturbed
-    LGA. Officer-actioned rows (acknowledged/resolved) are preserved."""
-    await set_tenant_schema(session, tenant)
-    await session.execute(text(
-        "DELETE FROM alert_events "
-        "WHERE model_name = :m AND status = 'pending_review'"
-    ), {"m": MODEL_VERSION})
+    """Evaluate the due LGAs (rolling) or every LGA (full) from each one's OWN
+    satellite series, refreshing each scanned LGA's auto-watch independently.
 
-    lgas = select_lgas(tenant, cap)
-    if not lgas:
+    Rolling, per-LGA: we delete only the *scanned* LGA's prior pending watch and
+    re-insert if it still clears threshold — so un-scanned LGAs keep their
+    current watch and the statewide map stays fully populated between revisits.
+    Officer-actioned rows (acknowledged/resolved) are always preserved.
+    """
+    await set_tenant_schema(session, tenant)
+    batch = select_lgas(tenant, full=full, day=day)
+    if not batch:
         # No centroids for this tenant — fall back to the ROI signal.
         return await detect_for_tenant(session, tenant)
 
     alerts = 0
     evaluated = 0
-    for g in lgas:
+    for g in batch:
+        # Refresh THIS LGA only — keep the rest of the state's current watches.
+        await session.execute(text(
+            "DELETE FROM alert_events WHERE model_name = :m "
+            "AND status = 'pending_review' AND lga = :lga"
+        ), {"m": MODEL_VERSION, "lga": g["lga"]})
         try:
             ndvi, sar, latest = await _fetch_lga_series(client, g["lon"], g["lat"])
         except CopernicusError as exc:
@@ -400,28 +421,36 @@ async def detect_per_lga_for_tenant(
             lga_name=g["lga"], lon=g["lon"], lat=g["lat"], scope_label="LGA-level",
         )
         alerts += 1
-    return f"{alerts} alert(s) across {evaluated}/{len(lgas)} LGAs"
+    mode = "full" if full else "rolling"
+    return f"{alerts} alert(s) / {evaluated} scanned ({mode}, {len(batch)} LGAs due)"
 
 
-async def run_encroachment_sweep(tenants: list[str] | None = None) -> dict[str, str]:
+async def run_encroachment_sweep(
+    tenants: list[str] | None = None, *, full: bool = False,
+) -> dict[str, str]:
     """Run the detector across every pilot tenant. Failures are isolated.
 
     Uses the per-LGA sweep when CDSE credentials are configured (statewide
     coverage from live per-LGA satellite series); falls back to the ROI-level
     signal from satellite_observations when they are not (e.g. local/test).
+    `full=True` scans every LGA (initial seed / on-demand); the default daily
+    run scans the rolling revisit-due slice.
     """
     target = list(tenants) if tenants is not None else sorted(PILOT_TENANT_IDS)
     factory = get_session_factory()
     client = SentinelStatisticalClient(CopernicusClient())
     per_lga = client.configured
-    log.info("encroachment sweep starting (mode=%s, lga_cap=%d)",
-             "per-LGA" if per_lga else "ROI-fallback", LGA_SAMPLE_CAP)
+    day = date.today().toordinal()
+    log.info("encroachment sweep starting (mode=%s, scope=%s, revisit=%dd)",
+             "per-LGA" if per_lga else "ROI-fallback",
+             "full" if full else "rolling", REVISIT_DAYS)
     out: dict[str, str] = {}
     for t in target:
         async with factory() as session:
             try:
                 if per_lga:
-                    out[t] = await detect_per_lga_for_tenant(session, client, t)
+                    out[t] = await detect_per_lga_for_tenant(
+                        session, client, t, full=full, day=day)
                 else:
                     out[t] = await detect_for_tenant(session, t)
                 await session.commit()
