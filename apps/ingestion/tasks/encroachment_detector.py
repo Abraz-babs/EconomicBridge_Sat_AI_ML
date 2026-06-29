@@ -397,11 +397,8 @@ async def detect_per_lga_for_tenant(
     alerts = 0
     evaluated = 0
     for g in batch:
-        # Refresh THIS LGA only — keep the rest of the state's current watches.
-        await session.execute(text(
-            "DELETE FROM alert_events WHERE model_name = :m "
-            "AND status = 'pending_review' AND lga = :lga"
-        ), {"m": MODEL_VERSION, "lga": g["lga"]})
+        # Fetch FIRST — only refresh this LGA's watch on a SUCCESSFUL read, so a
+        # rate-limit (429) or error skips the LGA without wiping its prior watch.
         try:
             ndvi, sar, latest = await _fetch_lga_series(client, g["lon"], g["lat"])
         except CopernicusError as exc:
@@ -410,6 +407,13 @@ async def detect_per_lga_for_tenant(
             continue
         evaluated += 1
         signal = compute_encroachment(ndvi, sar, 0, latest)
+        # Read succeeded → refresh THIS LGA only (delete prior, insert if it
+        # still clears). A now-calm LGA simply loses its watch. Other LGAs keep
+        # their current watch (rolling coverage).
+        await session.execute(text(
+            "DELETE FROM alert_events WHERE model_name = :m "
+            "AND status = 'pending_review' AND lga = :lga"
+        ), {"m": MODEL_VERSION, "lga": g["lga"]})
         if signal is None or signal.score < ALERT_THRESHOLD:
             continue
         h = hashlib.sha256(json.dumps(

@@ -24,6 +24,7 @@ this from the request hot path. Schedule the ingest task instead.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -34,6 +35,21 @@ import httpx
 from sources.copernicus import CopernicusClient, CopernicusError
 
 log = logging.getLogger(__name__)
+
+# CDSE rate-limit (429) handling: retry with Retry-After-aware backoff.
+_MAX_RETRIES_429 = 6
+_MAX_BACKOFF_SECONDS = 30.0
+
+
+def _retry_after_seconds(header: str | None, attempt: int) -> float:
+    """Seconds to wait before retrying a 429: honour the Retry-After header
+    when present, else exponential backoff (capped)."""
+    if header:
+        try:
+            return min(float(header), _MAX_BACKOFF_SECONDS)
+        except ValueError:
+            pass
+    return min(2.0 ** attempt, _MAX_BACKOFF_SECONDS)
 
 
 # ─── Canonical evalscripts ────────────────────────────────────────────────
@@ -194,16 +210,29 @@ class SentinelStatisticalClient:
         )
 
         async with self._http_ctx() as client:
-            resp = await client.post(
-                self._settings.copernicus_statistical_url,
-                json=body,
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                },
-                timeout=60.0,   # Statistical API is heavier than catalog
-            )
+            # CDSE enforces a per-minute rate limit (free tier ~ a few hundred
+            # PU/req per minute). A burst sweep trips 429s; absorb them with
+            # Retry-After-aware backoff so the call succeeds instead of being
+            # dropped. Only 429 is retried; other errors fail fast.
+            for attempt in range(_MAX_RETRIES_429 + 1):
+                resp = await client.post(
+                    self._settings.copernicus_statistical_url,
+                    json=body,
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                    },
+                    timeout=60.0,   # Statistical API is heavier than catalog
+                )
+                if resp.status_code != 429 or attempt >= _MAX_RETRIES_429:
+                    break
+                delay = _retry_after_seconds(resp.headers.get("Retry-After"), attempt)
+                log.warning(
+                    "CDSE 429 rate-limited; backing off %.1fs (attempt %d/%d)",
+                    delay, attempt + 1, _MAX_RETRIES_429,
+                )
+                await asyncio.sleep(delay)
         if resp.status_code != 200:
             raise CopernicusError(
                 f"CDSE Statistical {resp.status_code}: {resp.text[:300]}"
