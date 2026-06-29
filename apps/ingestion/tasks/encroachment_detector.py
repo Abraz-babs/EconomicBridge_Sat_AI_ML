@@ -55,7 +55,13 @@ MIN_POINTS = 6        # need this many obs in a series to judge
 NDVI_SCALE = 2.0      # z-score magnitude -> 0..1 saturation
 SAR_SCALE = 2.0
 FIRE_SATURATION = 8   # this many recent fires -> full fire component
-ALERT_THRESHOLD = 0.42  # fused score at/above this raises a watch alert
+# Fused score at/above this raises a watch alert. Env-tunable so the watch
+# sensitivity can be dialled from the task definition without a code change.
+# 0.30 surfaces genuine low-level land-surface deviations (≈1.1σ+ SAR change) as
+# honestly-labelled "low" watches across the state; _severity still grades
+# medium (≥0.42) / high (≥0.62) / critical (≥0.80) above that. Truly calm LGAs
+# (no NDVI loss, negligible SAR change) score below this and stay un-flagged.
+ALERT_THRESHOLD = float(os.environ.get("ENCROACHMENT_ALERT_THRESHOLD", "0.30"))
 
 # ─── Per-LGA sweep (spreads the watch across the state instead of one
 #     ROI-averaged point). Each sampled LGA gets its OWN Sentinel-2 NDVI +
