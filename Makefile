@@ -4,7 +4,7 @@
 # Run `make help` to see all available commands.
 
 .DEFAULT_GOAL := help
-.PHONY: help install dev test lint security migrate tenant audit clean
+.PHONY: help install dev test lint security migrate ecs-migrate tenant audit clean
 
 # ─────────────────────────────────────────────────────────────────
 # HELP
@@ -162,6 +162,10 @@ migrate-create: ## Create a new migration (usage: make migrate-create MSG="add a
 
 migrate-rollback: ## Rollback last migration for all tenants
 	python scripts/run_migrations.py --all-tenants --downgrade -1
+
+ecs-migrate: ## Apply migrations to the DEPLOYED RDS via a one-shot ECS task (usage: make ecs-migrate ENV=staging)
+	@echo "→ Applying migrations to $(or $(ENV),staging) RDS via ECS run-task..."
+	bash scripts/ecs_migrate.sh $(or $(ENV),staging)
 
 db-shell: ## Open PostgreSQL shell
 	docker-compose exec postgres psql -U economicbridge -d economicbridge

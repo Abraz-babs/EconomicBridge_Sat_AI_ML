@@ -180,5 +180,17 @@ known-good older SHA.
   `workflow_dispatch` from `deploy.yml` and adding `push: branches: [main]`
   once you trust staging enough.
 - **Database migrations** — `alembic upgrade head` is not run by the
-  deploy workflow yet. Either add a one-shot ECS task or run it from
-  the operator's box before deploying breaking schema changes.
+  deploy workflow. Apply them with the one-shot ECS migrate task instead:
+
+  ```sh
+  make ecs-migrate ENV=staging          # or: scripts/ecs_migrate.sh staging
+  ```
+
+  This launches a throwaway Fargate task that reuses the api task definition
+  (same image, DATABASE_URL secret, subnets + SG) but overrides the command to
+  run `alembic upgrade head` — so it reaches the private RDS from inside the
+  VPC. Run it AFTER the Deploy workflow has pushed the image containing the new
+  migration. Needs creds with `ecs:RunTask` / `DescribeTasks`, `iam:PassRole`
+  on the api task roles, and `logs:GetLogEvents` (the `economicbridge-deployer`
+  user has these; the CI OIDC role does not — wire it into CI later by adding
+  those actions to `github_oidc.tf`).
