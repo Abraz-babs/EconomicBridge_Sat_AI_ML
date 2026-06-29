@@ -20,8 +20,9 @@ import hashlib
 import json
 import logging
 import math
+import os
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from statistics import mean, pstdev
@@ -31,7 +32,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import PILOT_TENANT_IDS, get_session_factory, set_tenant_schema
+from sources.copernicus import CopernicusClient, CopernicusError
+from sources.farm_check import FARM_RESOLUTION_DEG, bbox_around
 from sources.nasa_firms import PILOT_BBOX
+from sources.sentinel_statistical import (
+    EVALSCRIPT_S1_VV_DB,
+    EVALSCRIPT_S2_NDVI_CLOUDMASKED,
+    SentinelStatisticalClient,
+)
 
 # Per-LGA centroids (built by scripts/build_lga_centroids.py) — used to label
 # each ROI-level alert with a representative LGA name + real coordinates.
@@ -48,6 +56,16 @@ NDVI_SCALE = 2.0      # z-score magnitude -> 0..1 saturation
 SAR_SCALE = 2.0
 FIRE_SATURATION = 8   # this many recent fires -> full fire component
 ALERT_THRESHOLD = 0.42  # fused score at/above this raises a watch alert
+
+# ─── Per-LGA sweep (spreads the watch across the state instead of one
+#     ROI-averaged point). Each sampled LGA gets its OWN Sentinel-2 NDVI +
+#     Sentinel-1 SAR series from CDSE (small box around the centroid), so local
+#     land disturbance surfaces where it happens — ROI-averaging washes it out.
+#     Capped per state for cost: 2 CDSE calls × cap × tenants per sweep. ──────
+LGA_SAMPLE_CAP = int(os.environ.get("ENCROACHMENT_LGA_CAP", "8"))
+LGA_BOX_HALF_M = 1500   # ~3 km box around an LGA centroid — captures local farmland
+LGA_NDVI_WINDOW_DAYS = 90
+LGA_SAR_WINDOW_DAYS = 120
 
 # Impact ESTIMATES shown on the alert card (model-derived, human_review_required
 # — NOT measured). Anchored to smallholder reality and the seed alerts' own
@@ -225,8 +243,13 @@ def _impact_estimate(severity: str, score: float) -> tuple[int, int, int, int]:
 async def _insert_alert(
     session: AsyncSession, *, tenant: str, signal: EncroachmentSignal,
     input_hash: str, trace_id: UUID,
+    lga_name: str | None = None, lon: float | None = None,
+    lat: float | None = None, scope_label: str = "ROI-level",
 ) -> None:
-    lga_name, lon, lat = representative_lga(tenant)
+    # Per-LGA callers pass the LGA + its centroid; the ROI fallback derives a
+    # representative LGA from the tenant bbox centre.
+    if lga_name is None or lon is None or lat is None:
+        lga_name, lon, lat = representative_lga(tenant)
     parts = []
     if signal.ndvi_z <= -0.5:
         parts.append(f"vegetation loss {signal.ndvi_z:.1f}σ")
@@ -236,7 +259,7 @@ async def _insert_alert(
         parts.append(f"{signal.fire_count} fire(s)")
     trigger = ", ".join(parts) if parts else "low-level land anomaly"
     where = f" near {lga_name}" if lga_name else ""
-    zone = f"Land-surface change risk (ROI-level){where}: {trigger}"
+    zone = f"Land-surface change risk ({scope_label}){where}: {trigger}"
     area_ha, livelihoods, econ_ngn, breach_h = _impact_estimate(
         signal.severity, signal.score)
     await session.execute(text("""
@@ -294,15 +317,107 @@ async def detect_for_tenant(session: AsyncSession, tenant: str) -> str:
     return f"ALERT {signal.severity} (score {signal.score})"
 
 
+# ─── Per-LGA sweep (statewide coverage) ────────────────────────────────────
+
+
+def select_lgas(tenant: str, cap: int = LGA_SAMPLE_CAP) -> list[dict]:
+    """Up to `cap` LGAs for a tenant, evenly spread across its centroid list so
+    the sampled points cover the state rather than clustering in one corner."""
+    lgas = _lga_index().get(tenant, [])
+    if len(lgas) <= cap:
+        return list(lgas)
+    step = len(lgas) / cap
+    return [lgas[int(i * step)] for i in range(cap)]
+
+
+async def _fetch_lga_series(
+    client: SentinelStatisticalClient, lon: float, lat: float,
+) -> tuple[list[float], list[float], date | None]:
+    """Sentinel-2 NDVI + Sentinel-1 SAR series over a small box around one LGA
+    centroid, oldest→newest. Mirrors the Farm Check query (per-pixel cloud
+    masking on the optical pass)."""
+    end = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    bbox = bbox_around(lat, lon, LGA_BOX_HALF_M)
+    ndvi_points = await client.compute_time_series(
+        bbox=bbox, start=end - timedelta(days=LGA_NDVI_WINDOW_DAYS), end=end,
+        dataset="sentinel-2-l2a", evalscript=EVALSCRIPT_S2_NDVI_CLOUDMASKED,
+        max_cloud_cover_pct=None, resolution_deg=FARM_RESOLUTION_DEG,
+    )
+    sar_points = await client.compute_time_series(
+        bbox=bbox, start=end - timedelta(days=LGA_SAR_WINDOW_DAYS), end=end,
+        dataset="sentinel-1-grd", evalscript=EVALSCRIPT_S1_VV_DB,
+        resolution_deg=FARM_RESOLUTION_DEG,
+    )
+    ndvi = [p.mean for p in ndvi_points if p.mean is not None]
+    sar = [p.mean for p in sar_points if p.mean is not None]
+    dates = [p.interval_from.date() for p in (ndvi_points + sar_points) if p.mean is not None]
+    return ndvi, sar, (max(dates) if dates else None)
+
+
+async def detect_per_lga_for_tenant(
+    session: AsyncSession, client: SentinelStatisticalClient,
+    tenant: str, cap: int = LGA_SAMPLE_CAP,
+) -> str:
+    """Evaluate a spread of LGAs across the state, each from its OWN satellite
+    series, and refresh the tenant's auto-watch with one alert per disturbed
+    LGA. Officer-actioned rows (acknowledged/resolved) are preserved."""
+    await set_tenant_schema(session, tenant)
+    await session.execute(text(
+        "DELETE FROM alert_events "
+        "WHERE model_name = :m AND status = 'pending_review'"
+    ), {"m": MODEL_VERSION})
+
+    lgas = select_lgas(tenant, cap)
+    if not lgas:
+        # No centroids for this tenant — fall back to the ROI signal.
+        return await detect_for_tenant(session, tenant)
+
+    alerts = 0
+    evaluated = 0
+    for g in lgas:
+        try:
+            ndvi, sar, latest = await _fetch_lga_series(client, g["lon"], g["lat"])
+        except CopernicusError as exc:
+            log.warning("encroachment per-LGA CDSE error tenant=%s lga=%s: %s",
+                        tenant, g.get("lga"), exc)
+            continue
+        evaluated += 1
+        signal = compute_encroachment(ndvi, sar, 0, latest)
+        if signal is None or signal.score < ALERT_THRESHOLD:
+            continue
+        h = hashlib.sha256(json.dumps(
+            {"t": tenant, "lga": g["lga"], "obs": str(latest), "m": MODEL_VERSION},
+            sort_keys=True,
+        ).encode("utf-8")).hexdigest()
+        await _insert_alert(
+            session, tenant=tenant, signal=signal, input_hash=h, trace_id=uuid4(),
+            lga_name=g["lga"], lon=g["lon"], lat=g["lat"], scope_label="LGA-level",
+        )
+        alerts += 1
+    return f"{alerts} alert(s) across {evaluated}/{len(lgas)} LGAs"
+
+
 async def run_encroachment_sweep(tenants: list[str] | None = None) -> dict[str, str]:
-    """Run the detector across every pilot tenant. Failures are isolated."""
+    """Run the detector across every pilot tenant. Failures are isolated.
+
+    Uses the per-LGA sweep when CDSE credentials are configured (statewide
+    coverage from live per-LGA satellite series); falls back to the ROI-level
+    signal from satellite_observations when they are not (e.g. local/test).
+    """
     target = list(tenants) if tenants is not None else sorted(PILOT_TENANT_IDS)
     factory = get_session_factory()
+    client = SentinelStatisticalClient(CopernicusClient())
+    per_lga = client.configured
+    log.info("encroachment sweep starting (mode=%s, lga_cap=%d)",
+             "per-LGA" if per_lga else "ROI-fallback", LGA_SAMPLE_CAP)
     out: dict[str, str] = {}
     for t in target:
         async with factory() as session:
             try:
-                out[t] = await detect_for_tenant(session, t)
+                if per_lga:
+                    out[t] = await detect_per_lga_for_tenant(session, client, t)
+                else:
+                    out[t] = await detect_for_tenant(session, t)
                 await session.commit()
             except Exception as exc:  # noqa: BLE001 — isolate per tenant
                 out[t] = f"failed: {exc!s}"
