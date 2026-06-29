@@ -31,6 +31,11 @@ boto3>=1.34,<2.0
 rasterio>=1.4,<2.0
 numpy>=1.26,<3.0
 
+# VIIRS Black Marble (VNP46A2) night-light radiance — HDF5 reads.
+# sources/viirs_raster.py samples true per-pixel radiance from NASA granules;
+# h5py reads the gap-filled DNB grid + the granule's lat/lon coordinate arrays.
+h5py>=3.10,<4.0
+
 # When Celery + Redis land:
 # celery>=5.4,<6.0
 # redis>=5.0,<6.0
