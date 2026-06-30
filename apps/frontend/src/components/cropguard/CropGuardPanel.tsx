@@ -16,6 +16,7 @@ import {
   type TileResult,
 } from '@/hooks/useCropPredictions';
 import CropGuardMap from './CropGuardMap';
+import CropHealthPanel from './CropHealthPanel';
 import CropMarketPanel from './CropMarketPanel';
 import FarmCheckPanel from './FarmCheckPanel';
 import LeafDiagnosisPanel from './LeafDiagnosisPanel';
@@ -446,6 +447,9 @@ export default function CropGuardPanel() {
           {recent.map((row) => <RecentRow key={row.id} row={row} />)}
         </div>
       </div>
+
+      {/* STATEWIDE CROP HEALTH — every LGA's NDVI health (per-LGA coverage) */}
+      <CropHealthPanel />
 
       {/* FARM CHECK — per-coordinate vegetation health + stress early-warning */}
       <FarmCheckPanel />

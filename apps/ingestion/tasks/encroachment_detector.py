@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import get_settings
 from db import PILOT_TENANT_IDS, get_session_factory, set_tenant_schema
 from sources.copernicus import CopernicusClient, CopernicusError
-from sources.farm_check import FARM_RESOLUTION_DEG, bbox_around
+from sources.farm_check import FARM_RESOLUTION_DEG, bbox_around, classify_health
 from sources.nasa_firms import PILOT_BBOX
 from sources.sentinel_statistical import (
     EVALSCRIPT_S1_VV_DB,
@@ -444,6 +444,39 @@ async def _nightlight_by_point(
     return out
 
 
+async def _write_crop_health(
+    session: AsyncSession, *, tenant: str, lga: str, lon: float, lat: float,
+    ndvi_series: list[float], latest: date | None,
+) -> None:
+    """Upsert the LGA's CURRENT crop/vegetation health from its latest NDVI, so
+    CropGuard shows every LGA (not only photo-uploaded points). Derived for free
+    from the NDVI this sweep already fetched. Isolated in a savepoint + best-
+    effort: a missing crop_health table (migration not yet applied) or any error
+    never breaks the Farmland alert write."""
+    ndvi_val = round(ndvi_series[-1], 3) if ndvi_series else None
+    health, verdict = classify_health(ndvi_val, "cropland")
+    try:
+        async with session.begin_nested():
+            await session.execute(
+                text("DELETE FROM crop_health WHERE lga = :lga"), {"lga": lga})
+            await session.execute(text("""
+                INSERT INTO crop_health (
+                    id, tenant_id, location, lat, lon, lga,
+                    ndvi, ndvi_date, health, verdict, source, created_at
+                ) VALUES (
+                    :id, :tenant,
+                    ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :lat, :lon, :lga,
+                    :ndvi, :ndvi_date, :health, :verdict, 'crop_health_v1', NOW()
+                )
+            """), {
+                "id": uuid4(), "tenant": tenant, "lon": lon, "lat": lat, "lga": lga,
+                "ndvi": ndvi_val, "ndvi_date": latest,
+                "health": health, "verdict": verdict,
+            })
+    except Exception as exc:  # noqa: BLE001 — never break the sweep on crop_health
+        log.warning("crop_health write skipped tenant=%s lga=%s: %s", tenant, lga, exc)
+
+
 async def detect_per_lga_for_tenant(
     session: AsyncSession, client: SentinelStatisticalClient,
     tenant: str, *, full: bool = False, day: int | None = None,
@@ -478,6 +511,11 @@ async def detect_per_lga_for_tenant(
                         tenant, g.get("lga"), exc)
             continue
         evaluated += 1
+        # Every scanned LGA gets a current crop-health reading (CropGuard
+        # statewide coverage), derived from the NDVI we just fetched.
+        await _write_crop_health(session, tenant=tenant, lga=g["lga"],
+                                 lon=g["lon"], lat=g["lat"],
+                                 ndvi_series=ndvi, latest=latest)
         nl = nl_by_point.get((g["lon"], g["lat"]), 0.0)
         signal = compute_encroachment(ndvi, sar, 0, latest, nightlight=nl)
         # Read succeeded → refresh THIS LGA only (delete prior, insert if it

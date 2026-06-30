@@ -66,6 +66,31 @@ class CropPredictionListData(BaseModel):
     predictions: list[CropPredictionRow] = Field(default_factory=list)
 
 
+# ─── Statewide per-LGA crop health (Sentinel-2 NDVI) ──────────────────────
+
+
+class CropHealthRow(BaseModel):
+    """One LGA's current crop/vegetation health from Sentinel-2 NDVI."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: str
+    lga: str
+    lat: float
+    lon: float
+    ndvi: float | None = None
+    ndvi_date: str | None = None
+    health: str          # healthy | moderate | stressed | poor | bare | unknown
+    verdict: str
+    source: str
+    created_at: datetime
+
+
+class CropHealthListData(BaseModel):
+    rows: list[CropHealthRow] = Field(default_factory=list)
+
+
 # ─── Market price intelligence (Slice 04.b) ───────────────────────────────
 
 

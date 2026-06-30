@@ -18,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.engine import get_session
 from schemas.cropguard import (
+    CropHealthListData,
+    CropHealthRow,
     CropPredictionListData,
     CropPredictionRow,
     CropTopKEntry,
@@ -155,6 +157,61 @@ def _row_to_response(row: dict) -> CropPredictionRow:
         model_version=row["model_version"],
         inference_time_ms=row.get("inference_time_ms"),
         created_at=row["created_at"],
+    )
+
+
+# ─── Statewide per-LGA crop health (Sentinel-2 NDVI) ──────────────────────
+
+
+@router.get(
+    "/crop-health",
+    response_model=SuccessResponse[CropHealthListData],
+    summary="Current per-LGA crop/vegetation health for the tenant (every LGA)",
+    description=(
+        "One row per LGA with its latest Sentinel-2 NDVI health "
+        "(healthy/moderate/stressed/poor). Populated by the per-LGA satellite "
+        "sweep so the CropGuard map covers every LGA, not only photo uploads."
+    ),
+)
+async def list_crop_health(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[
+        int, Query(ge=1, le=2000, description="Max rows (default 600).")
+    ] = 600,
+) -> SuccessResponse[CropHealthListData]:
+    _require_tenant(request)
+    result = await session.execute(
+        text(
+            """
+            SELECT id, tenant_id, lga,
+                   ST_X(location) AS lon, ST_Y(location) AS lat,
+                   ndvi, ndvi_date, health, verdict, source, created_at
+              FROM crop_health
+             ORDER BY lga
+             LIMIT :limit
+            """
+        ),
+        {"limit": limit},
+    )
+    rows = result.mappings().all()
+    out = [
+        CropHealthRow(
+            id=r["id"], tenant_id=r["tenant_id"], lga=r["lga"],
+            lat=float(r["lat"]), lon=float(r["lon"]),
+            ndvi=(float(r["ndvi"]) if r.get("ndvi") is not None else None),
+            ndvi_date=(r["ndvi_date"].isoformat() if r.get("ndvi_date") else None),
+            health=r["health"], verdict=r.get("verdict") or "",
+            source=r.get("source") or "crop_health_v1", created_at=r["created_at"],
+        )
+        for r in rows
+    ]
+    return SuccessResponse(
+        data=CropHealthListData(rows=out),
+        meta=ResponseMeta(
+            tenant_id=None, trace_id=_trace_id(request),
+            timestamp=datetime.now(timezone.utc), pagination=None,
+        ),
     )
 
 
