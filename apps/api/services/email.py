@@ -52,6 +52,19 @@ def send_invite_email(*, to: str, tenant_name: str, activate_url: str) -> bool:
     return False
 
 
+def send_alert_email(*, to: str, subject: str, body: str) -> bool:
+    """Send a plain-text alert/digest email to a subscribed agency. Same backend
+    dispatch as invites; returns True if a real send was accepted (False in
+    console mode, where the body is logged for testing). Never raises."""
+    s = get_settings()
+    if s.email_backend == "resend":
+        return _send_resend(to=to, subject=subject, body=body)
+    if s.email_backend == "ses":
+        return _send_ses(to=to, subject=subject, body=body)
+    logger.info("[email:console] (alert) to=%s subject=%r\n%s", to, subject, body)
+    return False
+
+
 def _send_resend(
     *, to: str, subject: str, body: str, reply_to: str | None = None,
     pdf: bytes | None = None, filename: str | None = None,

@@ -1,5 +1,6 @@
 'use client';
 
+import AgencyAlertsCard from './AgencyAlertsCard';
 import AidCoverageUploadCard from './AidCoverageUploadCard';
 import CropPriceUploadCard from './CropPriceUploadCard';
 import SchedulerPanel from './SchedulerPanel';
@@ -58,6 +59,7 @@ export default function AdminPanel() {
   return (
     <div className="admin-stack">
       <TenantRegistryCard />
+      <AgencyAlertsCard />
       <ScheduledReportsCard />
       <SchedulerPanel />
       <AidCoverageUploadCard />

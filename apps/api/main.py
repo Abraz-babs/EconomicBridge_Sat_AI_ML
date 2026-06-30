@@ -33,6 +33,7 @@ from middleware.trace import TraceIdMiddleware
 from routers import (
     admin_tenants,
     auth,
+    agency_alerts,
     aid_coordination,
     aid_coordination_bulk,
     contact,
@@ -139,4 +140,5 @@ app.include_router(intelligence.router, prefix="/api/v1")
 app.include_router(overview.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(admin_tenants.router, prefix="/api/v1")
+app.include_router(agency_alerts.router, prefix="/api/v1")
 app.include_router(dpa.router, prefix="/api/v1")
