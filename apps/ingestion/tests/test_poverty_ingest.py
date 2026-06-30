@@ -149,11 +149,11 @@ class _FakeSession:
 
 
 def _viirs_client_with_granule() -> BlackMarbleClient:
-    # h18v08 covers Kebbi (lat 10-20, lon 0-10). MODIS sinusoidal v is the
-    # latitude index — v=07 is lat 20-30 (Sahara), v=08 is lat 10-20.
+    # h18v07 covers Kebbi: Black Marble's GEOGRAPHIC grid puts lat 10-20 in v07
+    # (v = (90-lat)//10) and lon 0-10 in h18 (h = (lon+180)//10).
     payload = [
         {
-            "name": "VNP46A2.A2026140.h18v08.002.x.h5",
+            "name": "VNP46A2.A2026140.h18v07.002.x.h5",
             "size": 12_345_678,
             "downloadsLink": "https://ladsweb...",
         }
@@ -202,12 +202,20 @@ async def test_ingest_writes_viirs_v2_when_both_signals_present(monkeypatch):
     from config import get_settings
     get_settings.cache_clear()
 
+    # Stub the real radiance sampler so the unit test stays network-free and
+    # deterministic: every settlement reads a lit (non-None) radiance → viirs_v2.
+    from sources.viirs_raster import RadianceSample
+
+    async def _fake_radiance(points, **_kwargs):
+        return {p: RadianceSample(p[0], p[1], 5.0, 0) for p in points}
+
     session = _FakeSession()
     result = await ingest_tenant(
         session, tenant_id="kebbi",
         viirs_client=_viirs_client_with_granule(),
         worldpop_client=_worldpop_client_with_layer(),
         date=datetime(2026, 5, 20, tzinfo=timezone.utc),
+        radiance_sampler=_fake_radiance,
     )
 
     get_settings.cache_clear()

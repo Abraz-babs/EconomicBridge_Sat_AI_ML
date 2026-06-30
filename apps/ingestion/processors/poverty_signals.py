@@ -81,17 +81,23 @@ def compose_signals(
     settlements: Sequence[PovertySettlementInput],
     viirs_granule: BlackMarbleGranule | None,
     worldpop_layer: WorldPopLayer | None,
+    radiance_by_point: dict[tuple[float, float], float | None] | None = None,
 ) -> list[PovertySignal]:
     """Return one PovertySignal per input settlement.
 
-    Both catalog refs are optional — when either is None, the corresponding
-    `*_pixel_radiance` / `*_estimate` field is None and the source falls
-    back accordingly. The mapped dashboard renders the row identically;
-    only the source column distinguishes the provenance.
+    `radiance_by_point` carries TRUE per-pixel VIIRS radiance keyed by
+    (lon, lat), read from the granule by sources/viirs_raster — when present it
+    is used directly (the genuine signal). Only when it is absent (no Earthdata
+    token / sampler unavailable) do we fall back to the catalog-derived proxy.
+    Both catalog refs are optional — when either is None the corresponding field
+    is None and the source falls back accordingly.
     """
     out: list[PovertySignal] = []
     for s in settlements:
-        radiance = _radiance_for_point(tenant_id, s, viirs_granule)
+        if radiance_by_point is not None:
+            radiance = radiance_by_point.get((s.lon, s.lat))
+        else:
+            radiance = _radiance_for_point(tenant_id, s, viirs_granule)
         pop_estimate = _worldpop_estimate_for_point(s, worldpop_layer)
         signal = _compose_one(tenant_id, s, radiance, pop_estimate)
         out.append(signal)

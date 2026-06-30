@@ -27,6 +27,7 @@ import httpx
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import get_settings
 from db import PILOT_TENANT_IDS, set_tenant_schema
 from processors.poverty_signals import (
     PovertySettlementInput,
@@ -35,6 +36,7 @@ from processors.poverty_signals import (
 )
 from sources.nasa_firms import PILOT_BBOX
 from sources.viirs_black_marble import BlackMarbleClient, BlackMarbleGranule
+from sources.viirs_raster import sample_radiance
 from sources.worldpop import WorldPopClient, WorldPopLayer
 
 log = logging.getLogger(__name__)
@@ -192,6 +194,7 @@ async def ingest_tenant(
     viirs_client: BlackMarbleClient,
     worldpop_client: WorldPopClient,
     date: datetime | None = None,
+    radiance_sampler=sample_radiance,
 ) -> PovertyIngestResult:
     """End-to-end ingest for one tenant. Caller manages the session/commit."""
     if tenant_id not in PILOT_TENANT_IDS:
@@ -220,11 +223,36 @@ async def ingest_tenant(
     settlements = await _seed_settlements(session, tenant_id)
     if not settlements:
         settlements = settlements_for(tenant_id)
+
+    # TRUE per-pixel VIIRS night-light radiance at each settlement (replaces the
+    # catalog-derived proxy). Tiles are disk-cached, so the ~8 points/tenant
+    # reuse the same few Nigeria/Ghana/Senegal granules. Falls back to the proxy
+    # only when no Earthdata token is configured.
+    radiance_by_point: dict[tuple[float, float], float | None] | None = None
+    settings = get_settings()
+    if settings.earthdata_token and settlements:
+        anchor = (date or datetime.now(timezone.utc)) - timedelta(days=VIIRS_LATENCY_DAYS)
+        try:
+            samples = await radiance_sampler(
+                [(s.lon, s.lat) for s in settlements],
+                base_url=settings.earthdata_laads_base_url,
+                collection=settings.earthdata_laads_collection,
+                product=settings.viirs_black_marble_product,
+                token=settings.earthdata_token,
+                day=anchor.date(),
+                max_lookback_days=VIIRS_PROBE_MAX_EXTRA_DAYS,
+            )
+            radiance_by_point = {pt: rs.radiance for pt, rs in samples.items()}
+        except Exception as exc:  # noqa: BLE001 — never fail the ingest on VIIRS
+            log.warning("poverty.viirs raster sample failed tenant=%s: %s",
+                        tenant_id, exc)
+
     signals = compose_signals(
         tenant_id=tenant_id,
         settlements=settlements,
         viirs_granule=granule,
         worldpop_layer=layer,
+        radiance_by_point=radiance_by_point,
     )
 
     written = 0
@@ -319,6 +347,7 @@ async def ingest_all(
     viirs_http: httpx.AsyncClient | None = None,
     worldpop_http: httpx.AsyncClient | None = None,
     date: datetime | None = None,
+    radiance_sampler=sample_radiance,
 ) -> list[PovertyIngestResult]:
     """Run ingest_tenant() for every pilot tenant. Returns per-tenant summaries.
 
@@ -332,6 +361,7 @@ async def ingest_all(
             result = await ingest_tenant(
                 session, tenant_id=tenant_id,
                 viirs_client=viirs, worldpop_client=worldpop, date=date,
+                radiance_sampler=radiance_sampler,
             )
             results.append(result)
         await session.commit()

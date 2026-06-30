@@ -237,37 +237,18 @@ def _tile_intersects_bbox(
 
 
 def _approx_tile_bbox(h: int, v: int) -> tuple[float, float, float, float]:
-    """Approximate WGS84 bbox of a MODIS sinusoidal tile (lon_w, lon_e, lat_s, lat_n).
+    """WGS84 bbox of a Black Marble tile (lon_w, lon_e, lat_s, lat_n).
 
-    MODIS sinusoidal projection (Sanson-Flamsteed) — equal-area, with the
-    x-axis in metres centred on the prime meridian. The native grid:
-        x_left  = -20015109.354 + h * 1111950.5  (metres)
-        y_top   =  10007554.677 - v * 1111950.5  (metres)
-    To go back to WGS84 we use the projection equations:
-        lat = y / 111319.49  (degrees)
-        lon = x / (cos(lat_centre) * 111319.49)  (degrees)
-    Latitudes are exact (the projection preserves them); longitudes
-    are evaluated at the tile's central latitude.
+    VNP46A2 is on a GEOGRAPHIC (Plate Carrée) 10°×10° tile grid — NOT the MODIS
+    sinusoidal grid. h00 starts at lon −180 (east-positive), v00 at lat +90
+    (south-positive), each tile exactly 10°. (Verified against a live granule:
+    Nigeria sits in h18/h19 × v07/v08. The previous sinusoidal math here never
+    intersected Nigeria, which is why poverty fell back to the proxy.)
     """
-    import math
-
-    # Sinusoidal grid constants (NASA MODLAND).
-    earth_radius_m = 6371007.181
-    tile_metres = 1111950.5
-    metres_per_deg_lat = math.pi * earth_radius_m / 180.0
-
-    y_top = (10.0 * tile_metres) - v * tile_metres
-    y_bottom = y_top - tile_metres
-    lat_n = y_top / metres_per_deg_lat
-    lat_s = y_bottom / metres_per_deg_lat
-    centre_lat = (lat_n + lat_s) / 2.0
-    cos_phi = max(math.cos(math.radians(centre_lat)), 0.05)
-    metres_per_deg_lon = cos_phi * metres_per_deg_lat
-
-    x_left = (-18.0 * tile_metres) + h * tile_metres
-    x_right = x_left + tile_metres
-    lon_w = x_left / metres_per_deg_lon
-    lon_e = x_right / metres_per_deg_lon
+    lon_w = -180.0 + h * 10.0
+    lon_e = lon_w + 10.0
+    lat_n = 90.0 - v * 10.0
+    lat_s = lat_n - 10.0
     return lon_w, lon_e, lat_s, lat_n
 
 

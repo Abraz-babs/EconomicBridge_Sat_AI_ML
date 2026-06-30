@@ -213,22 +213,26 @@ def test_parse_julian_rejects_bad_day_of_year():
 
 
 def test_tile_bbox_for_nigeria_tile():
-    """h18v08 sits at lat 10-20, lon 0-10 — central Nigeria (Kebbi, Zamfara)."""
-    lon_w, lon_e, lat_s, lat_n = _approx_tile_bbox(18, 8)
-    # Latitudes are exact in the sinusoidal projection (height-preserving).
+    """h18v07 sits at lat 10-20, lon 0-10 — northern Nigeria (Kebbi, Zamfara).
+
+    Black Marble uses a GEOGRAPHIC 10°×10° grid: h00 at lon −180, v00 at lat
+    +90, each tile exactly 10° (verified against a live granule)."""
+    lon_w, lon_e, lat_s, lat_n = _approx_tile_bbox(18, 7)
     assert lat_n == pytest.approx(20.0, abs=0.01)
     assert lat_s == pytest.approx(10.0, abs=0.01)
-    # Mid-latitude tile width ~ 10.35° at lat 15° (cos(15) ≈ 0.97).
-    assert (lon_e - lon_w) == pytest.approx(10.35, abs=0.1)
     assert lon_w == pytest.approx(0.0, abs=0.01)
+    assert lon_e == pytest.approx(10.0, abs=0.01)
+    assert (lon_e - lon_w) == pytest.approx(10.0, abs=0.01)
 
 
 def test_tile_intersects_west_africa_roi():
-    # h16v08 sits at lat 10-20, lon ~-22..-11 — covers Senegal.
-    # Senegal ROI: (-17.5, 12.3, -11.3, 15.7)
-    assert _tile_intersects_bbox(16, 8, (-17.5, 12.3, -11.3, 15.7)) is True
-    # h18v08 covers central Nigeria — includes Kebbi (3.6..5.5, 10.8..13.2).
-    assert _tile_intersects_bbox(18, 8, (3.6, 10.8, 5.5, 13.2)) is True
+    # Senegal ROI (-17.5, 12.3, -11.3, 15.7) is lat ~12-16, lon ~-17..-11
+    #   → h16 (lon -20..-10) × v07 (lat 10..20).
+    assert _tile_intersects_bbox(16, 7, (-17.5, 12.3, -11.3, 15.7)) is True
+    # Kebbi (3.6..5.5, 10.8..13.2) → h18 (lon 0..10) × v07 (lat 10..20).
+    assert _tile_intersects_bbox(18, 7, (3.6, 10.8, 5.5, 13.2)) is True
+    # The southern (v08) tile must NOT match northern Kebbi.
+    assert _tile_intersects_bbox(18, 8, (3.6, 10.8, 5.5, 13.2)) is False
 
 
 def test_arctic_tile_does_not_intersect_tropical_roi():
