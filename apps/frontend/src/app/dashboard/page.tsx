@@ -16,6 +16,7 @@ import SystemStatus from '@/components/SystemStatus';
 import Footer from '@/components/Footer';
 import AlertBar from '@/components/AlertBar';
 import StatsRow from '@/components/StatsRow';
+import ProvenancePanel from '@/components/ProvenancePanel';
 import SatelliteMap from '@/components/SatelliteMap';
 import IntelligenceFeed from '@/components/IntelligenceFeed';
 import DataAccessMatrix from '@/components/DataAccessMatrix';
@@ -223,6 +224,9 @@ function DashboardContent() {
                 <ActiveResponse />
               </ErrorBoundary>
             </div>
+            <ErrorBoundary fallbackModule="Data Sources & Provenance">
+              <ProvenancePanel />
+            </ErrorBoundary>
           </div>
         )}
 

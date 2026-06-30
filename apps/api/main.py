@@ -45,6 +45,7 @@ from routers import (
     economic_visibility,
     farm_check,
     farmland,
+    provenance,
     health,
     health_db,
     intelligence,
@@ -127,6 +128,7 @@ app.include_router(cropguard_prices.router, prefix="/api/v1")
 app.include_router(cropguard_prices_bulk.router, prefix="/api/v1")
 app.include_router(cropguard_ndvi.router, prefix="/api/v1")
 app.include_router(farm_check.router, prefix="/api/v1")
+app.include_router(provenance.router, prefix="/api/v1")
 app.include_router(economic_visibility.router, prefix="/api/v1")
 app.include_router(economic_mobility.router, prefix="/api/v1")
 app.include_router(aid_coordination.router, prefix="/api/v1")
