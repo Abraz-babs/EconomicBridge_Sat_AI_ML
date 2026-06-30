@@ -118,8 +118,14 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
     () => alerts.filter((a) => a.severity !== 'resolved'),
     [alerts],
   );
+  // Pulse the active WATCHES (critical/high/medium). The live per-LGA detector
+  // emits mostly medium watches in quiet seasons (single-signal SAR), so gating
+  // the pulse to critical/high alone left whole states un-animated; medium is a
+  // genuine watch worth highlighting. Low-level anomalies stay static.
   const pulseAlerts = useMemo(
-    () => alerts.filter((a) => a.severity === 'critical' || a.severity === 'high'),
+    () => alerts.filter(
+      (a) => a.severity === 'critical' || a.severity === 'high' || a.severity === 'medium',
+    ),
     [alerts],
   );
 
