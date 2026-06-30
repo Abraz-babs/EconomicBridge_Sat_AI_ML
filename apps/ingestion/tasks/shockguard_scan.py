@@ -26,7 +26,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import PILOT_TENANT_IDS, get_session_factory, set_tenant_schema
-from tasks.encroachment_detector import representative_lga
+from sources.copernicus import CopernicusClient, CopernicusError
+from sources.sentinel_statistical import SentinelStatisticalClient
+from tasks.encroachment_detector import (
+    _fetch_lga_series,
+    representative_lga,
+    select_lgas,
+)
 
 log = logging.getLogger(__name__)
 
@@ -100,11 +106,17 @@ async def _load_series(session: AsyncSession):
     return ndvi, sar
 
 
-async def _insert_event(session: AsyncSession, *, tenant: str, sig: ShockSignal) -> None:
-    lga_name, lon, lat = representative_lga(tenant)
+async def _insert_event(
+    session: AsyncSession, *, tenant: str, sig: ShockSignal,
+    lga_name: str | None = None, lon: float | None = None,
+    lat: float | None = None, scope_label: str = "ROI-level",
+) -> None:
+    # Per-LGA callers pass the LGA + centroid; the ROI fallback derives one.
+    if lga_name is None or lon is None or lat is None:
+        lga_name, lon, lat = representative_lga(tenant)
     verb = "flooding" if sig.event_type == "flood" else "vegetation drought"
     where = f" near {lga_name}" if lga_name else ""
-    zone = (f"{verb.capitalize()} signature (ROI-level){where}: "
+    zone = (f"{verb.capitalize()} signature ({scope_label}){where}: "
             f"{'SAR' if sig.event_type == 'flood' else 'NDVI'} drop {sig.z:.1f}σ")
     metrics = {"z": sig.z, "confidence": sig.confidence,
                "signal": "Sentinel-1 SAR" if sig.event_type == "flood" else "Sentinel-2 NDVI"}
@@ -168,22 +180,72 @@ async def detect_for_tenant(session: AsyncSession, tenant: str) -> int:
     return len(written)
 
 
+async def detect_per_lga_for_tenant(
+    session: AsyncSession, client: SentinelStatisticalClient, tenant: str,
+    *, full: bool = False, day: int | None = None,
+) -> int:
+    """Per-LGA flood/drought scan: each LGA from its OWN Sentinel-1 SAR +
+    Sentinel-2 NDVI series, rolling on the ~6-day revisit cadence. Only the
+    scanned LGAs' events are refreshed (a 429/error keeps that LGA's prior
+    events), so the statewide picture stays populated between revisits.
+
+    Returns the number of shock events written across the scanned LGAs.
+    """
+    await set_tenant_schema(session, tenant)
+    batch = select_lgas(tenant, full=full, day=day)
+    if not batch:
+        return await detect_for_tenant(session, tenant)  # ROI fallback
+
+    events = 0
+    for g in batch:
+        # Fetch FIRST — only refresh this LGA on a successful read, so a rate
+        # limit / error skips it without wiping its prior shock events.
+        try:
+            ndvi, sar, _latest = await _fetch_lga_series(client, g["lon"], g["lat"])
+        except CopernicusError as exc:
+            log.warning("shockguard per-LGA CDSE error tenant=%s lga=%s: %s",
+                        tenant, g.get("lga"), exc)
+            continue
+        flood = compute_shock(sar, "flood", SAR_SCALE)
+        drought = compute_shock(ndvi, "drought", NDVI_SCALE)
+        await session.execute(text(
+            "DELETE FROM shock_events WHERE source = :s AND lga = :lga"
+        ), {"s": SOURCE, "lga": g["lga"]})
+        for sig in (s for s in (flood, drought) if s is not None):
+            await _insert_event(
+                session, tenant=tenant, sig=sig,
+                lga_name=g["lga"], lon=g["lon"], lat=g["lat"],
+                scope_label="LGA-level",
+            )
+            events += 1
+    return events
+
+
 async def run_shockguard_scan(
     tenants: list[str] | None = None, *, trigger: str = "scheduled",
+    full: bool = False,
 ) -> dict[str, str]:
     """Re-scan every pilot tenant. Failures isolated; one session per tenant.
 
-    Every successful tenant scan stamps public.ingestion_runs (even a clear
-    result) so the ShockGuard panel can show a 'last scan' time.
+    Per-LGA flood/drought when CDSE creds are configured (statewide coverage,
+    revisit-matched rolling); ROI-level fallback otherwise. `full=True` scans
+    every LGA at once (initial seed / on-demand). Every successful tenant scan
+    stamps public.ingestion_runs so the panel can show a 'last scan' time.
     """
     target = list(tenants) if tenants is not None else sorted(PILOT_TENANT_IDS)
     factory = get_session_factory()
+    client = SentinelStatisticalClient(CopernicusClient())
+    per_lga = client.configured
     out: dict[str, str] = {}
     for t in target:
         async with factory() as session:
             started = datetime.now(timezone.utc)
             try:
-                count = await detect_for_tenant(session, t)
+                if per_lga:
+                    count = await detect_per_lga_for_tenant(
+                        session, client, t, full=full)
+                else:
+                    count = await detect_for_tenant(session, t)
                 await _record_run(
                     session, tenant=t, written=count,
                     started_at=started, trigger=trigger,
@@ -194,5 +256,6 @@ async def run_shockguard_scan(
             except Exception as exc:  # noqa: BLE001 — isolate per tenant
                 out[t] = f"failed: {exc!s}"
                 log.exception("shockguard scan failed tenant=%s", t)
-    log.info("shockguard scan: %s", out)
+    log.info("shockguard scan (mode=%s): %s",
+             "per-LGA" if per_lga else "ROI", out)
     return out
