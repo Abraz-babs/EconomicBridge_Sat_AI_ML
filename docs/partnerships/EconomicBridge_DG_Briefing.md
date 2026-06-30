@@ -24,6 +24,18 @@ No single satellite tells the whole story. EconomicBridge **fuses four complemen
 | **NASA FIRMS (thermal)** | active fires / burning | slow-onset change |
 | **VIIRS Black Marble (night-lights)** | new human activity, every night, year-round | seasonal blind spots of the above |
 
+### Satellite constellation — revisit, resolution & role
+
+| Satellite / product | Sensor | Resolution | Revisit | Swath | Data latency | Provider |
+|---|---|---|---|---|---|---|
+| **Sentinel-2 (MSI)** | Optical, 13 bands | **10 m** (NDVI bands) | **~5 days** | 290 km | hours – 2 days | ESA / Copernicus |
+| **Sentinel-1 (SAR)** | C-band radar | **~10 m** (IW GRD) | **~6 days** | 250 km | hours – 1 day | ESA / Copernicus |
+| **NASA FIRMS** | VIIRS / MODIS thermal | 375 m (VIIRS) | **multiple / day** | — | **~3 h** (near-real-time) | NASA LANCE/EOSDIS |
+| **VIIRS Black Marble** (VNP46A2) | Day/Night Band | ~500 m | **nightly (daily)** | — | ~1 day – 1 week | NASA / LAADS DAAC |
+| **WorldPop** | Modelled population grid | ~100 m | annual | — | — | WorldPop (CC-BY) |
+
+*Notes:* Sentinel revisit reflects the two-satellite constellation (S2A/S2B; S1A/S1C). SAR is all-weather, day & night (cloud-penetrating); the optical NDVI is masked per-pixel for cloud. FIRMS and Black Marble are the high-cadence layers that keep the platform alert between Sentinel passes. Higher-resolution imagery (e.g. NASRDA **NigeriaSat / NCRS**) would sharpen the per-LGA indicators to sub-field scale on top of this open base.
+
 **How the fusion works (per location, not per state):**
 
 1. **Per-LGA evaluation** — every Local Government Area is assessed from *its own* satellite time-series, not a single state-wide average that washes out local events.
@@ -43,14 +55,16 @@ No single satellite tells the whole story. EconomicBridge **fuses four complemen
 - **New amendment:** rebuilt from one state-wide alert to **full per-LGA coverage across all 10 states**, refreshing daily; a **year-round "new light in dark farmland"** signal now flags fresh human activity even when vegetation and radar are quiet.
 
 ### Module 04 — CropGuard
-- **Detects:** crop disease + per-field vegetation health.
-- **Fuses:** Sentinel-2 NDVI + Sentinel-1 SAR (per-coordinate "Farm Check") **+ a trained ResNet-50** that diagnoses disease from a single leaf photo (87% validation accuracy).
-- **New amendment:** field-record keeping — every Farm Check and leaf diagnosis is saved, tagged by state/LGA/crop, and recallable (a growing field-observation dataset).
+- **Detects:** crop/vegetation health (satellite) + crop disease (AI).
+- **Fuses:** Sentinel-2 NDVI + Sentinel-1 SAR **+ a trained ResNet-50** that diagnoses disease from a single leaf photo (87% validation accuracy).
+- **New amendment:** **statewide per-LGA crop health** — *every LGA* now carries a live Sentinel-2 NDVI health reading (healthy → moderate → stressed → poor), so CropGuard covers the whole state, not only photo-sampled points. Plus field-record keeping (every Farm Check + leaf diagnosis saved and recallable by state/LGA/crop).
+- **The honest split:** satellite tells you **where** crops are stressed (per-LGA); a leaf photo tells you **which** disease (point-level) — a physical limit of remote sensing, and a credible one.
 
 ### Module 05 — ShockGuard
 - **Detects:** floods (sharp radar drop = standing water) and droughts (sharp NDVI drop).
 - **Fuses:** Sentinel-1 SAR + Sentinel-2 NDVI, **per-LGA**.
-- **New amendment:** rebuilt to per-LGA daily scanning; correctly shows **"all-clear, monitoring live"** when there are no shocks (it is early wet season — vegetation greening, no flood signatures), and lights up the affected LGAs the moment a real shock appears. Historical examples are clearly labelled.
+- **New amendment:** rebuilt to **per-LGA scanning of every LGA**; correctly shows **"all-clear, monitoring live"** when there are no shocks (it is early wet season — vegetation greening, no flood signatures), and lights up the affected LGAs the moment a real shock appears. Historical examples are clearly labelled.
+- **Coverage:** all three satellite modules now reach every LGA — Farmland (per-LGA encroachment), CropGuard (per-LGA health), ShockGuard (per-LGA monitoring).
 
 ### Module 01 — Economic Visibility (Poverty mapping)
 - **Detects:** under-electrified / under-served settlements.
