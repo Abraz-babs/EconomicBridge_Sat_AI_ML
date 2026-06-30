@@ -10,7 +10,39 @@ if str(ING_ROOT) not in sys.path:
 
 from tasks.encroachment_detector import (  # noqa: E402
     ALERT_THRESHOLD, MIN_POINTS, _impact_estimate, compute_encroachment,
+    nightlight_newlight,
 )
+
+
+# ─── VIIRS new-light component ─────────────────────────────────────────────
+
+
+def test_newlight_flags_light_in_dark_area():
+    """A meaningful radiance increase where it was dark → strong signal."""
+    assert nightlight_newlight(current=4.0, baseline=0.2) > 0.6
+
+
+def test_newlight_ignores_already_lit_places():
+    """An existing town (bright baseline) is not 'new activity' → 0."""
+    assert nightlight_newlight(current=30.0, baseline=12.0) == 0.0
+
+
+def test_newlight_zero_when_no_change_or_missing():
+    assert nightlight_newlight(current=0.2, baseline=0.2) == 0.0
+    assert nightlight_newlight(current=None, baseline=0.1) == 0.0
+    assert nightlight_newlight(current=3.0, baseline=None) == 0.0
+
+
+def test_newlight_raises_score_when_ndvi_sar_quiet():
+    """Year-round: with NDVI rising (greening) + flat SAR, a new light still
+    lifts the encroachment score above the no-nightlight baseline."""
+    ndvi = [0.30 + 0.01 * i for i in range(12)]   # greening → no loss
+    sar = [-8.0 for _ in range(12)]                # flat → no change
+    quiet = compute_encroachment(ndvi, sar, 0, nightlight=0.0)
+    lit = compute_encroachment(ndvi, sar, 0, nightlight=0.8)
+    assert quiet is not None and lit is not None
+    assert lit.score > quiet.score
+    assert lit.nightlight == 0.8
 
 
 def test_impact_estimate_scales_with_severity():

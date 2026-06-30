@@ -31,6 +31,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import get_settings
 from db import PILOT_TENANT_IDS, get_session_factory, set_tenant_schema
 from sources.copernicus import CopernicusClient, CopernicusError
 from sources.farm_check import FARM_RESOLUTION_DEG, bbox_around
@@ -40,6 +41,7 @@ from sources.sentinel_statistical import (
     EVALSCRIPT_S2_NDVI_CLOUDMASKED,
     SentinelStatisticalClient,
 )
+from sources.viirs_raster import sample_radiance
 
 # Per-LGA centroids (built by scripts/build_lga_centroids.py) — used to label
 # each ROI-level alert with a representative LGA name + real coordinates.
@@ -81,6 +83,16 @@ LGA_SAR_WINDOW_DAYS = 120
 # Sentinel revisit ~5-6 days; refresh each LGA on that cadence (env-tunable).
 REVISIT_DAYS = max(1, int(os.environ.get("ENCROACHMENT_REVISIT_DAYS", "6")))
 
+# VIIRS Black Marble "new light in dark farmland" — a YEAR-ROUND human-activity
+# signal (NASA, daily). A light appearing where it was dark (baseline below
+# NIGHTLIGHT_DARK) flags new settlement / camp / mining activity even when NDVI
+# and SAR are quiet (wet-season greening, no fire). Already-lit places score 0 —
+# only genuinely NEW light counts. Compared current vs ~6 weeks earlier.
+NIGHTLIGHT_DARK = 1.0          # nW/cm²/sr — at/above this an LGA is already "lit"
+NIGHTLIGHT_SCALE = 3.0        # radiance increase -> 0..1 saturation
+VIIRS_LATENCY_DAYS = 10       # Black Marble publishes ~1 week behind real time
+VIIRS_BASELINE_LAG_DAYS = 45  # baseline = ~6 weeks before the current granule
+
 # Impact ESTIMATES shown on the alert card (model-derived, human_review_required
 # — NOT measured). Anchored to smallholder reality and the seed alerts' own
 # ratios (~4.6 livelihoods/ha, ~₦200k gross crop value/ha/season). Severity sets
@@ -98,7 +110,7 @@ CROP_VALUE_NGN_PER_HA = 200_000
 
 @dataclass
 class EncroachmentSignal:
-    """Result of fusing the three satellite signals for one tenant ROI."""
+    """Result of fusing the satellite signals for one location."""
 
     score: float
     severity: str
@@ -107,11 +119,24 @@ class EncroachmentSignal:
     fire_count: int
     components: dict
     latest_obs: date | None
+    nightlight: float = 0.0   # 0..1 new-light-in-dark-area component
 
 
 def _tanh01(z: float, scale: float) -> float:
     """Map a magnitude (>=0) to 0..1 with soft saturation."""
     return math.tanh(max(0.0, z) / scale)
+
+
+def nightlight_newlight(current: float | None, baseline: float | None) -> float:
+    """0..1 'new light in a dark area' signal — a meaningful radiance increase
+    where it was previously dark. Already-lit places (existing towns) return 0;
+    only genuinely NEW light counts as fresh human activity. Year-round (VIIRS
+    is daily), so it works when NDVI/SAR are quiet."""
+    if current is None or baseline is None:
+        return 0.0
+    if baseline >= NIGHTLIGHT_DARK:
+        return 0.0
+    return _tanh01(current - baseline, NIGHTLIGHT_SCALE)
 
 
 @lru_cache(maxsize=1)
@@ -157,14 +182,16 @@ def compute_encroachment(
     sar_vals: list[float],
     fire_count: int,
     latest_obs: date | None = None,
+    nightlight: float = 0.0,
 ) -> EncroachmentSignal | None:
-    """Pure fusion of the three signals. Returns None if data is too thin.
+    """Pure fusion of the satellite signals. Returns None if data is too thin.
 
     Args:
         ndvi_vals: Sentinel-2 NDVI means, oldest-to-newest.
         sar_vals: Sentinel-1 SAR backscatter (dB), oldest-to-newest.
         fire_count: recent FIRMS detections over the ROI.
         latest_obs: date of the most recent observation (for dedup).
+        nightlight: 0..1 VIIRS new-light-in-dark-area component (year-round).
     """
     if len(ndvi_vals) < MIN_POINTS or len(sar_vals) < MIN_POINTS:
         return None
@@ -185,13 +212,15 @@ def compute_encroachment(
     c_ndvi = _tanh01(max(0.0, -ndvi_z), NDVI_SCALE)
     c_sar = _tanh01(sar_z, SAR_SCALE)               # radar land-surface change
     c_fire = min(1.0, fire_count / FIRE_SATURATION)
+    c_nightlight = max(0.0, min(1.0, nightlight))   # new light in a dark area
 
     # Corroboration-weighted confidence. A LONE signal is ambiguous — a single
     # SAR change in the wet season is often just soil moisture, not
     # encroachment — so on its own it only earns a moderate watch (×0.6).
-    # Corroborating signals (vegetation loss, fire) raise confidence toward the
-    # full magnitude, and genuine multi-signal events reach high/critical.
-    comps = (c_ndvi, c_sar, c_fire)
+    # Corroborating signals (vegetation loss, fire, a new night-light) raise
+    # confidence toward the full magnitude; genuine multi-signal events reach
+    # high/critical. The new-light component keeps the detector alive year-round.
+    comps = (c_ndvi, c_sar, c_fire, c_nightlight)
     primary = max(comps)
     corroboration = min(1.0, sum(comps) - primary)
     score = min(1.0, primary * (0.6 + 0.4 * corroboration))
@@ -203,9 +232,11 @@ def compute_encroachment(
         fire_count=fire_count,
         components={
             "ndvi_loss": round(c_ndvi, 3), "sar_change": round(c_sar, 3),
-            "fire": round(c_fire, 3), "fusion": "max + 0.25*corroboration",
+            "fire": round(c_fire, 3), "new_nightlight": round(c_nightlight, 3),
+            "fusion": "max + 0.4*corroboration",
         },
         latest_obs=latest_obs,
+        nightlight=round(c_nightlight, 3),
     )
 
 
@@ -271,6 +302,8 @@ async def _insert_alert(
         parts.append(f"radar land-surface change {signal.sar_z:.1f}σ")
     if signal.fire_count:
         parts.append(f"{signal.fire_count} fire(s)")
+    if signal.nightlight >= 0.3:
+        parts.append("new night-light activity")
     trigger = ", ".join(parts) if parts else "low-level land anomaly"
     where = f" near {lga_name}" if lga_name else ""
     zone = f"Land-surface change risk ({scope_label}){where}: {trigger}"
@@ -376,6 +409,41 @@ async def _fetch_lga_series(
     return ndvi, sar, (max(dates) if dates else None)
 
 
+async def _nightlight_by_point(
+    points: list[tuple[float, float]],
+) -> dict[tuple[float, float], float]:
+    """Map each point to its new-light-in-dark-area component (0..1) from current
+    vs ~6-week-earlier VIIRS Black Marble radiance. Batched (tiles disk-cached)
+    and best-effort: returns {} on any failure so a VIIRS hiccup never blocks the
+    NDVI/SAR sweep. NASA data — separate from the CDSE budget."""
+    s = get_settings()
+    if not s.earthdata_token or not points:
+        return {}
+    anchor = (datetime.now(timezone.utc) - timedelta(days=VIIRS_LATENCY_DAYS)).date()
+    kw = {
+        "base_url": s.earthdata_laads_base_url,
+        "collection": s.earthdata_laads_collection,
+        "product": s.viirs_black_marble_product,
+        "token": s.earthdata_token,
+    }
+    try:
+        cur = await sample_radiance(
+            points, day=anchor, max_lookback_days=VIIRS_LATENCY_DAYS + 8, **kw)
+        base = await sample_radiance(
+            points, day=anchor - timedelta(days=VIIRS_BASELINE_LAG_DAYS),
+            max_lookback_days=12, **kw)
+    except Exception as exc:  # noqa: BLE001 — VIIRS optional, never fail the sweep
+        log.warning("encroachment nightlight sample failed: %s", exc)
+        return {}
+    out: dict[tuple[float, float], float] = {}
+    for pt in points:
+        c = cur.get(pt)
+        b = base.get(pt)
+        out[pt] = nightlight_newlight(
+            c.radiance if c else None, b.radiance if b else None)
+    return out
+
+
 async def detect_per_lga_for_tenant(
     session: AsyncSession, client: SentinelStatisticalClient,
     tenant: str, *, full: bool = False, day: int | None = None,
@@ -394,6 +462,10 @@ async def detect_per_lga_for_tenant(
         # No centroids for this tenant — fall back to the ROI signal.
         return await detect_for_tenant(session, tenant)
 
+    # Year-round VIIRS new-light component for the whole batch in one go
+    # (tile-cached, NASA — off the CDSE budget). {} if unavailable → 0 per LGA.
+    nl_by_point = await _nightlight_by_point([(g["lon"], g["lat"]) for g in batch])
+
     alerts = 0
     evaluated = 0
     for g in batch:
@@ -406,7 +478,8 @@ async def detect_per_lga_for_tenant(
                         tenant, g.get("lga"), exc)
             continue
         evaluated += 1
-        signal = compute_encroachment(ndvi, sar, 0, latest)
+        nl = nl_by_point.get((g["lon"], g["lat"]), 0.0)
+        signal = compute_encroachment(ndvi, sar, 0, latest, nightlight=nl)
         # Read succeeded → refresh THIS LGA only (delete prior, insert if it
         # still clears). A now-calm LGA simply loses its watch. Other LGAs keep
         # their current watch (rolling coverage).
