@@ -310,8 +310,8 @@ export default function ShockGuardPanel() {
               Event Map — {stateLabel}
             </span>
             <span className="ev-map-meta">
-              {events.length} persisted event{events.length === 1 ? '' : 's'} ·
-              Sources: detector_v1
+              {events.length} event{events.length === 1 ? '' : 's'} ·
+              live per-LGA Sentinel scan + labelled historical examples
             </span>
           </div>
           <ShockEventsMap tenant={activeTenant} events={events} />
@@ -330,13 +330,23 @@ export default function ShockGuardPanel() {
               No persisted events yet. Run a scan and click &ldquo;Persist&rdquo; to log it.
             </div>
           )}
-          {events.map((ev) => (
+          {events.map((ev) => {
+            // Live per-LGA scan vs kept historical examples — labelled honestly.
+            const isHistorical = ev.source === 'seed_v1';
+            return (
             <div key={ev.id} className="fp-alert-item">
               <div className="fp-alert-top">
                 <span className="fp-alert-location">
                   {ev.event_type === 'flood' ? '🌊' : '🔥'}{' '}
                   {ev.event_type.toUpperCase()} · {ev.lga ?? stateLabel}
                 </span>
+                <span style={{
+                  fontSize: '9px', fontWeight: 700, letterSpacing: '0.04em',
+                  padding: '2px 6px', borderRadius: '8px',
+                  background: isHistorical ? 'rgba(148,163,184,0.18)' : 'rgba(34,197,94,0.18)',
+                  color: isHistorical ? '#64748b' : '#16a34a',
+                  border: `1px solid ${isHistorical ? 'rgba(148,163,184,0.45)' : 'rgba(34,197,94,0.45)'}`,
+                }}>{isHistorical ? 'HISTORICAL' : 'LIVE'}</span>
                 <span className={sevClass(ev.severity)}>
                   {ev.severity.charAt(0).toUpperCase() + ev.severity.slice(1)}
                 </span>
@@ -360,7 +370,8 @@ export default function ShockGuardPanel() {
                 <span>{fmtAge(ev.created_at)}</span>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
