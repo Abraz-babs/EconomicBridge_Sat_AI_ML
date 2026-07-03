@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     resend_base_url: str = "https://api.resend.com"
 
     # Where the public Bizra Farms contact form delivers inquiries.
-    contact_recipient_email: str = "bizrafarms@gmail.com"
+    contact_recipient_email: str = "info@economicbridge.org"
 
     # Super-admin bootstrap — read ONLY by scripts/seed_super_admin.py to create
     # the platform operator account. Never referenced at request time.

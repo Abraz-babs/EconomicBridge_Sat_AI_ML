@@ -36,7 +36,7 @@ export default function RegisterPrompt({
         <div className="auth-modal-actions">
           <a
             className="auth-btn auth-btn--ghost"
-            href="mailto:hello@economicbridge.app?subject=EconomicBridge%20access%20request"
+            href="mailto:info@economicbridge.org?subject=EconomicBridge%20access%20request"
           >
             Request access
           </a>
