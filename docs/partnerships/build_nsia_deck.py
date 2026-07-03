@@ -173,7 +173,6 @@ story += [
         ["Trained AI", "ResNet-50 crop-disease model, 12 classes, 87% validation accuracy"],
         ["Agency alerts", "Automated English email digests to responsible agencies (e.g. NEMA)"],
         ["Provenance", "Every module traceable to satellite source, product and licence in-app"],
-        ["Heritage", "Team previously deployed Citadel security dashboard for Kebbi State Govt"],
     ], widths=[55 * mm, 172 * mm]),
     Spacer(1, 6),
     Paragraph("Recognition pipeline: WFP Innovation Challenge 2026 (applied) · active "
@@ -260,8 +259,9 @@ story += [
     Paragraph("<b>Abdullahi Zuru Ibrahim</b> — Founder & CEO", S_BIG),
     bullet("Built and operates the full EconomicBridge platform: satellite ingestion, "
            "ML models, cloud infrastructure and go-to-market."),
-    bullet("Previously delivered <b>Citadel</b>, the Kebbi State security dashboard "
-           "(satellite + AI conflict prediction) — deployed for state government use."),
+    bullet("Deep satellite + AI delivery experience: prior builds include a full "
+           "state-level security-intelligence dashboard (satellite feeds + Random "
+           "Forest conflict prediction), the foundation EconomicBridge grew from."),
     bullet("Operator of record: <b>Bizra Farms Integrated Nigeria Limited</b> (CAC-registered), "
            "an agribusiness with working farms — the platform is built by people who "
            "farm, for decisions that reach farmers."),

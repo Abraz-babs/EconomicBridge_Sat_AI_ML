@@ -135,8 +135,8 @@ story = [
         ["ResNet-50 (12-class)", "Crop-disease classification from leaf "
          "imagery; top-k output, confidence bands, human-review gating",
          "Fine-tuned; 87.2% validation accuracy; serving in production"],
-        ["Random Forest", "Conflict prediction 24–72 h (lineage: the Citadel "
-         "Kebbi State security platform)", "Deployed pattern, retrained per pilot"],
+        ["Random Forest", "Conflict prediction 24–72 h (lineage: our earlier "
+         "state security-intelligence build)", "Proven pattern, retrained per pilot"],
         ["Statistical detectors", "Flood (SAR z-scores) and NDVI anomaly on "
          "live Sentinel series", "Running on live Copernicus data"],
     ], [40, 78, 52]),

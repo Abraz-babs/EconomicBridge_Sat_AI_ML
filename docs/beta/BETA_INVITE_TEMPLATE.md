@@ -13,8 +13,7 @@ Dear [Title + Name],
 
 I am writing to invite [Kebbi State Ministry of Agriculture] to join the
 **beta programme** of **EconomicBridge** — a satellite-intelligence platform
-built by Bizra Farms Integrated Nigeria Limited (the team behind the Citadel
-security dashboard deployed for Kebbi State).
+built by Bizra Farms Integrated Nigeria Limited.
 
 EconomicBridge gives your team a live operational picture of the state across
 seven areas: farmland protection and conflict early-warning (24–72 hours),
