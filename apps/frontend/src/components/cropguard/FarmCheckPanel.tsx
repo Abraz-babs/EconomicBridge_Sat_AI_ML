@@ -54,7 +54,7 @@ function boxRing(lat: number, lon: number, halfM: number): [number, number][] {
 /** Parse a coordinate given in decimal degrees ("9.2616", "-2.33") OR DMS
  *  ("9°15'41.6\"N", "7 21 21.4", "2°19'W") into decimal degrees. Returns null
  *  if it can't be parsed. Lets users paste straight from Google Maps / GPS. */
-function parseCoord(raw: string): number | null {
+export function parseCoord(raw: string): number | null {
   const s = raw.trim();
   if (!s) return null;
   if (/^[+-]?\d+(\.\d+)?$/.test(s)) return Number(s); // plain decimal degrees
