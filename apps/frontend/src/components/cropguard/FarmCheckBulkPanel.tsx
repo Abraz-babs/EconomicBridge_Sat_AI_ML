@@ -26,8 +26,12 @@ const HEALTH_STYLE: Record<FarmHealth, { label: string; color: string }> = {
 };
 
 // How many farm checks to run at once. Small pool: each check is a live CDSE
-// query, and the ingestion client backs off on 429 — a few in flight is safe.
-const CONCURRENCY = 3;
+// query, and the ingestion client backs off on 429 — 2 in flight is gentle and
+// reliable. Each row also retries once on a transient network/rate blip.
+const CONCURRENCY = 2;
+const ROW_RETRIES = 1;
+const RETRY_DELAY_MS = 1500;
+const STAGGER_MS = 120;
 
 type RowStatus = 'pending' | 'running' | 'done' | 'error' | 'invalid';
 
@@ -110,46 +114,76 @@ export default function FarmCheckBulkPanel() {
     setText(await f.text());
   };
 
+  // Check one row, retrying once on a transient failure (network blip / 429).
+  const checkRow = async (row: BulkRow, attempt = 0): Promise<void> => {
+    patchRow(row.idx, { status: 'running', error: undefined });
+    try {
+      const res = await ingestionFetch<FarmCheckResult>('/cropguard/farm-check', {
+        method: 'POST',
+        body: {
+          lat: row.lat, lon: row.lon,
+          crop: row.crop.trim() || 'general', // blank → satellite grades vigour itself
+          half_m: halfM,
+        },
+      });
+      // Reverse-geocode to catch mistyped coordinates that land in the wrong
+      // state (best-effort; a geocode failure never fails the row).
+      let place: string | null = null;
+      try { place = await fetchPlaceName(res.lon, res.lat); } catch { /* best-effort */ }
+      patchRow(row.idx, {
+        status: 'done', result: res, place,
+        mismatch: pilotMismatch(place, pilot.name), error: undefined,
+      });
+    } catch (err) {
+      if (attempt < ROW_RETRIES) {
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+        return checkRow(row, attempt + 1);
+      }
+      patchRow(row.idx, {
+        status: 'error',
+        error: err instanceof Error ? err.message : 'Check failed',
+      });
+    }
+  };
+
+  // Drain a queue of rows through a small concurrency pool. try/finally
+  // guarantees the "running" flag is released even if something throws, so the
+  // Save / Download / Clear controls can never get stuck hidden.
+  const runQueue = async (queue: BulkRow[]) => {
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < queue.length) {
+        const row = queue[cursor++];
+        await checkRow(row);
+        await new Promise((r) => setTimeout(r, STAGGER_MS));
+      }
+    };
+    try {
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker));
+    } finally {
+      setRunning(false);
+    }
+  };
+
   const runBulk = async () => {
     const parsed = parseBulk(text);
     setRows(parsed);
     const queue = parsed.filter((r) => r.status === 'pending');
     if (queue.length === 0) return;
     setRunning(true);
-    let cursor = 0;
-    const worker = async () => {
-      while (cursor < queue.length) {
-        const row = queue[cursor++];
-        patchRow(row.idx, { status: 'running' });
-        try {
-          const res = await ingestionFetch<FarmCheckResult>('/cropguard/farm-check', {
-            method: 'POST',
-            body: {
-              lat: row.lat, lon: row.lon,
-              crop: row.crop.trim() || 'general', // blank → satellite grades vigour itself
-              half_m: halfM,
-            },
-          });
-          // Reverse-geocode to catch mistyped coordinates that land in the
-          // wrong state (best-effort; a geocode failure never fails the row).
-          let place: string | null = null;
-          try {
-            place = await fetchPlaceName(res.lon, res.lat);
-          } catch { /* best-effort */ }
-          patchRow(row.idx, {
-            status: 'done', result: res, place,
-            mismatch: pilotMismatch(place, pilot.name),
-          });
-        } catch (err) {
-          patchRow(row.idx, {
-            status: 'error',
-            error: err instanceof Error ? err.message : 'Check failed',
-          });
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker));
-    setRunning(false);
+    await runQueue(queue);
+  };
+
+  const retryFailed = async () => {
+    const failed = rows.filter((r) => r.status === 'error');
+    if (failed.length === 0) return;
+    setRunning(true);
+    await runQueue(failed);
+  };
+
+  const clearAll = () => {
+    setRows([]);
+    setText('');
   };
 
   const downloadCsv = () => {
@@ -268,9 +302,27 @@ export default function FarmCheckBulkPanel() {
             {savingAll ? 'Saving…' : `Save all ${stats.savable} to ${pilot.name}`}
           </button>
         )}
-        {stats.done > 0 && !running && (
+        {stats.errored > 0 && !running && (
+          <button type="button" className="fp-refresh-btn" onClick={retryFailed}>
+            ↻ Retry {stats.errored} failed
+          </button>
+        )}
+        {(stats.done + stats.errored) > 0 && !running && (
           <button type="button" className="fp-refresh-btn" onClick={downloadCsv}>
             ⬇ Download results (CSV)
+          </button>
+        )}
+        {rows.length > 0 && !running && (
+          <button
+            type="button"
+            onClick={clearAll}
+            style={{
+              background: 'transparent', border: '1px solid var(--border2)',
+              borderRadius: '4px', color: 'var(--muted)', cursor: 'pointer',
+              fontSize: '12px', padding: '5px 12px',
+            }}
+          >
+            Clear
           </button>
         )}
       </div>
@@ -341,7 +393,9 @@ export default function FarmCheckBulkPanel() {
                       {row.status === 'pending' && <span className="ev-map-meta">queued</span>}
                       {row.status === 'invalid' && <span style={{ color: '#b45309' }}>unreadable</span>}
                       {row.status === 'error' && (
-                        <span style={{ color: '#ef4444' }} title={row.error}>failed</span>
+                        <span style={{ color: '#ef4444' }} title={row.error}>
+                          failed{row.error ? ` — ${row.error.length > 44 ? `${row.error.slice(0, 44)}…` : row.error}` : ''}
+                        </span>
                       )}
                       {row.status === 'done' && (
                         <span style={{ color: row.saved ? '#16a34a' : 'var(--muted)' }}>
