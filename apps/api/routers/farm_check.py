@@ -176,6 +176,7 @@ async def list_farm_checks(
                    sample_count, area_ha, resolution_m,
                    detail, source, note, created_at
               FROM farm_checks
+             WHERE NOT is_deleted
              ORDER BY created_at DESC
              LIMIT :limit
             """
@@ -190,6 +191,43 @@ async def list_farm_checks(
         meta=ResponseMeta(
             tenant_id=None, trace_id=_trace_id(request),
             timestamp=datetime.now(timezone.utc), pagination=None,
+        ),
+    )
+
+
+# ─── DELETE /farm-checks/{record_id} (soft delete) ────────────────────────
+
+
+@router.delete(
+    "/farm-checks/{record_id}",
+    response_model=SuccessResponse[FarmCheckSaveData],
+    summary="Remove a saved Farm Check from recall (soft delete)",
+)
+async def delete_farm_check(
+    record_id: UUID,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[FarmCheckSaveData]:
+    """Hide a wrong/unwanted record. Soft delete (CLAUDE.md §4.4): the row is
+    flagged, not destroyed, so the observation remains auditable."""
+    _require_tenant(request)
+    result = await session.execute(
+        text(
+            "UPDATE farm_checks SET is_deleted = TRUE "
+            "WHERE id = :id AND NOT is_deleted"
+        ),
+        {"id": record_id},
+    )
+    if result.rowcount == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Farm Check record not found",
+        )
+    return SuccessResponse(
+        data=FarmCheckSaveData(record_id=record_id, saved=False),
+        meta=ResponseMeta(
+            tenant_id=None, trace_id=_trace_id(request),
+            timestamp=datetime.now(timezone.utc),
         ),
     )
 

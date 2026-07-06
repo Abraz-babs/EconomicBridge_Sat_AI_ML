@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { apiFetch, ingestionFetch } from '@/lib/api';
 import { useTenant } from '@/context/TenantContext';
 import { type FarmCheckResult, type FarmHealth } from '@/hooks/useFarmCheck';
-import { parseCoord } from './FarmCheckPanel';
+import { fetchPlaceName, parseCoord, pilotMismatch } from './FarmCheckPanel';
 
 // Bulk Farm Check: paste or upload a list of coordinates (e.g. a NASRDA
 // location list) and check them all at once. Drives the SAME per-farm endpoint
@@ -43,6 +43,8 @@ interface BulkRow {
   result?: FarmCheckResult;
   error?: string;
   saved?: boolean;
+  place?: string | null;     // reverse-geocoded place for the checked point
+  mismatch?: boolean;        // place is outside the selected pilot's state
 }
 
 /** Parse pasted/loaded text into rows.
@@ -128,7 +130,16 @@ export default function FarmCheckBulkPanel() {
               half_m: halfM,
             },
           });
-          patchRow(row.idx, { status: 'done', result: res });
+          // Reverse-geocode to catch mistyped coordinates that land in the
+          // wrong state (best-effort; a geocode failure never fails the row).
+          let place: string | null = null;
+          try {
+            place = await fetchPlaceName(res.lon, res.lat);
+          } catch { /* best-effort */ }
+          patchRow(row.idx, {
+            status: 'done', result: res, place,
+            mismatch: pilotMismatch(place, pilot.name),
+          });
         } catch (err) {
           patchRow(row.idx, {
             status: 'error',
@@ -139,6 +150,40 @@ export default function FarmCheckBulkPanel() {
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker));
     setRunning(false);
+  };
+
+  const downloadCsv = () => {
+    const esc = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const header = [
+      'latitude', 'longitude', 'owner', 'crop', 'lga', 'place',
+      'health', 'ndvi', 'ndvi_date', 'sar_db', 'stress_level',
+      'area_ha', 'status', 'note',
+    ];
+    const lines = [header.join(',')];
+    for (const row of rows) {
+      const r = row.result;
+      lines.push([
+        row.lat ?? row.raw, row.lon ?? '',
+        row.owner, row.crop.trim() || 'general', row.lga,
+        row.place ?? '',
+        r?.health ?? '', r?.ndvi ?? '', r?.ndvi_date ?? '',
+        r?.sar_db ?? '', r?.stress?.level ?? '',
+        r?.area_ha ?? '',
+        row.status === 'done'
+          ? (row.mismatch ? 'done (outside selected state!)' : 'done')
+          : row.status,
+        row.error ?? '',
+      ].map(esc).join(','));
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `farm_checks_${pilot.id}_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
   const saveAll = async () => {
@@ -223,7 +268,25 @@ export default function FarmCheckBulkPanel() {
             {savingAll ? 'Saving…' : `Save all ${stats.savable} to ${pilot.name}`}
           </button>
         )}
+        {stats.done > 0 && !running && (
+          <button type="button" className="fp-refresh-btn" onClick={downloadCsv}>
+            ⬇ Download results (CSV)
+          </button>
+        )}
       </div>
+
+      {!running && rows.some((r) => r.mismatch) && (
+        <div style={{
+          margin: '0 0 10px', padding: '7px 10px', borderRadius: '6px',
+          background: '#ef44441f', border: '1px solid #ef444466', fontSize: '12.5px',
+        }}>
+          <strong style={{ color: '#ef4444' }}>
+            ⚠ {rows.filter((r) => r.mismatch).length} location(s) fall outside {pilot.name}
+          </strong>
+          <span className="ev-map-meta"> — flagged ⚠ below; check those coordinates (a swapped
+          or mistyped digit lands in the wrong state) before saving.</span>
+        </div>
+      )}
 
       {rows.length > 0 && (
         <div style={{ overflowX: 'auto' }}>
@@ -250,6 +313,14 @@ export default function FarmCheckBulkPanel() {
                       {row.lat != null && row.lon != null
                         ? `${row.lat.toFixed(4)}, ${row.lon.toFixed(4)}`
                         : <span style={{ color: '#b45309' }}>{row.raw.slice(0, 24)}</span>}
+                      {row.mismatch && (
+                        <span
+                          style={{ color: '#ef4444', marginLeft: '6px', fontWeight: 700 }}
+                          title={`Reverse-geocodes to “${row.place ?? 'another state'}” — outside ${pilot.name}`}
+                        >
+                          ⚠ {row.place ? row.place.split(',').slice(-2, -1)[0]?.trim() : 'outside state'}
+                        </span>
+                      )}
                     </td>
                     <td style={{ padding: '5px 6px' }}>{row.owner || '—'}</td>
                     <td style={{ padding: '5px 6px' }}>{row.crop.trim() ? row.crop : 'general'}</td>

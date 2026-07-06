@@ -42,6 +42,19 @@ def test_save_route_is_registered_and_created_status():
     assert "201" in post["responses"]
 
 
+def test_delete_route_is_registered():
+    spec = client.get("/api/openapi.json").json()
+    assert "delete" in spec["paths"]["/api/v1/cropguard/farm-checks/{record_id}"]
+
+
+def test_delete_without_tenant_header_returns_400():
+    r = client.delete(
+        "/api/v1/cropguard/farm-checks/00000000-0000-0000-0000-000000000000",
+    )
+    assert r.status_code == 400
+    assert "X-Tenant-Id" in r.text
+
+
 def test_list_route_declares_limit_constraints():
     spec = client.get("/api/openapi.json").json()
     params = spec["paths"]["/api/v1/cropguard/farm-checks"]["get"]["parameters"]

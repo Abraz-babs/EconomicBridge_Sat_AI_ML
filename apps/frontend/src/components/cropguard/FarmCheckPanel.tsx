@@ -7,6 +7,7 @@ import EBMap from '@/components/map/EBMap';
 import { useTenant } from '@/context/TenantContext';
 import { useTenantLgas } from '@/hooks/useCropPredictions';
 import {
+  useDeleteFarmCheck,
   useFarmCheck,
   useFarmCheckRecords,
   useSaveFarmCheck,
@@ -69,9 +70,23 @@ export function parseCoord(raw: string): number | null {
   return val;
 }
 
+/** True when the reverse-geocoded place name does NOT sit in the selected
+ *  pilot's state — the tell-tale of a mistyped coordinate (e.g. lat pasted
+ *  into the longitude box lands 150 km away in the next state). */
+export function pilotMismatch(placeName: string | null, pilotName: string): boolean {
+  if (!placeName) return false;
+  const token = pilotName.replace(/\s+State$/i, '').toLowerCase();
+  const place = placeName.toLowerCase();
+  // FCT appears in Mapbox names as "Federal Capital Territory" or "Abuja".
+  if (token.includes('federal capital')) {
+    return !place.includes('federal capital') && !place.includes('abuja');
+  }
+  return !place.includes(token);
+}
+
 /** Reverse-geocode a coordinate to a place name (village / area / district)
  *  via Mapbox, so the result reads "near Kuje, FCT" instead of bare numbers. */
-async function fetchPlaceName(lon: number, lat: number): Promise<string | null> {
+export async function fetchPlaceName(lon: number, lat: number): Promise<string | null> {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   if (!token) return null;
   try {
@@ -111,11 +126,14 @@ export default function FarmCheckPanel() {
   const [focus, setFocus] = useState<{ lng: number; lat: number; zoom: number } | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [placeName, setPlaceName] = useState<string | null>(null);
+  const [showRecords, setShowRecords] = useState(true);
+  const [recordSearch, setRecordSearch] = useState('');
   const check = useFarmCheck();
   // Records save + recall to the SELECTED pilot's schema (the state checked).
   const lgasQuery = useTenantLgas(pilotId);
   const save = useSaveFarmCheck(pilotId);
   const records = useFarmCheckRecords(pilotId);
+  const removeRecord = useDeleteFarmCheck(pilotId);
   const r = check.data;
 
   const pilot = pilotTenants.find((t) => t.id === pilotId) ?? activeTenant;
@@ -323,6 +341,21 @@ export default function FarmCheckPanel() {
             </div>
           )}
 
+          {placeName && pilotMismatch(placeName, pilot.name) && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+              margin: '0 0 10px', padding: '7px 10px', borderRadius: '6px',
+              background: '#ef44441f', border: '1px solid #ef444466',
+              fontSize: '12.5px',
+            }}>
+              <strong style={{ color: '#ef4444' }}>⚠ Coordinate outside {pilot.name}</strong>
+              <span className="ev-map-meta">
+                This point reverse-geocodes to “{placeName}” — check the latitude/longitude
+                (a swapped or mistyped digit lands in the wrong state) before saving.
+              </span>
+            </div>
+          )}
+
           {passes.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
               <span className="fp-tenant-label" style={{ margin: 0 }}>Satellite pass</span>
@@ -413,46 +446,105 @@ export default function FarmCheckPanel() {
         </div>
       )}
 
-      {(records.data?.length ?? 0) > 0 && (
-        <div style={{ marginTop: '16px' }}>
-          <div className="cg-section-header">Saved field checks — {pilot.name}</div>
-          <div className="cg-subtitle" style={{ marginBottom: '8px' }}>
-            Recalled satellite Farm Checks for this state, newest first.
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {(records.data ?? []).map((rec) => {
-              const rhs = HEALTH_STYLE[rec.health] ?? HEALTH_STYLE.unknown;
-              return (
-                <div
-                  key={rec.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-                    padding: '7px 10px', borderRadius: '6px', background: 'rgba(0,0,0,0.03)',
-                    borderLeft: `3px solid ${rhs.color}`, fontSize: '12.5px',
-                  }}
-                >
-                  <span style={{
-                    background: rhs.color, color: '#10130f', fontWeight: 700,
-                    fontSize: '11px', padding: '2px 8px', borderRadius: '10px',
-                  }}>{rhs.label}</span>
-                  {rec.owner_name && <strong>{rec.owner_name}</strong>}
-                  <span>{rec.crop === 'general' ? 'General' : rec.crop}</span>
-                  <span>NDVI {rec.ndvi != null ? rec.ndvi.toFixed(2) : '—'}</span>
-                  {rec.stress && rec.stress.level !== 'none' && rec.stress.level !== 'unknown' && (
-                    <span style={{ color: STRESS_STYLE[rec.stress.level]?.color }}>
-                      {STRESS_STYLE[rec.stress.level]?.label}
-                    </span>
-                  )}
-                  <span className="ev-map-meta">
-                    📍 {[rec.lga, `${rec.lat.toFixed(4)}, ${rec.lon.toFixed(4)}`].filter(Boolean).join(' · ')}
-                    {rec.ndvi_date ? ` · ${rec.ndvi_date}` : ''} · saved {rec.created_at.slice(0, 10)}
-                  </span>
+      {(records.data?.length ?? 0) > 0 && (() => {
+        const q = recordSearch.trim().toLowerCase();
+        const all = records.data ?? [];
+        // Type "Kuje", an owner's name, a crop, or part of a coordinate to filter.
+        const visible = q
+          ? all.filter((rec) =>
+              [rec.owner_name, rec.lga, rec.crop, rec.health,
+               `${rec.lat.toFixed(4)}, ${rec.lon.toFixed(4)}`]
+                .filter(Boolean)
+                .some((v) => String(v).toLowerCase().includes(q)))
+          : all;
+        return (
+          <div style={{ marginTop: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <div className="cg-section-header" style={{ marginBottom: 0 }}>
+                Saved field checks — {pilot.name} ({all.length})
+              </div>
+              <button
+                type="button"
+                className="fp-refresh-btn"
+                onClick={() => setShowRecords((s) => !s)}
+              >
+                {showRecords ? 'Hide records' : 'Show records'}
+              </button>
+              {showRecords && (
+                <input
+                  style={{ ...inputStyle, width: '190px' }}
+                  value={recordSearch}
+                  onChange={(e) => setRecordSearch(e.target.value)}
+                  placeholder="Search: Kuje, a name, maize…"
+                  aria-label="Search saved farm checks"
+                />
+              )}
+            </div>
+            {showRecords && (
+              <>
+                <div className="cg-subtitle" style={{ margin: '6px 0 8px' }}>
+                  Recalled satellite Farm Checks for this state, newest first
+                  {q ? ` — ${visible.length} match${visible.length === 1 ? '' : 'es'}` : ''}.
                 </div>
-              );
-            })}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {visible.map((rec) => {
+                    const rhs = HEALTH_STYLE[rec.health] ?? HEALTH_STYLE.unknown;
+                    return (
+                      <div
+                        key={rec.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+                          padding: '7px 10px', borderRadius: '6px', background: 'rgba(0,0,0,0.03)',
+                          borderLeft: `3px solid ${rhs.color}`, fontSize: '12.5px',
+                        }}
+                      >
+                        <span style={{
+                          background: rhs.color, color: '#10130f', fontWeight: 700,
+                          fontSize: '11px', padding: '2px 8px', borderRadius: '10px',
+                        }}>{rhs.label}</span>
+                        {rec.owner_name && <strong>{rec.owner_name}</strong>}
+                        <span>{rec.crop === 'general' ? 'General' : rec.crop}</span>
+                        <span>NDVI {rec.ndvi != null ? rec.ndvi.toFixed(2) : '—'}</span>
+                        {rec.stress && rec.stress.level !== 'none' && rec.stress.level !== 'unknown' && (
+                          <span style={{ color: STRESS_STYLE[rec.stress.level]?.color }}>
+                            {STRESS_STYLE[rec.stress.level]?.label}
+                          </span>
+                        )}
+                        <span className="ev-map-meta">
+                          📍 {[rec.lga, `${rec.lat.toFixed(4)}, ${rec.lon.toFixed(4)}`].filter(Boolean).join(' · ')}
+                          {rec.ndvi_date ? ` · ${rec.ndvi_date}` : ''} · saved {rec.created_at.slice(0, 10)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(
+                              `Remove this record${rec.owner_name ? ` (${rec.owner_name})` : ''}?`,
+                            )) removeRecord.mutate(rec.id);
+                          }}
+                          disabled={removeRecord.isPending}
+                          title="Remove from records"
+                          aria-label="Remove this saved farm check"
+                          style={{
+                            marginLeft: 'auto', background: 'transparent',
+                            border: '1px solid var(--border2)', borderRadius: '4px',
+                            color: '#ef4444', cursor: 'pointer', fontSize: '11px',
+                            padding: '2px 8px',
+                          }}
+                        >
+                          ✕ Remove
+                        </button>
+                      </div>
+                    );
+                  })}
+                  {visible.length === 0 && (
+                    <div className="fp-alert-empty">No saved checks match “{recordSearch}”.</div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

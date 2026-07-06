@@ -153,10 +153,29 @@ export function useFarmCheckRecords(
     staleTime: 30 * 1000,
     queryFn: async ({ signal }) => {
       const env = await apiFetch<FarmCheckRecordsData>(
-        '/cropguard/farm-checks?limit=20',
+        '/cropguard/farm-checks?limit=50',
         { tenantId, signal },
       );
       return env.data.records;
+    },
+  });
+}
+
+/** DELETE /cropguard/farm-checks/{id} — soft-delete a saved record (hide from
+ *  recall; the observation stays auditable server-side). */
+export function useDeleteFarmCheck(
+  tenantId: string,
+): UseMutationResult<void, ApiException, string> {
+  const qc = useQueryClient();
+  return useMutation<void, ApiException, string>({
+    mutationFn: async (recordId) => {
+      await apiFetch(`/cropguard/farm-checks/${recordId}`, {
+        method: 'DELETE',
+        tenantId,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['farm-check-records', tenantId] });
     },
   });
 }
