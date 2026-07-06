@@ -92,6 +92,7 @@ export interface FarmCheckRecord {
   lon: number;
   crop: string;
   lga: string | null;
+  owner_name: string | null;
   ndvi: number | null;
   ndvi_date: string | null;
   health: FarmHealth;
@@ -109,8 +110,8 @@ export interface FarmCheckRecord {
   created_at: string;
 }
 
-/** POST body: the whole result plus the LGA tag (state = X-Tenant-Id header). */
-export type FarmCheckSaveBody = FarmCheckResult & { lga?: string };
+/** POST body: the whole result plus the record tags (state = X-Tenant-Id header). */
+export type FarmCheckSaveBody = FarmCheckResult & { lga?: string; owner_name?: string };
 
 interface FarmCheckSaveResponse {
   record_id: string;

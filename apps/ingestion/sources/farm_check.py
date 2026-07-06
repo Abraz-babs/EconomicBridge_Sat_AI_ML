@@ -95,14 +95,44 @@ def normalise_crop(crop: str | None) -> str:
     return _CROP_SYNONYMS.get(c, c)
 
 
+# When no crop is supplied, Farm Check runs in "general" mode: the satellite
+# still reads vigour/stress, but the verdict is phrased against a generic
+# vegetation baseline (absolute NDVI bands) instead of a crop-specific peak —
+# so a coordinate can be checked with no crop known (e.g. a location list).
+_GENERAL_KEYS = {"", "general", "unknown", "mixed", "other", "none",
+                 "n/a", "na", "unspecified", "any"}
+
+
+def is_general_crop(crop: str | None) -> bool:
+    """True when no specific crop was given — use crop-agnostic NDVI bands."""
+    return normalise_crop(crop) in _GENERAL_KEYS
+
+
 def classify_health(ndvi: float | None, crop: str) -> tuple[str, str]:
-    """Crop-aware vegetation-health verdict from an NDVI value."""
-    label = crop or "the crop"
+    """Vegetation-health verdict from an NDVI value.
+
+    Crop-aware when a crop is named (compares against that crop's healthy peak);
+    crop-agnostic when the crop is blank/'general' — then a standard absolute-NDVI
+    vigour band is used, so a coordinate can be checked with no crop known.
+    """
     if ndvi is None:
         return "unknown", ("No cloud-free optical reading in the window — "
                            "try a wider date range, or rely on the SAR signal.")
     if ndvi < 0.15:
         return "bare", "Bare soil / no active vegetation detected at this point."
+    if is_general_crop(crop):
+        if ndvi >= 0.60:
+            return "healthy", ("Dense, vigorous green vegetation — a healthy, "
+                               "actively growing canopy.")
+        if ndvi >= 0.40:
+            return "moderate", ("Moderate vegetation cover — a growing crop, "
+                                "partial canopy, or mixed ground cover.")
+        if ndvi >= 0.25:
+            return "stressed", ("Sparse or stressed vegetation — thin canopy, "
+                                "early growth, or vegetation under stress.")
+        return "poor", ("Very sparse vegetation — mostly bare ground or heavily "
+                        "stressed cover.")
+    label = crop or "the crop"
     peak = CROP_NDVI_PEAK.get(normalise_crop(crop), DEFAULT_PEAK)
     ratio = ndvi / peak
     if ratio >= 0.85:
@@ -170,10 +200,16 @@ async def check_farm(
     *,
     lat: float,
     lon: float,
-    crop: str,
+    crop: str = "general",
     half_m: float = DEFAULT_HALF_M,
 ) -> FarmCheckResult:
-    """Query Sentinel-2 NDVI + Sentinel-1 SAR for one farm and grade it."""
+    """Query Sentinel-2 NDVI + Sentinel-1 SAR for one farm and grade it.
+
+    `crop` is optional: blank or 'general' gives a crop-agnostic verdict
+    (absolute NDVI vigour bands), so a coordinate can be checked with no crop
+    known. A named crop grades against that crop's healthy peak.
+    """
+    crop = (crop or "").strip() or "general"
     bbox = bbox_around(lat, lon, half_m)
     end = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -231,5 +267,8 @@ async def check_farm(
               + (" — this pass was partly cloud-affected" if cloud_affected else "")
               + "; SAR is all-weather and typically more recent. One farm is a "
               "small pixel cluster at this resolution — NASRDA higher-resolution "
-              "imagery would sharpen it to sub-field."),
+              "imagery would sharpen it to sub-field."
+              + (" No crop specified: this is a general vegetation-vigour reading "
+                 "against a generic baseline, not a crop-specific one."
+                 if is_general_crop(crop) else "")),
     )

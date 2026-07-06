@@ -52,8 +52,10 @@ class FarmCheckSaveRequest(BaseModel):
 
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
-    crop: str = Field(min_length=1, max_length=60)
+    crop: str = Field(default="general", max_length=60)
     lga: str | None = Field(default=None, max_length=120)
+    owner_name: str | None = Field(default=None, max_length=160,
+                                   description="Farm owner / farmer full name (optional record tag).")
 
     ndvi: float | None = None
     ndvi_date: str | None = None
@@ -91,6 +93,7 @@ class FarmCheckRecordRow(BaseModel):
     lon: float
     crop: str
     lga: str | None = None
+    owner_name: str | None = None
 
     ndvi: float | None = None
     ndvi_date: str | None = None

@@ -106,6 +106,7 @@ export default function FarmCheckPanel() {
   const [lon, setLon] = useState(() => activeTenant.centroid[0].toFixed(4));
   const [crop, setCrop] = useState('maize');
   const [lga, setLga] = useState('');
+  const [owner, setOwner] = useState('');
   const [halfM, setHalfM] = useState(60); // default Tight, for single-plot accuracy
   const [focus, setFocus] = useState<{ lng: number; lat: number; zoom: number } | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -136,6 +137,7 @@ export default function FarmCheckPanel() {
     check.reset();
     save.reset();
     setLga('');
+    setOwner('');
     setFocus(null);
     setPlaceName(null);
     setSelectedDate(null);
@@ -189,10 +191,11 @@ export default function FarmCheckPanel() {
   };
 
   const runCheck = () => {
-    if (!coordsValid || !crop.trim()) return;
+    if (!coordsValid) return;
     save.reset();
     check.mutate(
-      { lat: latN, lon: lonN, crop: crop.trim(), half_m: halfM },
+      // Blank crop → 'general': the satellite grades vigour on its own.
+      { lat: latN, lon: lonN, crop: crop.trim() || 'general', half_m: halfM },
       {
         onSuccess: (data) => {
           // Fly to the exact analysed coordinate; default the pass selector to
@@ -208,7 +211,7 @@ export default function FarmCheckPanel() {
 
   const saveRecord = () => {
     if (!r) return;
-    save.mutate({ ...r, lga: lga || undefined });
+    save.mutate({ ...r, lga: lga || undefined, owner_name: owner.trim() || undefined });
   };
 
   // The pass currently shown (selected from the history, default = latest).
@@ -248,8 +251,12 @@ export default function FarmCheckPanel() {
           <input style={inputStyle} value={lon} onChange={(e) => setLon(e.target.value)} inputMode="decimal" />
         </label>
         <label style={{ fontSize: '12px' }}>
-          <div className="fp-tenant-label">Crop</div>
-          <input style={inputStyle} value={crop} onChange={(e) => setCrop(e.target.value)} placeholder="e.g. maize" />
+          <div className="fp-tenant-label">Crop (optional)</div>
+          <input style={inputStyle} value={crop} onChange={(e) => setCrop(e.target.value)} placeholder="blank = general" />
+        </label>
+        <label style={{ fontSize: '12px' }}>
+          <div className="fp-tenant-label">Farm owner (for the record)</div>
+          <input style={inputStyle} value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="full name" />
         </label>
         <label style={{ fontSize: '12px' }}>
           <div className="fp-tenant-label">LGA (for the record)</div>
@@ -272,7 +279,7 @@ export default function FarmCheckPanel() {
           type="button"
           className="fp-refresh-btn"
           onClick={runCheck}
-          disabled={!coordsValid || !crop.trim() || check.isPending}
+          disabled={!coordsValid || check.isPending}
         >
           {check.isPending ? 'Checking…' : 'Check farm'}
         </button>
@@ -360,7 +367,7 @@ export default function FarmCheckPanel() {
               NDVI {dNdvi != null ? dNdvi.toFixed(2) : '—'}
             </strong>
             <span className="ev-map-meta">
-              {r.crop} · {dDate ?? 'no optical pass'}{dCloud ? ' · partly cloud-affected' : ''}
+              {r.crop === 'general' ? 'General (no crop)' : r.crop} · {dDate ?? 'no optical pass'}{dCloud ? ' · partly cloud-affected' : ''}
             </span>
           </div>
           <div style={{ margin: '8px 0', fontSize: '13.5px' }}>{dVerdict}</div>
@@ -390,7 +397,7 @@ export default function FarmCheckPanel() {
             {save.isSuccess ? (
               <span className="ev-map-meta" style={{ color: '#16a34a' }}>
                 Saved to {pilot.name}
-                {lga ? ` · ${lga}` : ''} · {r.crop} — recall it below.
+                {owner.trim() ? ` · ${owner.trim()}` : ''}{lga ? ` · ${lga}` : ''} · {r.crop} — recall it below.
               </span>
             ) : (
               <span className="ev-map-meta">
@@ -428,7 +435,8 @@ export default function FarmCheckPanel() {
                     background: rhs.color, color: '#10130f', fontWeight: 700,
                     fontSize: '11px', padding: '2px 8px', borderRadius: '10px',
                   }}>{rhs.label}</span>
-                  <strong>{rec.crop}</strong>
+                  {rec.owner_name && <strong>{rec.owner_name}</strong>}
+                  <span>{rec.crop === 'general' ? 'General' : rec.crop}</span>
                   <span>NDVI {rec.ndvi != null ? rec.ndvi.toFixed(2) : '—'}</span>
                   {rec.stress && rec.stress.level !== 'none' && rec.stress.level !== 'unknown' && (
                     <span style={{ color: STRESS_STYLE[rec.stress.level]?.color }}>

@@ -112,3 +112,31 @@ def test_bbox_around_is_centred_and_ordered():
     # ~240 m box → well under 0.01° in each dimension
     assert (e - w) < 0.01 and (n - s) < 0.01
     assert (e - w) > 0 and (n - s) > 0
+
+
+from sources.farm_check import is_general_crop  # noqa: E402
+
+
+def test_is_general_crop_detects_blank_and_general():
+    for c in ("", "  ", "general", "General", "mixed", "unknown", None):
+        assert is_general_crop(c)
+    # A named crop and the per-LGA sweep tag stay crop-aware (NOT general):
+    assert not is_general_crop("maize")
+    assert not is_general_crop("cropland")
+
+
+def test_classify_general_uses_absolute_ndvi_bands():
+    # No crop given → crop-agnostic absolute NDVI bands.
+    assert classify_health(0.65, "general")[0] == "healthy"
+    assert classify_health(0.50, "general")[0] == "moderate"
+    assert classify_health(0.30, "general")[0] == "stressed"
+    assert classify_health(0.18, "general")[0] == "poor"
+    assert classify_health(0.05, "general")[0] == "bare"
+    assert classify_health(0.65, "")[0] == "healthy"  # blank == general
+
+
+def test_general_does_not_change_named_crop_verdicts():
+    # Regression: named crops graded exactly as before; "cropland" (LGA sweep)
+    # keeps the default-peak path, not the general bands.
+    assert classify_health(0.70, "maize")[0] == "healthy"
+    assert classify_health(0.66, "cropland")[0] in ("healthy", "moderate")

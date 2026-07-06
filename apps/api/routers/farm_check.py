@@ -95,7 +95,7 @@ async def save_farm_check(
             """
             INSERT INTO farm_checks (
                 id, tenant_id,
-                location, lat, lon, crop, lga,
+                location, lat, lon, crop, lga, owner_name,
                 ndvi, ndvi_date, health, verdict,
                 sar_db, sar_date,
                 stress_level, stress_z, stress_message,
@@ -103,7 +103,7 @@ async def save_farm_check(
                 detail, source, note, trace_id, created_at
             ) VALUES (
                 :id, :tenant_id,
-                ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :lat, :lon, :crop, :lga,
+                ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :lat, :lon, :crop, :lga, :owner_name,
                 :ndvi, :ndvi_date, :health, :verdict,
                 :sar_db, :sar_date,
                 :stress_level, :stress_z, :stress_message,
@@ -119,6 +119,7 @@ async def save_farm_check(
             "lon": body.lon,
             "crop": body.crop.strip(),
             "lga": (body.lga or None),
+            "owner_name": (body.owner_name.strip() if body.owner_name and body.owner_name.strip() else None),
             "ndvi": body.ndvi,
             "ndvi_date": _as_date(body.ndvi_date),
             "health": body.health,
@@ -168,7 +169,7 @@ async def list_farm_checks(
     result = await session.execute(
         text(
             """
-            SELECT id, tenant_id, lat, lon, crop, lga,
+            SELECT id, tenant_id, lat, lon, crop, lga, owner_name,
                    ndvi, ndvi_date, health, verdict,
                    sar_db, sar_date,
                    stress_level, stress_z, stress_message,
@@ -213,6 +214,7 @@ def _row_to_record(row: dict) -> FarmCheckRecordRow:
         lon=float(row["lon"]),
         crop=row["crop"],
         lga=row.get("lga"),
+        owner_name=row.get("owner_name"),
         ndvi=(float(row["ndvi"]) if row.get("ndvi") is not None else None),
         ndvi_date=_iso_date(row.get("ndvi_date")),
         health=row["health"],

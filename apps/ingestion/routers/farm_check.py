@@ -33,7 +33,9 @@ def _get_client() -> SentinelStatisticalClient:
 class FarmCheckRequest(BaseModel):
     lat: float = Field(ge=-90, le=90, description="Farm latitude (WGS84).")
     lon: float = Field(ge=-180, le=180, description="Farm longitude (WGS84).")
-    crop: str = Field(min_length=1, max_length=40, description="Crop being checked, e.g. 'maize'.")
+    crop: str = Field(default="general", max_length=40,
+                      description="Crop being checked, e.g. 'maize'. Leave blank or 'general' "
+                                  "for a crop-agnostic reading (the satellite grades vigour itself).")
     half_m: int = Field(
         default=120, ge=30, le=1000,
         description="Half the box side in metres around the point (30–1000).",
