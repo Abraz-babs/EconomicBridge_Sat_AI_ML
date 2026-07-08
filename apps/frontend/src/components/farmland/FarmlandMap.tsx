@@ -40,6 +40,45 @@ export interface FarmlandAlertPoint {
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 const MAPBOX_STYLE = 'mapbox://styles/mapbox/dark-v11';
 
+// ── Esri World Imagery WAYBACK — dated historical satellite imagery ─────────
+// Esri archives every World Imagery update back to 2014 as a keyless WMTS
+// service. Unchanged tiles 301-redirect (same host, one hop) to the release
+// that last changed them; the browser follows this transparently. One release
+// per year gives a before/after slider for ENCROACHMENT EVIDENCE — set 2014,
+// slide forward, and watch settlement/clearing appear on farmland. Release
+// numbers verified against waybackconfig.json with live tile fetches over
+// Nigeria (all 13 resolve to image/jpeg).
+const WAYBACK_RELEASES = [
+  { release: 10,    label: 'Feb 2014' },
+  { release: 1431,  label: 'Sep 2015' },
+  { release: 388,   label: 'Apr 2016' },
+  { release: 577,   label: 'Jan 2017' },
+  { release: 239,   label: 'Nov 2018' },
+  { release: 645,   label: 'Jun 2019' },
+  { release: 119,   label: 'Oct 2020' },
+  { release: 1049,  label: 'Jan 2021' },
+  { release: 4905,  label: 'Jun 2022' },
+  { release: 1034,  label: 'Oct 2023' },
+  { release: 12428, label: 'Jun 2024' },
+  { release: 6543,  label: 'Mar 2025' },
+  { release: 10842, label: 'May 2026' },
+] as const;
+
+const waybackTileUrl = (release: number) =>
+  `https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/${release}/{z}/{y}/{x}`;
+
+/** Minimal mapbox-gl surface used by the wayback raster-layer effect (the map
+ *  ref is stored as `unknown` to keep mapbox-gl out of the module graph). */
+interface WaybackMapApi {
+  getLayer: (id: string) => unknown;
+  getSource: (id: string) => unknown;
+  addSource: (id: string, source: unknown) => void;
+  removeSource: (id: string) => void;
+  addLayer: (layer: unknown, beforeId?: string) => void;
+  removeLayer: (id: string) => void;
+  getStyle: () => { layers?: { id: string; type: string }[] } | undefined;
+}
+
 const SEVERITY_RGB: Record<AlertSeverity, [number, number, number]> = {
   critical: [255, 69, 0],
   high:     [255, 140, 0],
@@ -109,6 +148,9 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
   const [mapError, setMapError] = useState<string | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [pulse, setPulse] = useState(0);
+  // Index into WAYBACK_RELEASES when historical imagery is on; null = off
+  // (default — the live dark basemap, zero behaviour change).
+  const [waybackIdx, setWaybackIdx] = useState<number | null>(null);
 
   // Stable data slices — recomputed only when `alerts` changes, NOT on every
   // pulse tick. The heatmaps key their GPU aggregation off the `data`
@@ -238,6 +280,32 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setHover(null);
   }, [tenant.id, tenant.centroid, mapStatus]);
+
+  // Sync the dated Esri Wayback imagery in/out as a raster layer on the
+  // MAPBOX style itself — not the deck overlay — so the pulse-perf pattern
+  // (memoized data refs, 120ms heartbeat) is untouched and the alert pins /
+  // heatmaps stay on deck's separate canvas above the imagery. Inserted
+  // beneath the style's first symbol layer so place labels remain readable
+  // on top of the historical imagery.
+  useEffect(() => {
+    if (mapStatus !== 'ready') return;
+    const map = mapRef.current as WaybackMapApi | null;
+    if (!map) return;
+    if (map.getLayer('wayback-imagery')) map.removeLayer('wayback-imagery');
+    if (map.getSource('wayback-imagery')) map.removeSource('wayback-imagery');
+    if (waybackIdx === null) return;
+    map.addSource('wayback-imagery', {
+      type: 'raster',
+      tiles: [waybackTileUrl(WAYBACK_RELEASES[waybackIdx].release)],
+      tileSize: 256,
+      attribution: 'Imagery © Esri Wayback, Maxar, Earthstar Geographics',
+    });
+    const firstSymbol = map.getStyle()?.layers?.find((l) => l.type === 'symbol')?.id;
+    map.addLayer(
+      { id: 'wayback-imagery', type: 'raster', source: 'wayback-imagery' },
+      firstSymbol,
+    );
+  }, [waybackIdx, mapStatus]);
 
   // Layer composition — recomputed on layer/data/pulse change.
   useEffect(() => {
@@ -444,6 +512,51 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
       {mapStatus === 'no-token' && <FarmlandMapTokenPlaceholder />}
       {mapStatus === 'loading' && <FarmlandMapLoading />}
       {mapStatus === 'error' && <FarmlandMapError message={mapError} />}
+
+      {/* Esri Wayback historical-imagery control (top-left; overlay is
+          top-right, legend bottom-left — no collision). Off by default. */}
+      {mapStatus === 'ready' && (
+        <div
+          style={{
+            position: 'absolute', top: 10, left: 10, zIndex: 2,
+            background: 'rgba(20, 24, 20, 0.88)', borderRadius: 8,
+            padding: '8px 10px', color: '#f0f4f0', fontSize: 11,
+            width: waybackIdx === null ? 'auto' : 216,
+          }}
+        >
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 600 }}>
+            <input
+              type="checkbox"
+              checked={waybackIdx !== null}
+              onChange={(e) => setWaybackIdx(e.target.checked ? 0 : null)}
+            />
+            Historical imagery (Esri Wayback)
+          </label>
+          {waybackIdx !== null && (
+            <>
+              <input
+                type="range"
+                min={0}
+                max={WAYBACK_RELEASES.length - 1}
+                step={1}
+                value={waybackIdx}
+                onChange={(e) => setWaybackIdx(Number(e.target.value))}
+                style={{ width: '100%', marginTop: 6 }}
+                aria-label="Historical imagery date"
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+                <span style={{ color: '#9aa89a' }}>2014</span>
+                <strong>{WAYBACK_RELEASES[waybackIdx].label}</strong>
+                <span style={{ color: '#9aa89a' }}>2026</span>
+              </div>
+              <div style={{ marginTop: 5, color: '#b8c4b8', fontSize: 9.5, lineHeight: 1.35 }}>
+                Slide to compare land change over time.<br />
+                Imagery © Esri Wayback, Maxar, Earthstar Geographics
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="fp-map-legend">
         <div className="fp-legend-item">
