@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { StyleSpecification } from 'mapbox-gl';
 
 import type { Tenant } from '@/data/tenants';
 
@@ -52,9 +53,11 @@ export interface EBMapProps {
    * CropGuard Farm Check "drop a pin" flow; other modules omit it (no change).
    */
   onMapClick?: (lng: number, lat: number) => void;
-  /** Override the Mapbox style (default: minimal dark). Farm Check uses a
-   *  labelled satellite style so state/place names and real land are visible. */
-  mapStyle?: string;
+  /** Override the map style (default: minimal dark). Accepts a Mapbox style URL
+   *  (string) OR a full style object — the latter lets a module drop in a raster
+   *  basemap (e.g. the Esri ArcGIS World Imagery service) without a Mapbox style.
+   *  Farm Check uses a labelled satellite style so place names and land show. */
+  mapStyle?: string | StyleSpecification;
   /** When set/changed, fly the map to this point + zoom (e.g. after a Farm
    *  Check, to centre the pin + analysed-area box on the exact coordinate). */
   focus?: { lng: number; lat: number; zoom?: number } | null;
@@ -122,7 +125,10 @@ export default function EBMap(props: EBMapProps) {
         mapboxgl.accessToken = MAPBOX_TOKEN;
         const map = new mapboxgl.Map({
           container: containerRef.current,
-          style: mapStyle,
+          // mapbox-gl's MapOptions narrows `style` to string, but the constructor
+          // accepts a full style object at runtime (used for the Esri raster
+          // basemap). Cast the union down to satisfy the type only.
+          style: mapStyle as string,
           center: tenant.centroid,
           zoom,
           attributionControl: false,

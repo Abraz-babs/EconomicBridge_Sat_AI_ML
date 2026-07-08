@@ -71,6 +71,11 @@ const nextConfig: NextConfig = {
                 "https://scihub.copernicus.eu",
                 "https://firms.modaps.eosdis.nasa.gov",
                 "https://api.n2yo.com",
+                // Esri ArcGIS basemaps: World Imagery raster tiles (keyless,
+                // *.arcgisonline.com) + the ArcGIS Location Platform basemap /
+                // geocoding hosts (*.arcgis.com) for the keyed upgrade.
+                "https://*.arcgisonline.com",
+                "https://*.arcgis.com",
               ].join(" "),
               "frame-ancestors 'self'",
               "base-uri 'self'",

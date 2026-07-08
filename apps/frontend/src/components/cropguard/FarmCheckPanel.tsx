@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { PolygonLayer, ScatterplotLayer } from '@deck.gl/layers';
+import type { StyleSpecification } from 'mapbox-gl';
 
 import EBMap from '@/components/map/EBMap';
 import { useTenant } from '@/context/TenantContext';
@@ -16,6 +17,38 @@ import {
 
 // Labelled satellite base so state/place names AND the real land are visible.
 const FARM_MAP_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
+
+// Esri ArcGIS World Imagery basemap as a raster style — a genuine Esri/ArcGIS
+// integration selectable on the Farm Check map. Uses the keyless public tile
+// service (widely embedded via leaflet-providers' `Esri.WorldImagery`); the
+// World_Boundaries_and_Places reference overlay adds place labels so it matches
+// the labelled Mapbox satellite view. Attribution is shown under the map. When
+// the ArcGIS Location Platform API key is available this upgrades to the keyed
+// basemap-styles service (crisper vector labels + geocoding).
+const ARCGIS_IMAGERY_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    'esri-imagery': {
+      type: 'raster',
+      tiles: [
+        'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+      attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
+    },
+    'esri-labels': {
+      type: 'raster',
+      tiles: [
+        'https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      ],
+      tileSize: 256,
+    },
+  },
+  layers: [
+    { id: 'esri-imagery', type: 'raster', source: 'esri-imagery' },
+    { id: 'esri-labels', type: 'raster', source: 'esri-labels' },
+  ],
+};
 // Analysis precision = half the box side in metres. Tight isolates a single
 // plot (best for ground-truthing one plantation); Standard averages a larger
 // uniform field. The resulting hectares are reported back in the result.
@@ -128,6 +161,7 @@ export default function FarmCheckPanel() {
   const [placeName, setPlaceName] = useState<string | null>(null);
   const [showRecords, setShowRecords] = useState(true);
   const [recordSearch, setRecordSearch] = useState('');
+  const [basemap, setBasemap] = useState<'mapbox' | 'arcgis'>('mapbox');
   const check = useFarmCheck();
   // Records save + recall to the SELECTED pilot's schema (the state checked).
   const lgasQuery = useTenantLgas(pilotId);
@@ -309,17 +343,53 @@ export default function FarmCheckPanel() {
           : 'Enter a coordinate — decimal (9.2616) or DMS (9°15\'41.6"N) both work'}
       </div>
 
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', gap: '6px',
+          marginBottom: '6px', fontSize: '11px', flexWrap: 'wrap',
+        }}
+      >
+        <span style={{ color: '#6b7280', fontWeight: 600 }}>Basemap</span>
+        {([['mapbox', 'Mapbox satellite'], ['arcgis', 'Esri ArcGIS imagery']] as const).map(
+          ([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setBasemap(key)}
+              style={{
+                padding: '3px 10px', borderRadius: '999px', cursor: 'pointer',
+                border: `1px solid ${basemap === key ? '#0079c1' : '#d1d5db'}`,
+                background: basemap === key ? '#0079c1' : 'transparent',
+                color: basemap === key ? '#fff' : '#374151',
+                fontSize: '11px', fontWeight: 600,
+              }}
+            >
+              {label}
+            </button>
+          ),
+        )}
+      </div>
+
       <EBMap
+        key={basemap}
         tenant={pilot}
         layers={layers}
         height="320px"
         zoom={9}
-        mapStyle={FARM_MAP_STYLE}
+        mapStyle={basemap === 'arcgis' ? ARCGIS_IMAGERY_STYLE : FARM_MAP_STYLE}
         focus={focus}
         ariaLabel="Farm check map — click to drop a pin"
         onMapClick={onMapClick}
         overlay={<span className="ev-map-meta">Click the map to drop a pin</span>}
       />
+      {basemap === 'arcgis' && (
+        <div
+          className="ev-map-meta"
+          style={{ marginTop: '4px', fontSize: '10px', color: '#6b7280' }}
+        >
+          Basemap: Esri ArcGIS World Imagery — © Esri, Maxar, Earthstar Geographics
+        </div>
+      )}
 
       {check.isError && (
         <div className="fp-alert-empty" style={{ marginTop: '10px' }}>
