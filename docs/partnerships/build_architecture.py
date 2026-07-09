@@ -134,8 +134,9 @@ GAP = 20
 
 SRC = ["Sentinel-1\nSAR (10 m)", "Sentinel-2\nNDVI (10 m)", "NASA FIRMS\n(thermal/fire)",
        "NASA VIIRS\n(night-lights)", "WorldPop\n(population)"]
-ARC = ["ArcGIS Online\nhosted feature layers", "ArcGIS Location Platform\nbasemaps · geocoding",
-       "ArcGIS Image\nsub-field NDVI zonal maps", "ArcGIS Marketplace\ngov / NGO distribution"]
+ARC = ["World Imagery\nbasemap — LIVE", "Wayback archive\n2014–2026 — LIVE",
+       "10 m Land Cover\n2017–2025 — LIVE", "Location Platform\ngeocoding — roadmap",
+       "Feature layers +\nMarketplace — roadmap"]
 
 specs = [
     (64, "OPEN SATELLITE DATA SOURCES  (free, commercial-licensed)", "chips", SRC, GREEN, TINT),
@@ -151,7 +152,7 @@ specs = [
     (46, "DELIVERY", "line",
      "Per-LGA interactive dashboard · Farm Check (single + bulk) + CSV export · automated "
      "agency email alerts · leaf-photo AI diagnosis", GREEN, TINT),
-    (66, "ARCGIS INTEGRATION   (partnership roadmap — where Esri plugs in)", "chips", ARC, ESRI, ESRI_TINT),
+    (66, "ARCGIS INTEGRATION   (three integrations live in production + roadmap)", "chips", ARC, ESRI, ESRI_TINT),
 ]
 
 for i, (h, title, kind, content, accent, tint) in enumerate(specs):
@@ -174,7 +175,7 @@ c.setFillColor(MUTED)
 c.setFont(BODY, 8)
 c.drawCentredString((X0 + X1) / 2, band_top - 44,
                     "Data flows top-to-bottom: open satellite feeds → AWS ingestion/ML → per-LGA "
-                    "intelligence → delivery, with ArcGIS as the partnership delivery + distribution layer.")
+                    "intelligence → delivery, with Esri ArcGIS integrated in production today.")
 c.setFont(BODY, 8)
 c.drawCentredString((X0 + X1) / 2, band_top - 58,
                     "Abdullahi Zuru Ibrahim · Founder & CEO · https://economicbridge.org · bizra@economicbridge.org")
