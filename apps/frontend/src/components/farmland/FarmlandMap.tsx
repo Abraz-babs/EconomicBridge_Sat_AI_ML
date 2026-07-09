@@ -67,6 +67,32 @@ const WAYBACK_RELEASES = [
 const waybackTileUrl = (release: number) =>
   `https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/${release}/{z}/{y}/{x}`;
 
+// ── Esri Sentinel-2 10m LAND COVER (annual, 2017–2025) ──────────────────────
+// Living Atlas time-enabled ImageServer (keyless; verified live + rendering
+// over Nigeria). Not tile-cached, so each 256px map tile is fetched via
+// exportImage with mapbox-gl's {bbox-epsg-3857} template — crisp at every
+// zoom. A mid-year time instant selects that year's annual classification.
+// Turns "the land looks drier" into a measurable per-pixel class (crops /
+// built / rangeland / bare), the year-over-year conversion context our NDVI
+// trend alone can't give.
+const LULC_YEARS = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025] as const;
+
+const lulcTileUrl = (year: number) =>
+  'https://ic.imagery1.arcgis.com/arcgis/rest/services/Sentinel2_10m_LandCover/ImageServer/exportImage' +
+  '?f=image&bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256' +
+  `&format=png32&transparent=true&time=${Date.UTC(year, 6, 1)}`;
+
+// Class colours sampled from the service's own cartographic renderer, so the
+// legend matches the pixels exactly.
+const LULC_LEGEND = [
+  { color: '#FFDB5C', label: 'Crops' },
+  { color: '#ED022A', label: 'Built' },
+  { color: '#EFCFA8', label: 'Rangeland' },
+  { color: '#358221', label: 'Trees' },
+  { color: '#1A5BAB', label: 'Water' },
+  { color: '#87D19E', label: 'Flooded veg' },
+] as const;
+
 /** Minimal mapbox-gl surface used by the wayback raster-layer effect (the map
  *  ref is stored as `unknown` to keep mapbox-gl out of the module graph). */
 interface WaybackMapApi {
@@ -151,6 +177,9 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
   // Index into WAYBACK_RELEASES when historical imagery is on; null = off
   // (default — the live dark basemap, zero behaviour change).
   const [waybackIdx, setWaybackIdx] = useState<number | null>(null);
+  // Selected Esri 10m land-cover year; null = off. Independent of wayback —
+  // both on = classification drawn semi-transparent over the dated imagery.
+  const [lulcYear, setLulcYear] = useState<number | null>(null);
 
   // Stable data slices — recomputed only when `alerts` changes, NOT on every
   // pulse tick. The heatmaps key their GPU aggregation off the `data`
@@ -306,6 +335,34 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
       firstSymbol,
     );
   }, [waybackIdx, mapStatus]);
+
+  // Sync the Esri 10m land-cover classification the same way — a raster layer
+  // beneath the labels, semi-transparent so terrain/imagery context shows
+  // through. Fetched per-tile via exportImage + {bbox-epsg-3857}.
+  useEffect(() => {
+    if (mapStatus !== 'ready') return;
+    const map = mapRef.current as WaybackMapApi | null;
+    if (!map) return;
+    if (map.getLayer('lulc-overlay')) map.removeLayer('lulc-overlay');
+    if (map.getSource('lulc-overlay')) map.removeSource('lulc-overlay');
+    if (lulcYear === null) return;
+    map.addSource('lulc-overlay', {
+      type: 'raster',
+      tiles: [lulcTileUrl(lulcYear)],
+      tileSize: 256,
+      attribution: 'Land cover © Esri, Impact Observatory, Microsoft (Sentinel-2 10m)',
+    });
+    const firstSymbol = map.getStyle()?.layers?.find((l) => l.type === 'symbol')?.id;
+    map.addLayer(
+      {
+        id: 'lulc-overlay',
+        type: 'raster',
+        source: 'lulc-overlay',
+        paint: { 'raster-opacity': 0.72 },
+      },
+      firstSymbol,
+    );
+  }, [lulcYear, mapStatus]);
 
   // Layer composition — recomputed on layer/data/pulse change.
   useEffect(() => {
@@ -521,7 +578,7 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
             position: 'absolute', top: 10, left: 10, zIndex: 2,
             background: 'rgba(20, 24, 20, 0.88)', borderRadius: 8,
             padding: '8px 10px', color: '#f0f4f0', fontSize: 11,
-            width: waybackIdx === null ? 'auto' : 216,
+            width: waybackIdx === null && lulcYear === null ? 'auto' : 216,
           }}
         >
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: 600 }}>
@@ -552,6 +609,62 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
               <div style={{ marginTop: 5, color: '#b8c4b8', fontSize: 9.5, lineHeight: 1.35 }}>
                 Slide to compare land change over time.<br />
                 Imagery © Esri Wayback, Maxar, Earthstar Geographics
+              </div>
+            </>
+          )}
+
+          <label
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+              fontWeight: 600, marginTop: 7, paddingTop: 7,
+              borderTop: '1px solid rgba(255,255,255,0.15)',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={lulcYear !== null}
+              onChange={(e) => setLulcYear(e.target.checked ? LULC_YEARS[LULC_YEARS.length - 1] : null)}
+            />
+            Land cover (Esri 10m)
+          </label>
+          {lulcYear !== null && (
+            <>
+              <input
+                type="range"
+                min={0}
+                max={LULC_YEARS.length - 1}
+                step={1}
+                value={LULC_YEARS.indexOf(lulcYear as (typeof LULC_YEARS)[number])}
+                onChange={(e) => setLulcYear(LULC_YEARS[Number(e.target.value)])}
+                style={{ width: '100%', marginTop: 6 }}
+                aria-label="Land cover year"
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+                <span style={{ color: '#9aa89a' }}>2017</span>
+                <strong>{lulcYear}</strong>
+                <span style={{ color: '#9aa89a' }}>2025</span>
+              </div>
+              <div
+                style={{
+                  display: 'flex', flexWrap: 'wrap', gap: '3px 8px',
+                  marginTop: 5, fontSize: 9.5,
+                }}
+              >
+                {LULC_LEGEND.map((c) => (
+                  <span key={c.label} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                    <span
+                      style={{
+                        width: 8, height: 8, borderRadius: 2,
+                        background: c.color, display: 'inline-block',
+                      }}
+                    />
+                    {c.label}
+                  </span>
+                ))}
+              </div>
+              <div style={{ marginTop: 4, color: '#b8c4b8', fontSize: 9.5, lineHeight: 1.35 }}>
+                Annual classification — compare years to see cropland ↔ built
+                conversion. © Esri, Impact Observatory, Microsoft
               </div>
             </>
           )}
