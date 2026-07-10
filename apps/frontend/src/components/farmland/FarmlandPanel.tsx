@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
 import { formatLatLon } from '@/lib/display';
@@ -11,6 +11,7 @@ import {
   type AlertResponse,
   type AlertSeverity,
 } from '@/hooks/useFarmlandAlerts';
+import AlertSpotlight from './AlertSpotlight';
 import FarmlandMap, { type FarmlandAlertPoint } from './FarmlandMap';
 
 type MapLayerKey = 'heat' | 'ndvi' | 'sar' | 'boundary';
@@ -293,7 +294,18 @@ export default function FarmlandPanel() {
   // Default 'all' so the panel matches Slice 10's behaviour on first paint;
   // user opts into 'live' to see only pipeline-produced rows.
   const [provenance, setProvenance] = useState<Provenance>('all');
+  // Alert Spotlight selection — set by clicking a map pin or a card's
+  // Spotlight button; null = idle state briefing under the map.
+  const [spotlightId, setSpotlightId] = useState<string | null>(null);
   const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
+
+  // A spotlighted alert belongs to one tenant's dataset — clear the
+  // selection when the viewer switches tenants (same pattern as the map's
+  // hover reset).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSpotlightId(null);
+  }, [activeTenantId]);
 
   const query = useFarmlandAlerts({ tenantId: activeTenantId, perPage: 50 });
   const fireStatus = useFireStatus(activeTenantId);
@@ -376,6 +388,13 @@ export default function FarmlandPanel() {
   const timelineEvents = useMemo(
     () => deriveTimeline(alerts, stateLabel),
     [alerts, stateLabel],
+  );
+
+  // Resolve the spotlighted alert from the *unfiltered* list so a selection
+  // survives provenance-chip changes.
+  const spotlightAlert = useMemo(
+    () => allAlerts.find((a) => a.id === spotlightId) ?? null,
+    [allAlerts, spotlightId],
   );
 
   return (
@@ -559,6 +578,16 @@ export default function FarmlandPanel() {
             alerts={mapPoints}
             activeLayer={activeMapLayer}
             tenant={activeTenant}
+            onAlertClick={(p) => setSpotlightId(p.id)}
+          />
+          {/* Alert Spotlight (Phase 1) — fills the column under the map.
+              Idle = state briefing; click a halo / card Spotlight → deep-dive. */}
+          <AlertSpotlight
+            alerts={allAlerts}
+            selected={spotlightAlert}
+            stateLabel={stateLabel}
+            onSelect={setSpotlightId}
+            onClose={() => setSpotlightId(null)}
           />
         </div>
 
@@ -630,6 +659,19 @@ export default function FarmlandPanel() {
                   <div className="fp-alert-coords">
                     📍 {formatLatLon(a.location.lat, a.location.lon)}
                     {a.lga ? ` · ${a.lga} LGA` : ''}
+                    {' · '}
+                    <button
+                      type="button"
+                      onClick={() => setSpotlightId(spotlightId === a.id ? null : a.id)}
+                      style={{
+                        background: 'transparent', border: 'none', padding: 0,
+                        cursor: 'pointer', font: 'inherit', color: '#2f855a',
+                        textDecoration: 'underline',
+                      }}
+                      aria-pressed={spotlightId === a.id}
+                    >
+                      {spotlightId === a.id ? 'Spotlighted ⊕' : 'Spotlight'}
+                    </button>
                   </div>
                 )}
                 {!showResolved && (

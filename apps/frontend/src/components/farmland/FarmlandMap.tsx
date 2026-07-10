@@ -156,6 +156,8 @@ interface Props {
   alerts: FarmlandAlertPoint[];
   activeLayer: 'heat' | 'ndvi' | 'sar' | 'boundary';
   tenant: Tenant;
+  /** Opt-in: clicking an alert pin calls this (Alert Spotlight selection). */
+  onAlertClick?: (alert: FarmlandAlertPoint) => void;
 }
 
 interface HoverInfo {
@@ -164,8 +166,12 @@ interface HoverInfo {
   alert: FarmlandAlertPoint;
 }
 
-export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
+export default function FarmlandMap({ alerts, activeLayer, tenant, onAlertClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // Latest click handler via ref so the layer-composition effect's deps
+  // don't grow (same pattern as EBMap's clickRef).
+  const alertClickRef = useRef<Props['onAlertClick']>(onAlertClick);
+  useEffect(() => { alertClickRef.current = onAlertClick; }, [onAlertClick]);
   const mapRef = useRef<unknown>(null);
   const overlayRef = useRef<unknown>(null);
   const [mapStatus, setMapStatus] = useState<'loading' | 'ready' | 'error' | 'no-token'>(
@@ -520,6 +526,10 @@ export default function FarmlandMap({ alerts, activeLayer, tenant }: Props) {
           radiusMaxPixels: 24,
           stroked: true,
           pickable: true,
+          onClick: (info) => {
+            const a = info?.object as FarmlandAlertPoint | undefined;
+            if (a) alertClickRef.current?.(a);
+          },
           onHover: (info) => {
             if (info && info.object && info.x !== undefined && info.y !== undefined) {
               setHover({
