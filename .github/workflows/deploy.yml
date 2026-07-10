@@ -57,11 +57,32 @@ jobs:
     steps:
       - id: resolve
         run: |
+          KNOWN="api ingestion ml notifications frontend"
           if [ "${{ inputs.services }}" = "all" ]; then
             echo 'services=["api","ingestion","ml","notifications","frontend"]' >> $GITHUB_OUTPUT
           else
-            # Convert "api,ingestion" → ["api","ingestion"]
-            list=$(echo "${{ inputs.services }}" | tr -d ' ' | sed 's/,/","/g' | sed 's/^/["/' | sed 's/$/"]/')
+            # Sanitise the free-text input: split on commas, drop anything
+            # that isn't a real service (e.g. someone typing the environment
+            # name "staging" into this box), and fail LOUDLY if nothing valid
+            # remains — a typo must never half-run the pipeline.
+            valid=""
+            skipped=""
+            for s in $(echo "${{ inputs.services }}" | tr ',' ' '); do
+              if echo " $KNOWN " | grep -q " $s "; then
+                valid="$valid $s"
+              elif [ -n "$s" ]; then
+                skipped="$skipped $s"
+              fi
+            done
+            if [ -n "$skipped" ]; then
+              echo "::warning::Ignoring unknown service(s):$skipped — valid: $KNOWN (or 'all')"
+            fi
+            valid=$(echo $valid | tr ' ' ',')
+            if [ -z "$valid" ]; then
+              echo "::error::No valid services in input '${{ inputs.services }}'. Valid: $KNOWN (or 'all')."
+              exit 1
+            fi
+            list=$(echo "$valid" | sed 's/,/","/g' | sed 's/^/["/' | sed 's/$/"]/')
             echo "services=$list" >> $GITHUB_OUTPUT
           fi
 
