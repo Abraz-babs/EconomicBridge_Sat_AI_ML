@@ -299,12 +299,18 @@ export default function FarmlandPanel() {
   const [spotlightId, setSpotlightId] = useState<string | null>(null);
   const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
 
-  // A spotlighted alert belongs to one tenant's dataset — clear the
-  // selection when the viewer switches tenants (same pattern as the map's
-  // hover reset).
+  // Auto-tour (Spotlight Phase 2) — cycles the spotlight through the active,
+  // located watches every 12s. Started from the idle briefing's button;
+  // stopped by its Stop chip, any manual selection, or a tenant switch.
+  const [touring, setTouring] = useState(false);
+
+  // A spotlighted alert belongs to one tenant's dataset — clear selection
+  // and stop any tour when the viewer switches tenants (same pattern as the
+  // map's hover reset).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSpotlightId(null);
+    setTouring(false);
   }, [activeTenantId]);
 
   const query = useFarmlandAlerts({ tenantId: activeTenantId, perPage: 50 });
@@ -396,6 +402,42 @@ export default function FarmlandPanel() {
     () => allAlerts.find((a) => a.id === spotlightId) ?? null,
     [allAlerts, spotlightId],
   );
+
+  // The tour route: active, located watches in feed order.
+  const tourList = useMemo(
+    () => allAlerts.filter((a) => a.status !== 'resolved' && a.location).map((a) => a.id),
+    [allAlerts],
+  );
+
+  // Tour heartbeat — advances via functional updates so the interval never
+  // needs the current selection in its deps; paused while the tab is hidden
+  // (matches the map's visibility discipline).
+  useEffect(() => {
+    if (!touring) return;
+    if (tourList.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTouring(false);
+      return;
+    }
+    // Enter the route immediately (or keep the current stop if it's on it).
+     
+    setSpotlightId((prev) => (prev && tourList.includes(prev) ? prev : tourList[0]));
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      setSpotlightId((prev) => {
+        const i = prev ? tourList.indexOf(prev) : -1;
+        return tourList[(i + 1) % tourList.length];
+      });
+    }, 12_000);
+    return () => window.clearInterval(id);
+  }, [touring, tourList]);
+
+  /** Manual selection (halo click, card link, idle chips) always takes the
+   *  wheel back from the tour. */
+  const selectManually = (id: string | null) => {
+    setTouring(false);
+    setSpotlightId(id);
+  };
 
   return (
     <div>
@@ -578,16 +620,18 @@ export default function FarmlandPanel() {
             alerts={mapPoints}
             activeLayer={activeMapLayer}
             tenant={activeTenant}
-            onAlertClick={(p) => setSpotlightId(p.id)}
+            onAlertClick={(p) => selectManually(p.id)}
           />
-          {/* Alert Spotlight (Phase 1) — fills the column under the map.
-              Idle = state briefing; click a halo / card Spotlight → deep-dive. */}
+          {/* Alert Spotlight — fills the column under the map. Idle = state
+              briefing (+ tour start); click a halo / card Spotlight → deep-dive. */}
           <AlertSpotlight
             alerts={allAlerts}
             selected={spotlightAlert}
             stateLabel={stateLabel}
-            onSelect={setSpotlightId}
-            onClose={() => setSpotlightId(null)}
+            onSelect={selectManually}
+            onClose={() => selectManually(null)}
+            touring={touring}
+            onToggleTour={() => setTouring((t) => !t)}
           />
         </div>
 
@@ -662,7 +706,7 @@ export default function FarmlandPanel() {
                     {' · '}
                     <button
                       type="button"
-                      onClick={() => setSpotlightId(spotlightId === a.id ? null : a.id)}
+                      onClick={() => selectManually(spotlightId === a.id ? null : a.id)}
                       style={{
                         background: 'transparent', border: 'none', padding: 0,
                         cursor: 'pointer', font: 'inherit', color: '#2f855a',

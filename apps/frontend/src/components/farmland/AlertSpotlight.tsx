@@ -4,6 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { fetchPlaceName } from '@/components/cropguard/FarmCheckPanel';
 import type { AlertResponse, AlertSeverity } from '@/hooks/useFarmlandAlerts';
+import {
+  compareLandCover,
+  classColor,
+  topClasses,
+  type LandCoverComparison,
+} from './landCoverAnalysis';
 
 /**
  * Alert Spotlight (Phase 1) — fills the column under the Farmland map.
@@ -62,6 +68,13 @@ function metresPerPixel(lat: number, z: number): number {
 
 const HERO_ZOOM = 15;
 const HERO_H = 300;
+
+// Zoom-from-orbit intro: static Esri tiles cross-fading through these zoom
+// levels (space → region → district → plot). Pure <img> + CSS — deliberately
+// NO WebGL map, so the cinematic runs on low-spec government PCs. Skipped
+// entirely under prefers-reduced-motion.
+const INTRO_ZOOMS = [4, 8, 12, 15] as const;
+const INTRO_STEP_MS = 550;
 
 const SEV_RANK: Record<AlertSeverity, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 const SEV_COLOR: Record<AlertSeverity, string> = {
@@ -124,9 +137,13 @@ interface Props {
   stateLabel: string;
   onSelect: (id: string) => void;
   onClose: () => void;
+  /** Auto-tour (Phase 2): true while the panel is cycling watches. */
+  touring: boolean;
+  onToggleTour: () => void;
 }
 
-export default function AlertSpotlight({ alerts, selected, stateLabel, onSelect, onClose }: Props) {
+export default function AlertSpotlight(props: Props) {
+  const { alerts, selected, stateLabel, onSelect, onClose, touring, onToggleTour } = props;
   const [place, setPlace] = useState<string | null>(null);
 
   // Reverse-geocode the selected coordinate (same Mapbox helper Farm Check uses).
@@ -160,9 +177,26 @@ export default function AlertSpotlight({ alerts, selected, stateLabel, onSelect,
   );
 
   if (!selected || !selected.location) {
-    return <IdleBriefing active={active} topWatches={topWatches} stateLabel={stateLabel} onSelect={onSelect} />;
+    return (
+      <IdleBriefing
+        active={active}
+        topWatches={topWatches}
+        stateLabel={stateLabel}
+        onSelect={onSelect}
+        onStartTour={onToggleTour}
+      />
+    );
   }
-  return <SelectedBriefing alert={selected} place={place} stateLabel={stateLabel} onClose={onClose} />;
+  return (
+    <SelectedBriefing
+      alert={selected}
+      place={place}
+      stateLabel={stateLabel}
+      onClose={onClose}
+      touring={touring}
+      onToggleTour={onToggleTour}
+    />
+  );
 }
 
 // ─── Idle state — Option B: calm state briefing ────────────────────────────
@@ -171,8 +205,10 @@ function IdleBriefing(props: {
   topWatches: AlertResponse[];
   stateLabel: string;
   onSelect: (id: string) => void;
+  onStartTour: () => void;
 }) {
-  const { active, topWatches, stateLabel, onSelect } = props;
+  const { active, topWatches, stateLabel, onSelect, onStartTour } = props;
+  const tourable = active.filter((a) => a.location).length;
   const totalHa = active.reduce((s, a) => s + (a.affected_area_ha ?? 0), 0);
   const totalLiv = active.reduce((s, a) => s + (a.livelihoods_at_risk ?? 0), 0);
   const etas = active.map((a) => a.predicted_breach_hours).filter((h): h is number => h != null);
@@ -240,8 +276,119 @@ function IdleBriefing(props: {
           </div>
         </div>
       )}
-      <div style={{ ...S.dim, marginTop: '10px' }}>
-        Aggregates: live alert feed · hotspot chips: Esri World Imagery at each alert coordinate (reference)
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '11px', flexWrap: 'wrap' }}>
+        {tourable >= 2 && (
+          <button
+            type="button"
+            onClick={onStartTour}
+            style={{
+              border: '1px solid #52b788', color: '#52b788', background: 'transparent',
+              fontSize: '10.5px', letterSpacing: '.12em', padding: '5px 13px',
+              borderRadius: '5px', cursor: 'pointer', font: 'inherit',
+            }}
+          >
+            ▶ START TOUR ({tourable} WATCHES)
+          </button>
+        )}
+        <span style={S.dim}>
+          Aggregates: live alert feed · hotspot chips: Esri World Imagery at each alert coordinate (reference)
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Zoom-from-orbit intro — static Esri tiles + CSS only (no WebGL) ───────
+// One tile per zoom step, anchored so the alert coordinate stays dead-centre
+// while each frame scales up, then unmounts to reveal the sharp 3×3 mosaic
+// underneath. Remounted per selection via key={alert.id}.
+function IntroZoom({ lat, lon }: { lat: number; lon: number }) {
+  const [step, setStep] = useState(0);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reduced motion: skip the cinematic entirely
+      setDone(true);
+      return;
+    }
+    const timers: number[] = [];
+    INTRO_ZOOMS.forEach((_, i) => {
+      timers.push(window.setTimeout(() => setStep(i), i * INTRO_STEP_MS));
+    });
+    timers.push(window.setTimeout(() => setDone(true), INTRO_ZOOMS.length * INTRO_STEP_MS + 180));
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, []);
+
+  if (done) return null;
+  const z = INTRO_ZOOMS[step];
+  const t = tileAt(lat, lon, z);
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: '#0f0d0b', overflow: 'hidden' }} aria-hidden>
+      {/* eslint-disable-next-line @next/next/no-img-element -- external Esri tile */}
+      <img
+        key={z}
+        src={ESRI_TILE(z, t.x, t.y)}
+        alt=""
+        className="ebspot-zoomframe"
+        style={{
+          position: 'absolute', left: '50%', top: '50%',
+          width: '256px', height: '256px',
+          marginLeft: `${-t.fx * 256}px`, marginTop: `${-t.fy * 256}px`,
+          transformOrigin: `${t.fx * 256}px ${t.fy * 256}px`,
+        }}
+      />
+      <span
+        style={{
+          position: 'absolute', bottom: '9px', left: '9px', fontSize: '9px',
+          letterSpacing: '.16em', color: '#52b788', padding: '3px 8px',
+          background: 'rgba(15,13,11,0.78)', borderRadius: '3px',
+        }}
+      >
+        ACQUIRING · ESRI WORLD IMAGERY · Z{z}
+      </span>
+    </div>
+  );
+}
+
+// ─── Computed land-mix bars (Phase 2 pixel analytics) ──────────────────────
+function LandMixBars({ cmp }: { cmp: LandCoverComparison }) {
+  const rows = [
+    { year: cmp.yearA, mix: cmp.mixA },
+    { year: cmp.yearB, mix: cmp.mixB },
+  ];
+  const growing = cmp.builtDeltaPts > 0;
+  return (
+    <div style={{ marginTop: '9px' }}>
+      {rows.map(({ year, mix }) => (
+        <div key={year} style={{ marginBottom: '6px' }}>
+          <div style={{ ...S.dim, letterSpacing: '.1em' }}>{year}</div>
+          <div style={{ display: 'flex', height: '11px', borderRadius: '3px', overflow: 'hidden', margin: '2px 0' }}>
+            {topClasses(mix, 4).map(([label, pct]) => (
+              <div key={label} style={{ width: `${pct}%`, background: classColor(label) }} title={`${label} ${pct}%`} />
+            ))}
+          </div>
+          <div style={{ ...S.dim, display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {topClasses(mix, 3).map(([label, pct]) => (
+              <span key={label}>{label} {pct}%</span>
+            ))}
+          </div>
+        </div>
+      ))}
+      <div
+        style={{
+          marginTop: '7px', padding: '6px 9px', borderRadius: '5px', fontSize: '11px',
+          background: growing ? 'rgba(240,175,60,0.10)' : 'rgba(82,183,136,0.10)',
+          border: `1px solid ${growing ? 'rgba(240,175,60,0.3)' : 'rgba(82,183,136,0.3)'}`,
+          color: growing ? '#f0af3c' : '#52b788',
+        }}
+      >
+        {growing
+          ? `▲ built-up +${cmp.builtDeltaPts} pts since ${cmp.yearA} — settlement pressure`
+          : `built-up stable since ${cmp.yearA} (${cmp.builtDeltaPts >= 0 ? '+' : ''}${cmp.builtDeltaPts} pts)`}
+      </div>
+      <div style={{ ...S.dim, marginTop: '4px' }}>
+        Computed in-browser from Esri 10 m land-cover pixels within {cmp.radiusKm} km of the alert — deterministic, no model.
       </div>
     </div>
   );
@@ -253,12 +400,32 @@ function SelectedBriefing(props: {
   place: string | null;
   stateLabel: string;
   onClose: () => void;
+  touring: boolean;
+  onToggleTour: () => void;
 }) {
-  const { alert: a, place, stateLabel, onClose } = props;
+  const { alert: a, place, stateLabel, onClose, touring, onToggleTour } = props;
   const lat = a.location!.lat;
   const lon = a.location!.lon;
   const t = tileAt(lat, lon, HERO_ZOOM);
   const tOld = tileAt(lat, lon, 14);
+
+  // Phase 2 pixel analytics — computed land mix around this alert, 2018 vs
+  // 2025. Null (service gap / low coverage / tainted canvas) → the card
+  // falls back to thumbnails only; never publish a number we couldn't count.
+  const [landCmp, setLandCmp] = useState<LandCoverComparison | null>(null);
+  const [landPending, setLandPending] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset for the new selection
+    setLandCmp(null);
+    setLandPending(true);
+    compareLandCover(lat, lon).then((cmp) => {
+      if (cancelled) return;
+      setLandCmp(cmp);
+      setLandPending(false);
+    });
+    return () => { cancelled = true; };
+  }, [lat, lon]);
 
   // To-scale affected-area box: side = sqrt(ha) in metres → hero pixels.
   // Cheap arithmetic — computed inline, no memo needed.
@@ -277,7 +444,11 @@ function SelectedBriefing(props: {
       {/* Pulse keyframes; disabled under prefers-reduced-motion. */}
       <style>{`
         @keyframes ebspot-pulse { 0% { transform: scale(.4); opacity: .9; } 100% { transform: scale(1.6); opacity: 0; } }
-        @media (prefers-reduced-motion: reduce) { .ebspot-ring { animation: none !important; } }
+        @keyframes ebspot-zoom { 0% { transform: scale(2.4); opacity: .15; } 100% { transform: scale(4.4); opacity: 1; } }
+        .ebspot-zoomframe { animation: ebspot-zoom ${INTRO_STEP_MS + 40}ms ease-out forwards; }
+        @media (prefers-reduced-motion: reduce) {
+          .ebspot-ring, .ebspot-zoomframe { animation: none !important; }
+        }
       `}</style>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
@@ -304,6 +475,19 @@ function SelectedBriefing(props: {
           <div><div style={S.statV}>{a.livelihoods_at_risk != null ? `~${a.livelihoods_at_risk.toLocaleString()}` : '—'}</div><div style={S.statK}>LIVELIHOODS</div></div>
           <div><div style={S.statV}>{a.confidence_score != null ? `${Math.round(a.confidence_score * 100)}%` : '—'}</div><div style={S.statK}>CONFIDENCE</div></div>
           <div><div style={S.statV}>{a.predicted_breach_hours != null ? `${a.predicted_breach_hours}h` : '—'}</div><div style={S.statK}>ETA</div></div>
+          {touring && (
+            <button
+              type="button"
+              onClick={onToggleTour}
+              style={{
+                background: 'rgba(82,183,136,0.12)', border: '1px solid #52b788',
+                color: '#52b788', borderRadius: '5px', cursor: 'pointer',
+                fontSize: '10px', letterSpacing: '.1em', padding: '3px 9px', font: 'inherit',
+              }}
+            >
+              ▶ TOUR · STOP
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -366,6 +550,8 @@ function SelectedBriefing(props: {
         <span style={{ position: 'absolute', top: '9px', left: '9px', fontSize: '9px', letterSpacing: '.13em', padding: '3px 8px', background: 'rgba(15,13,11,0.78)', borderRadius: '3px', color: '#4da3d8' }}>
           ESRI WORLD IMAGERY · REFERENCE (NOT DETECTION-TIME)
         </span>
+        {/* Zoom-from-orbit intro — plays once per selection, unmounts to the mosaic. */}
+        <IntroZoom key={a.id} lat={lat} lon={lon} />
       </div>
 
       {/* Evidence strip + deterministic summary */}
@@ -397,6 +583,11 @@ function SelectedBriefing(props: {
             Land-cover colours: yellow crops · red built · tan rangeland · green trees · blue water
             (© Esri, Impact Observatory, Microsoft)
           </div>
+          {landCmp ? (
+            <LandMixBars cmp={landCmp} />
+          ) : landPending ? (
+            <div style={{ ...S.dim, marginTop: '8px' }}>computing land mix from classification pixels…</div>
+          ) : null}
         </div>
 
         <div style={S.card}>
