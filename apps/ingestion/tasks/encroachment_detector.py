@@ -540,6 +540,39 @@ async def detect_per_lga_for_tenant(
     return f"{alerts} alert(s) / {evaluated} scanned ({mode}, {len(batch)} LGAs due)"
 
 
+def _first_int(s: str) -> int:
+    """'3 alert(s) / 44 scanned (…)' → 3; 'no alert (…)' / 'skipped: …' → 0."""
+    for tok in s.replace("(", " ").split():
+        if tok.isdigit():
+            return int(tok)
+    return 0
+
+
+async def _record_run(
+    session: AsyncSession, *, tenant: str, summary: str,
+    started_at: datetime, trigger: str, error: str | None = None,
+) -> None:
+    """Stamp public.ingestion_runs so the admin Recent Runs view can prove the
+    encroachment sweep ran (or failed) — the one daily job that previously
+    left no trace, which made 'did the Farmland feed refresh?' unanswerable
+    from the dashboard. Failed runs are recorded too, with the error."""
+    await session.execute(text("""
+        INSERT INTO public.ingestion_runs (
+            id, source, tenant_id, trigger, started_at, finished_at,
+            status, records_ingested, dry_run, error_message
+        ) VALUES (
+            :id, :source, :tenant, :trigger, :started_at, NOW(),
+            :status, :written, FALSE, :error
+        )
+    """), {
+        "id": uuid4(), "source": RUN_SOURCE, "tenant": tenant,
+        "trigger": trigger, "started_at": started_at,
+        "status": "failed" if error else "succeeded",
+        "written": 0 if error else _first_int(summary),
+        "error": error[:500] if error else None,
+    })
+
+
 async def run_encroachment_sweep(
     tenants: list[str] | None = None, *, full: bool = False,
 ) -> dict[str, str]:
@@ -560,7 +593,9 @@ async def run_encroachment_sweep(
              "per-LGA" if per_lga else "ROI-fallback",
              "full" if full else "rolling", REVISIT_DAYS)
     out: dict[str, str] = {}
+    trigger = "manual" if tenants is not None or full else "scheduled"
     for t in target:
+        started = datetime.now(timezone.utc)
         async with factory() as session:
             try:
                 if per_lga:
@@ -568,9 +603,24 @@ async def run_encroachment_sweep(
                         session, client, t, full=full, day=day)
                 else:
                     out[t] = await detect_for_tenant(session, t)
+                await _record_run(
+                    session, tenant=t, summary=out[t],
+                    started_at=started, trigger=trigger,
+                )
                 await session.commit()
             except Exception as exc:  # noqa: BLE001 — isolate per tenant
                 out[t] = f"failed: {exc!s}"
                 log.exception("encroachment failed tenant=%s", t)
+                # Record the failure on a clean transaction so the admin
+                # Recent Runs view shows the miss instead of silence.
+                try:
+                    await session.rollback()
+                    await _record_run(
+                        session, tenant=t, summary="", started_at=started,
+                        trigger=trigger, error=str(exc),
+                    )
+                    await session.commit()
+                except Exception:  # noqa: BLE001 — never mask the original
+                    log.exception("could not record failed run tenant=%s", t)
     log.info("encroachment sweep: %s", out)
     return out
