@@ -19,9 +19,19 @@ class ContactInquiry(BaseModel):
     interest: str = Field(min_length=1, max_length=120)
     region: str | None = Field(default=None, max_length=120)
     message: str | None = Field(default=None, max_length=4000)
-    # Honeypot — invisible to humans, often auto-filled by bots. A non-empty
-    # value means "drop silently" (the router returns success but sends nothing).
+    # Honeypot — invisible to humans, filled by bots. A non-empty value means
+    # "drop silently" (the router returns success but sends nothing).
+    # RENAMED 2026-07-12: the old name `company_website` matched Chromium's
+    # autofill heuristics, so real visitors' browsers filled the hidden field
+    # and their inquiries were silently dropped as bots (Chromium ignores
+    # autocomplete="off"). `eb_hp` matches no autofill category. The legacy
+    # field is still accepted so cached pre-redeploy pages keep working.
+    eb_hp: str | None = Field(default=None, max_length=200)
     company_website: str | None = Field(default=None, max_length=200)
+
+    @property
+    def honeypot_tripped(self) -> bool:
+        return bool(self.eb_hp or self.company_website)
 
 
 class ContactAck(BaseModel):

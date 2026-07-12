@@ -827,9 +827,13 @@
                 <textarea name="message" placeholder="Tell us the communities, crops, or risks you want to monitor."></textarea>
               </label>
             </div>
-            <!-- Honeypot: invisible to people; bots that fill it are dropped server-side. -->
+            <!-- Honeypot: invisible to people; bots that fill it are dropped
+                 server-side. Named `eb_hp` (matches no autofill category): the
+                 previous `company_website` name was silently auto-filled by
+                 Chromium autofill (which ignores autocomplete="off"), so real
+                 visitors' inquiries were dropped as bots. -->
             <label class="hp" aria-hidden="true">Leave this field empty
-              <input name="company_website" tabindex="-1" autocomplete="off" />
+              <input name="eb_hp" tabindex="-1" autocomplete="off" />
             </label>
             <button class="btn btn-primary" type="submit">Send Inquiry</button>
             <div class="form-note" id="formNote" aria-live="polite"></div>

@@ -49,6 +49,18 @@ def test_honeypot_is_silently_dropped(monkeypatch):
     assert sent == []                    # but nothing is emailed
 
 
+def test_renamed_honeypot_eb_hp_is_silently_dropped(monkeypatch):
+    """The 2026-07-12 rename: `eb_hp` (autofill-proof) trips the honeypot the
+    same way the legacy `company_website` field does."""
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        contact_mod, "send_contact_inquiry", lambda **kw: sent.append(kw),
+    )
+    r = _post({**VALID, "eb_hp": "http://spam.example"}, "10.0.0.6")
+    assert r.status_code == 200
+    assert sent == []
+
+
 def test_real_inquiry_triggers_send(monkeypatch):
     sent: list[dict] = []
     monkeypatch.setattr(

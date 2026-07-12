@@ -7,6 +7,7 @@ should ALSO rate-limit at the gateway/WAF (CLAUDE.md §4.1).
 """
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
@@ -16,6 +17,8 @@ from fastapi import APIRouter, HTTPException, Request, status
 from schemas.contact import ContactAck, ContactInquiry
 from schemas.envelope import ResponseMeta, SuccessResponse
 from services.email import send_contact_inquiry
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/contact", tags=["contact"])
 
@@ -64,8 +67,14 @@ async def submit_contact(
     trace_id: UUID = getattr(request.state, "trace_id", uuid4())
 
     # Honeypot tripped → looks like a bot. Acknowledge but send nothing, and
-    # don't spend a rate-limit slot on it.
-    if inquiry.company_website:
+    # don't spend a rate-limit slot on it. LOGGED since 2026-07-12: a silent
+    # drop with zero trace cost us a real inquiry (browser autofill filled the
+    # old company_website honeypot) and was undiagnosable from the logs.
+    if inquiry.honeypot_tripped:
+        logger.info(
+            "[contact] honeypot tripped — dropped silently (ip=%s, name=%r)",
+            _client_key(request), inquiry.name[:40],
+        )
         return _ack(trace_id)
 
     if _rate_limited(_client_key(request)):
