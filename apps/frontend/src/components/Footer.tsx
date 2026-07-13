@@ -3,7 +3,7 @@ export default function Footer() {
     <footer className="app-footer" role="contentinfo">
       <div className="footer-row">
         <div className="footer-left">
-          <span className="footer-brand">ECONOMICBRIDGE v0.3</span>
+          <span className="footer-brand">ECONOMICBRIDGE v1.0</span>
           <span className="footer-sep">·</span>
           <span>BIZRA FARMS INTEGRATED NIGERIA LIMITED</span>
           <span className="footer-sep">·</span>
