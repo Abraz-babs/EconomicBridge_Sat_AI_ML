@@ -7,7 +7,7 @@ export default function Footer() {
           <span className="footer-sep">·</span>
           <span>BIZRA FARMS INTEGRATED NIGERIA LIMITED</span>
           <span className="footer-sep">·</span>
-          <span className="footer-phase">PRE-PRODUCTION · 2026</span>
+          <span className="footer-phase">PRODUCTION · 2026</span>
         </div>
         <div className="footer-center">
           <span>Satellite: ESA Copernicus · NASA FIRMS · N2YO Live Pass · VIIRS · MODIS</span>

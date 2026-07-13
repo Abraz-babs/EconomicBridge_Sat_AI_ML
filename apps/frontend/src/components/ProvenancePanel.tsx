@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+
 import { useProvenance, type FeedProvenance } from '@/hooks/useProvenance';
 
 const KIND_STYLE: Record<FeedProvenance['kind'], { label: string; color: string }> = {
@@ -47,10 +49,25 @@ function FeedCard({ f }: { f: FeedProvenance }) {
 
 export default function ProvenancePanel() {
   const { data, isLoading, isError } = useProvenance();
+  // Collapsed by default — mirrors the System Status bar. The ✅ trust
+  // summary stays visible either way; the per-feed cards expand on demand.
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <section className="sb-table-wrap" style={{ marginTop: '16px' }} aria-label="Data sources and provenance">
-      <div className="cg-section-header">Data Sources &amp; Provenance — where every layer comes from</div>
+      <div
+        className="cg-section-header"
+        onClick={() => setExpanded(!expanded)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(!expanded); } }}
+        tabIndex={0}
+        role="button"
+        aria-expanded={expanded}
+        aria-label="Toggle data sources and provenance details"
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
+      >
+        <span>Data Sources &amp; Provenance — where every layer comes from</span>
+        <span style={{ fontSize: '11px', opacity: 0.7 }}>{expanded ? '▲ HIDE' : '▼ SHOW'}</span>
+      </div>
       {isLoading && <div className="fp-alert-empty">Loading provenance…</div>}
       {isError && <div className="fp-alert-empty">Couldn&apos;t load provenance.</div>}
       {data && (
@@ -58,20 +75,24 @@ export default function ProvenancePanel() {
           <div className="ev-map-meta" style={{ margin: '4px 0 12px', lineHeight: 1.5 }}>
             ✅ {data.summary}
           </div>
-          <div style={{
-            display: 'grid', gap: '10px',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-          }}>
-            {data.feeds.map((f) => <FeedCard key={f.module} f={f} />)}
-          </div>
-          <div style={{ ...card, marginTop: '12px', borderLeft: '4px solid #6366f1' }}>
-            <strong style={{ fontSize: '13px' }}>Satellite compute — {data.compute.provider}</strong>
-            <div style={{ fontSize: '12px', marginTop: '4px' }}>
-              {data.compute.tier} tier · {data.compute.monthly_pu.toLocaleString()} Processing
-              Units + {data.compute.monthly_requests.toLocaleString()} requests / month
-            </div>
-            <div className="ev-map-meta" style={{ marginTop: '6px', lineHeight: 1.5 }}>{data.compute.note}</div>
-          </div>
+          {expanded && (
+            <>
+              <div style={{
+                display: 'grid', gap: '10px',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+              }}>
+                {data.feeds.map((f) => <FeedCard key={f.module} f={f} />)}
+              </div>
+              <div style={{ ...card, marginTop: '12px', borderLeft: '4px solid #6366f1' }}>
+                <strong style={{ fontSize: '13px' }}>Satellite compute — {data.compute.provider}</strong>
+                <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                  {data.compute.tier} tier · {data.compute.monthly_pu.toLocaleString()} Processing
+                  Units + {data.compute.monthly_requests.toLocaleString()} requests / month
+                </div>
+                <div className="ev-map-meta" style={{ marginTop: '6px', lineHeight: 1.5 }}>{data.compute.note}</div>
+              </div>
+            </>
+          )}
         </>
       )}
     </section>
