@@ -132,7 +132,10 @@ export default function SystemStatus() {
           </div>
           <div className="ss-compliance">
             <span className="ss-ndpa-badge">NDPA 2023 COMPLIANT</span>
-            <span className="ss-audit">All queries audit-logged · Data sovereignty: af-south-1 (Cape Town)</span>
+            {/* Region stated truthfully — must always match the DPA §5.1
+                (AWS EU-Ireland, NDPA Part VIII transfer basis). The old
+                af-south-1 claim was aspirational, never deployed. */}
+            <span className="ss-audit">All queries audit-logged · Hosted: AWS eu-west-1 (Ireland) · NDPA cross-border safeguards per DPA</span>
           </div>
         </div>
       )}
