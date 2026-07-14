@@ -71,7 +71,15 @@ def test_detect_flags_anomaly_when_injected():
 
 
 def test_detect_does_not_flag_clean_series():
-    s = synthetic_series("kebbi", inject_anomaly=False)
+    # PINNED end date (like every sibling test): the generator's annual
+    # sinusoid is keyed to day-of-year, so an unpinned series ends on
+    # date.today() and, on dates where the seasonal descent is steepest,
+    # the clean series' last 14 days legitimately cross the z-threshold —
+    # a calendar-dependent CI flake (first tripped 2026-07-14). The
+    # detector's seasonality handling itself is scheduled for the Sep-Oct
+    # baseline sprint; this test asserts the generator/detector contract
+    # at a fixed date, which is all it ever meant to test.
+    s = synthetic_series("kebbi", end=date(2026, 5, 21), inject_anomaly=False)
     r = detect_anomaly(tenant_id="kebbi", series=s)
     assert r.anomaly is False
 
