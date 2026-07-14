@@ -592,6 +592,8 @@ main {
 .s-watch { background: #fef3dc; color: #c97d00; }
 .s-monitor { background: #e8f0fa; color: #1d3557; }
 .s-recovery { background: #d8f3dc; color: #2d6a4f; }
+/* Kept examples + aged-out shock rows — never confusable with a live event. */
+.s-historical { background: #eceff1; color: #64748b; }
 
 /* ─── CHART BARS ─── */
 .bar-chart { padding: 14px 18px 18px; }

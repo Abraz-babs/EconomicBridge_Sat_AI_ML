@@ -259,6 +259,28 @@ _SEVERITY_STATUS = {
     "low": ("RECOVERY", "s-recovery"),
 }
 
+# Events older than this stop wearing a live status chip. A month-old seed
+# drought labelled "ACTIVE" during the rainy season reads as a live emergency
+# and cost us credibility (user-reported 2026-07-14); severity chips are for
+# CURRENT events, HISTORICAL is for kept examples and aged-out rows.
+_ACTIVE_MAX_AGE_DAYS = 14
+
+
+def shock_status(
+    severity: str, source: str | None, created_at: datetime | None,
+    now: datetime,
+) -> tuple[str, str]:
+    """Honest status chip for a shock event row.
+
+    Seed rows and events older than _ACTIVE_MAX_AGE_DAYS are HISTORICAL
+    (grey) regardless of severity — only recent detector rows wear a live
+    severity chip.
+    """
+    age_days = (now - created_at).days if created_at is not None else 9999
+    if source == "seed_v1" or age_days > _ACTIVE_MAX_AGE_DAYS:
+        return "HISTORICAL", "s-historical"
+    return _SEVERITY_STATUS.get(str(severity), ("MONITOR", "s-monitor"))
+
 
 @router.get(
     "/active_response",
@@ -281,7 +303,7 @@ async def active_response(
             await session.execute(
                 text(
                     """
-                    SELECT event_type, severity, lga
+                    SELECT event_type, severity, lga, created_at, source
                       FROM shock_events
                      ORDER BY created_at DESC
                      LIMIT 3
@@ -290,15 +312,19 @@ async def active_response(
             )
         ).all()
         region = _region(t)
+        now = datetime.now(timezone.utc)
         out = []
-        for event_type, severity, lga in rows:
-            status_label, tone = _SEVERITY_STATUS.get(
-                str(severity), ("MONITOR", "s-monitor")
+        for event_type, severity, lga, created_at, source in rows:
+            status_label, tone = shock_status(
+                str(severity), source, created_at, now,
+            )
+            dated = (
+                f" · {created_at:%d %b}" if created_at is not None else ""
             )
             out.append(
                 ActiveResponseRow(
                     region=f"{region} — {str(event_type).title()}",
-                    sub=f"{lga or region} · {severity}",
+                    sub=f"{lga or region} · {severity}{dated}",
                     status=status_label,
                     tone=tone,
                 )
