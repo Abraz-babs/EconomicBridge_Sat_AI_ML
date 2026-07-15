@@ -178,3 +178,7 @@ tfplan
 *.tfplan
 
 apps/ml/.kaggle_src/
+
+# Private partnership working papers — candid prep notes about active
+# negotiation counterparties must never reach the public repo.
+docs/partnerships/NASRDA_Meeting_Prep.*
