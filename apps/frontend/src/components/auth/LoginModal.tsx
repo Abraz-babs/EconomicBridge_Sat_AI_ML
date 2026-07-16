@@ -28,9 +28,11 @@ export default function LoginModal({
     setBusy(true);
     setError(null);
     try {
+      // apiFetch stringifies the body itself — pass the raw object
+      // (double-encoding sent a JSON string and the API 422'd; live bug 2026-07-17).
       await apiFetch('/auth/forgot-password', {
         method: 'POST',
-        body: JSON.stringify({ email: email.trim() }),
+        body: { email: email.trim() },
         noAuth: true,
       });
       setForgot('sent');

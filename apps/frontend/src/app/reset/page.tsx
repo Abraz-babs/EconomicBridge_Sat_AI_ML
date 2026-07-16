@@ -38,9 +38,10 @@ function ResetForm() {
     setBusy(true);
     setError(null);
     try {
+      // apiFetch stringifies the body itself — pass the raw object.
       await apiFetch('/auth/reset-password', {
         method: 'POST',
-        body: JSON.stringify({ token, password }),
+        body: { token, password },
         noAuth: true,
       });
       setDone(true);
