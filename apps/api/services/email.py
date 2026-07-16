@@ -52,6 +52,28 @@ def send_invite_email(*, to: str, tenant_name: str, activate_url: str) -> bool:
     return False
 
 
+def send_password_reset_email(*, to: str, reset_url: str) -> bool:
+    """Send a password-reset link. Same backend dispatch as invites."""
+    s = get_settings()
+    subject = "Reset your EconomicBridge password"
+    body = (
+        "Hello,\n\n"
+        "We received a request to reset the password for your EconomicBridge "
+        "account. Use the link below to choose a new password "
+        f"(valid for {s.password_reset_ttl_hours} hours):\n\n"
+        f"  {reset_url}\n\n"
+        "If you did not request this, you can safely ignore this email — "
+        "your password remains unchanged.\n\n"
+        "— EconomicBridge · Bizra Farms Integrated Nigeria Limited\n"
+    )
+    if s.email_backend == "resend":
+        return _send_resend(to=to, subject=subject, body=body)
+    if s.email_backend == "ses":
+        return _send_ses(to=to, subject=subject, body=body)
+    logger.info("[email:console] (pwreset) to=%s subject=%r\n%s", to, subject, body)
+    return False
+
+
 def send_alert_email(*, to: str, subject: str, body: str) -> bool:
     """Send a plain-text alert/digest email to a subscribed agency. Same backend
     dispatch as invites; returns True if a real send was accepted (False in

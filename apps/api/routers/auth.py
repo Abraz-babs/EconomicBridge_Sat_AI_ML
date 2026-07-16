@@ -24,7 +24,9 @@ from config import get_settings
 from core.ratelimit import record_failure, reset as reset_ratelimit, too_many_failures
 from core.security import (
     create_access_token,
+    create_reset_token,
     decode_invite_token,
+    decode_reset_token,
     hash_password,
     hash_token,
     new_refresh_token,
@@ -36,11 +38,15 @@ from schemas.auth import (
     AccessData,
     ActivateRequest,
     AuthUser,
+    ForgotAck,
+    ForgotPasswordRequest,
     LoginRequest,
     LogoutRequest,
     RefreshRequest,
+    ResetPasswordRequest,
     TokenData,
 )
+from services.email import send_password_reset_email
 from schemas.envelope import SuccessResponse, build_meta
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -219,6 +225,72 @@ async def activate(
     data = await _issue_tokens(session, user)
     await session.commit()
     return SuccessResponse(data=data, meta=build_meta())
+
+
+@router.post("/forgot-password", response_model=SuccessResponse[ForgotAck])
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[ForgotAck]:
+    """Email a short-lived reset link. ALWAYS returns the same 200 body —
+    whether or not the address has an account — so the endpoint can never be
+    used to enumerate users. Rate-limited per client IP via the same window
+    as failed logins."""
+    key = f"pwreset:{_client_key(request)}"
+    blocked, _retry = too_many_failures(key)
+    if blocked:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many reset requests. Please try again shortly.",
+        )
+    record_failure(key)  # every request spends a slot, hit or miss
+
+    user = await _load_user(session, email=str(body.email).strip().lower())
+    if user is not None and user["is_active"]:
+        s = get_settings()
+        reset_url = (
+            f"{s.public_app_url}/reset?token={create_reset_token(user['id'])}"
+        )
+        send_password_reset_email(to=user["email"], reset_url=reset_url)
+    return SuccessResponse(data=ForgotAck(), meta=build_meta())
+
+
+@router.post("/reset-password", response_model=SuccessResponse[ForgotAck])
+async def reset_password(
+    body: ResetPasswordRequest,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[ForgotAck]:
+    """Set a new password from a valid reset token, then revoke every live
+    session for the account (a reset after a suspected compromise must not
+    leave old refresh tokens working). No auto-login — the user signs in
+    with the new password."""
+    try:
+        user_id = decode_reset_token(body.token)
+    except JWTError as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail={"code": "RESET_INVALID",
+                    "message": "Reset link is invalid or expired — request a new one."},
+        ) from exc
+    user = await _load_user(session, user_id=user_id)
+    if user is None or not user["is_active"]:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail={"code": "RESET_INVALID",
+                    "message": "Reset link is invalid or expired — request a new one."},
+        )
+    await session.execute(
+        text("UPDATE public.users SET password_hash = :p WHERE id = :id"),
+        {"p": hash_password(body.password), "id": user_id},
+    )
+    await session.execute(
+        text("UPDATE public.refresh_tokens SET revoked = true, revoked_at = NOW() "
+             "WHERE user_id = :id AND revoked = false"),
+        {"id": user_id},
+    )
+    await session.commit()
+    return SuccessResponse(data=ForgotAck(), meta=build_meta())
 
 
 @router.get("/me", response_model=SuccessResponse[AuthUser])

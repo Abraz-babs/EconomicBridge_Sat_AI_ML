@@ -7,6 +7,7 @@ import { useTenant, PILOT_TENANT_IDS } from '@/context/TenantContext';
 import { useTenantModules } from '@/hooks/useTenantModules';
 import EmptyRegion from '@/components/common/EmptyRegion';
 import NotSubscribed from '@/components/common/NotSubscribed';
+import SubscribeModal from '@/components/common/SubscribeModal';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import RoleSwitcher from '@/components/RoleSwitcher';
 import Header from '@/components/Header';
@@ -105,6 +106,9 @@ function DashboardContent() {
   const showModule = (tab: TabId) => activeTab === tab && subscribed;
   // Which module an anonymous visitor just tried to open (drives the prompt).
   const [gatedModule, setGatedModule] = useState<TabId | null>(null);
+  // Which padlocked (unsubscribed) module a signed-in tenant just clicked —
+  // drives the corporate subscribe prompt; the tab itself never switches.
+  const [lockedModule, setLockedModule] = useState<TabId | null>(null);
 
   const handleTabChange = useCallback((tab: TabId) => {
     // Gate modules for anonymous visitors — overview stays open.
@@ -161,13 +165,26 @@ function DashboardContent() {
       <a href="#main-content" className="skip-link">Skip to main content</a>
       <RoleSwitcher />
       <Header />
-      <Navigation activeTab={activeTab} onTabChange={handleTabChange} lockModules={!user} />
+      <Navigation
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        lockModules={!user}
+        onLockedModule={(id) => setLockedModule(id)}
+      />
       <PermissionBanner />
 
       {gatedModule && (
         <RegisterPrompt
           moduleLabel={TAB_LABELS[gatedModule]}
           onClose={() => setGatedModule(null)}
+        />
+      )}
+
+      {lockedModule && (
+        <SubscribeModal
+          moduleLabel={TAB_LABELS[lockedModule]}
+          tenantName={activeTenant.name}
+          onClose={() => setLockedModule(null)}
         />
       )}
 

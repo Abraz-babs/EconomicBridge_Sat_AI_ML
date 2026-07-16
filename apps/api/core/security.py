@@ -137,3 +137,34 @@ def decode_invite_token(token: str) -> UUID:
     if claims.get("typ") != INVITE_TOKEN_TYPE:
         raise JWTError("not an invite token")
     return UUID(claims["sub"])
+
+
+# ─── Password reset (single-purpose short-lived JWT) ─────────────────────────
+
+RESET_TOKEN_TYPE = "pwreset"
+
+
+def create_reset_token(user_id: UUID) -> str:
+    """Mint a short-lived password-reset token for an ACTIVE account.
+
+    Distinct `typ` from invites so neither token can ever be replayed as the
+    other; deliberately short TTL (settings.password_reset_ttl_hours) because
+    a live reset link is a standing credential."""
+    s = get_settings()
+    now = datetime.now(timezone.utc)
+    claims = {
+        "sub": str(user_id),
+        "typ": RESET_TOKEN_TYPE,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(hours=s.password_reset_ttl_hours)).timestamp()),
+    }
+    return jwt.encode(claims, s.jwt_secret_key, algorithm=s.jwt_algorithm)
+
+
+def decode_reset_token(token: str) -> UUID:
+    """Return the user id from a valid reset token. Raises JWTError otherwise."""
+    s = get_settings()
+    claims = jwt.decode(token, s.jwt_secret_key, algorithms=[s.jwt_algorithm])
+    if claims.get("typ") != RESET_TOKEN_TYPE:
+        raise JWTError("not a reset token")
+    return UUID(claims["sub"])

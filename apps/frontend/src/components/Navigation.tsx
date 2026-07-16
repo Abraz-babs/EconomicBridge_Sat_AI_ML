@@ -28,6 +28,10 @@ interface NavigationProps {
   onTabChange: (tab: TabId) => void;
   /** Anonymous visitor — show a lock on the (gated) module tabs. */
   lockModules?: boolean;
+  /** Signed-in user clicked a module OUTSIDE their tenant's subscription.
+   *  The tab stays visible (padlocked) — the shop window stays full — and
+   *  the click opens the subscribe prompt instead of the module. */
+  onLockedModule?: (id: TabId, label: string) => void;
 }
 
 const tabs: { id: TabId; label: string; navId: string }[] = [
@@ -43,7 +47,9 @@ const tabs: { id: TabId; label: string; navId: string }[] = [
   { id: 'admin', label: 'Admin Panel', navId: 'navAdmin' },
 ];
 
-export default function Navigation({ activeTab, onTabChange, lockModules = false }: NavigationProps) {
+export default function Navigation({
+  activeTab, onTabChange, lockModules = false, onLockedModule,
+}: NavigationProps) {
   const { roleConfig } = useRole();
   const { isSuperAdmin, user } = useAuth();
   const { activeTenantId } = useTenant();
@@ -51,27 +57,33 @@ export default function Navigation({ activeTab, onTabChange, lockModules = false
 
   const isLocked = (navId: string) => roleConfig.navLocked.includes(navId);
 
-  // A module tab shows only if the active tenant is entitled to it. While
-  // entitlements load (undefined), show all (fail-open UI). overview is never
-  // module-gated; the admin tab is gated by REAL super-admin auth (not the demo
-  // role) so a tenant can never reach the admin panel.
-  const entitled = (id: TabId) =>
-    !MODULE_TAB_IDS.has(id) || enabledModules === undefined || enabledModules.includes(id);
+  // Subscription policy (2026-07-16): unsubscribed modules are NEVER hidden —
+  // every module stays visible so a tenant always sees the full catalogue;
+  // the unsubscribed ones are padlocked and clicking opens the subscribe
+  // prompt instead of the module. (Hiding also had a fail-open flicker while
+  // entitlements loaded.) The API's 403 middleware stays the real enforcement.
+  const notEntitled = (id: TabId) =>
+    MODULE_TAB_IDS.has(id) &&
+    enabledModules !== undefined &&
+    !enabledModules.includes(id);
 
   // The tabs actually shown: admin only for super-admin; Reports for any
   // signed-in account (it's login-gated, not subscription-gated); everything
-  // else role-allowed AND tenant-entitled.
+  // else role-allowed. Module tabs always show regardless of entitlement.
   const shownTabs = tabs.filter((t) =>
     t.id === 'admin' ? isSuperAdmin
       : t.id === 'reports' ? Boolean(user)
-      : !isLocked(t.navId) && entitled(t.id),
+      : !isLocked(t.navId),
   );
 
   return (
     <nav role="tablist" aria-label="Dashboard modules">
       {shownTabs.map(({ id, label }) => {
         const active = activeTab === id;
-        const locked = lockModules && MODULE_TAB_IDS.has(id);
+        const anonLocked = lockModules && MODULE_TAB_IDS.has(id);
+        // Signed-in but the module isn't in the active tenant's plan.
+        const subLocked = Boolean(user) && notEntitled(id);
+        const locked = anonLocked || subLocked;
         return (
           <button
             key={id}
@@ -80,8 +92,16 @@ export default function Navigation({ activeTab, onTabChange, lockModules = false
             type="button"
             aria-selected={active}
             className={`nav-tab ${active ? 'active' : ''}${locked ? ' nav-tab--locked' : ''}`}
-            title={locked ? 'Sign in or register to open this module' : undefined}
-            onClick={() => onTabChange(id)}
+            title={
+              subLocked
+                ? 'Not part of your current subscription — click for details'
+                : anonLocked
+                  ? 'Sign in or register to open this module'
+                  : undefined
+            }
+            onClick={() =>
+              subLocked ? onLockedModule?.(id, label) : onTabChange(id)
+            }
             tabIndex={active ? 0 : -1}
             onKeyDown={(e) => {
               const visibleTabs = shownTabs;

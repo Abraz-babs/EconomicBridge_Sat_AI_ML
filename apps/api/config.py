@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     jwt_access_ttl_min: int = 15          # access token lifetime (CLAUDE.md §4.1)
     jwt_refresh_ttl_days: int = 7         # refresh token lifetime
     invite_ttl_hours: int = 48            # tenant activation-link validity
+    password_reset_ttl_hours: int = 2     # forgot-password link validity (short by design)
 
     # Public base URL of the dashboard — used to build activation links in
     # invite emails. In prod this is the deployed frontend origin.

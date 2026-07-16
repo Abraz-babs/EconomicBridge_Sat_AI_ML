@@ -31,20 +31,52 @@ export default function ScheduledReportsCard() {
   const moduleList = modules ?? [];
 
   const [tenantId, setTenantId] = useState('');
-  const [module, setModule] = useState('farmland');
+  // Multi-select (2026-07-16): one recipient can be scheduled for SEVERAL
+  // module reports at once — ticked modules each become their own
+  // subscription row (the backend model is unchanged: one row per module).
+  const [selectedModules, setSelectedModules] = useState<Set<string>>(
+    () => new Set(['farmland']),
+  );
   const [frequency, setFrequency] = useState('monthly');
   const [email, setEmail] = useState('');
   const [note, setNote] = useState<string | null>(null);
 
-  function add() {
+  function toggleModule(key: string) {
+    setSelectedModules((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  async function add() {
     setNote(null);
-    create.mutate(
-      { tenant_id: tenantId || tenants[0]?.id || '', module, frequency, recipient_email: email.trim() },
-      {
-        onSuccess: () => { setNote('✓ Scheduled.'); setEmail(''); },
-        onError: (e) => setNote(`Failed: ${e.message}`),
-      },
-    );
+    const tenant = tenantId || tenants[0]?.id || '';
+    const picked = moduleList.filter((m) => selectedModules.has(m.key));
+    let ok = 0;
+    const failed: string[] = [];
+    // Sequential so per-module failures are attributable, not racy.
+    for (const m of picked) {
+      try {
+        await create.mutateAsync({
+          tenant_id: tenant, module: m.key, frequency,
+          recipient_email: email.trim(),
+        });
+        ok += 1;
+      } catch {
+        failed.push(m.label);
+      }
+    }
+    if (failed.length === 0) {
+      setNote(`✓ Scheduled ${ok} report${ok === 1 ? '' : 's'}.`);
+      setEmail('');
+    } else {
+      setNote(
+        `Scheduled ${ok} of ${picked.length} — failed: ${failed.join(', ')} `
+        + '(already scheduled for this recipient?)',
+      );
+    }
   }
 
   return (
@@ -92,10 +124,24 @@ export default function ScheduledReportsCard() {
             <select value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
               {tenants.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select></label>
-          <label className="upload-field"><span className="upload-field-label">Module</span>
-            <select value={module} onChange={(e) => setModule(e.target.value)}>
-              {moduleList.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-            </select></label>
+          <div className="upload-field"><span className="upload-field-label">
+              Modules (tick all to include)</span>
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: '4px 14px',
+              padding: '6px 2px', fontSize: '12.5px',
+            }}>
+              {moduleList.map((m) => (
+                <label key={m.key} style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedModules.has(m.key)}
+                    onChange={() => toggleModule(m.key)}
+                  />
+                  {m.label}
+                </label>
+              ))}
+            </div>
+          </div>
           <label className="upload-field"><span className="upload-field-label">Cadence</span>
             <select value={frequency} onChange={(e) => setFrequency(e.target.value)}>
               <option value="monthly">Monthly</option>
@@ -107,9 +153,12 @@ export default function ScheduledReportsCard() {
         </div>
         <div className="sms-demo-actions">
           <button type="button" className="sms-btn sms-btn--go"
-            disabled={create.isPending || !email.trim() || tenants.length === 0}
+            disabled={create.isPending || !email.trim() || tenants.length === 0
+              || selectedModules.size === 0}
             onClick={add}>
-            {create.isPending ? 'Scheduling…' : 'Schedule report'}
+            {create.isPending
+              ? 'Scheduling…'
+              : `Schedule ${selectedModules.size} report${selectedModules.size === 1 ? '' : 's'}`}
           </button>
         </div>
         {note && <div className="sms-result">{note}</div>}

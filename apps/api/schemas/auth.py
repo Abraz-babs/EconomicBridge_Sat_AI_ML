@@ -24,6 +24,21 @@ class ActivateRequest(BaseModel):
     password: str = Field(min_length=8, max_length=72)
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=1)
+    password: str = Field(min_length=8, max_length=72)
+
+
+class ForgotAck(BaseModel):
+    """Always the same body whether or not the email exists — the endpoint
+    must never confirm which addresses have accounts (user enumeration)."""
+    received: bool = True
+
+
 class AuthUser(BaseModel):
     id: UUID
     email: str
