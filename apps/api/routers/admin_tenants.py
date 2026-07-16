@@ -241,7 +241,11 @@ async def set_tenant_modules(
 
 
 @router.post("/admin/tenants/{tenant_id}/invite",
-             response_model=SuccessResponse[RegisteredTenant])
+             response_model=SuccessResponse[RegisteredTenant],
+             responses={409: {"description":
+                              "Admin email already has an ACTIVE account — "
+                              "no invite email is sent (sign in directly / "
+                              "reset password instead)."}})
 async def invite_tenant_admin(
     tenant_id: str,
     body: TenantInviteRequest,
@@ -268,6 +272,19 @@ async def invite_tenant_admin(
         country=reg["country"], admin_email=admin_email, admin_name=body.admin_name,
         geographic=is_geographic(reg["tenant_type"]),
     )
+    # HONEST outcome (2026-07-16): an already-ACTIVE account gets no invite
+    # token by design (an activation link for an activated account is
+    # meaningless) — but silently returning 200 made the admin believe an
+    # email was sent when nothing was. Say it plainly instead.
+    if onboard.invite_token is None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail=(
+                f"{admin_email} already has an ACTIVE account — no invite email "
+                "was sent. They can sign in directly; if access was lost, reset "
+                "the password instead of re-inviting."
+            ),
+        )
     # Record the contact on the registry row so the matrix shows it.
     await session.execute(
         text("UPDATE public.tenant_registry SET admin_email = :e, admin_name = :n, "
