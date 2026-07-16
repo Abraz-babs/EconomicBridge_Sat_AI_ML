@@ -433,10 +433,27 @@ export default function FarmlandPanel() {
   }, [touring, tourList]);
 
   /** Manual selection (halo click, card link, idle chips) always takes the
-   *  wheel back from the tour. */
+   *  wheel back from the tour — and brings the Spotlight into view, so a
+   *  click from the feed or a map halo lands the user ON the briefing
+   *  instead of leaving them to scroll and find it (or see it half-cut
+   *  below the fold). Tour auto-advances deliberately do NOT scroll: the
+   *  panel is already in view and yanking the page every 12s would fight
+   *  a reader elsewhere on the page. */
   const selectManually = (id: string | null) => {
     setTouring(false);
     setSpotlightId(id);
+    if (id) {
+      // Two frames so React has painted the (re)mounted panel before we
+      // measure and scroll to it.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        document.getElementById('alert-spotlight')?.scrollIntoView({
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            ? 'auto'
+            : 'smooth',
+          block: 'start',
+        });
+      }));
+    }
   };
 
   return (

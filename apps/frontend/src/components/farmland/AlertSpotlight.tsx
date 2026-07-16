@@ -440,7 +440,13 @@ function SelectedBriefing(props: {
   const detected = new Date(a.created_at).toISOString().slice(0, 10);
 
   return (
-    <div style={S.panel} aria-label={`Alert spotlight — ${a.lga ?? stateLabel}`}>
+    <div
+      id="alert-spotlight"
+      // scroll-margin keeps the panel top clear of the viewport edge when
+      // FarmlandPanel scrolls it into view on selection.
+      style={{ ...S.panel, scrollMarginTop: '10px' }}
+      aria-label={`Alert spotlight — ${a.lga ?? stateLabel}`}
+    >
       {/* Pulse keyframes; disabled under prefers-reduced-motion. */}
       <style>{`
         @keyframes ebspot-pulse { 0% { transform: scale(.4); opacity: .9; } 100% { transform: scale(1.6); opacity: 0; } }
