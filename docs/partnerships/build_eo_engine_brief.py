@@ -200,6 +200,14 @@ d.para("The one-line defence of the whole design: at 10-metre resolution nobody 
        "actors from orbit — but land does not lie about being disturbed, and disturbance seen early is decision "
        "time bought for a government.", bold_head="Why fusion:")
 
+d.para("we hold credentials to the two doors behind the world's civilian EO archives — "
+       "Copernicus CDSE for the European fleet (Sentinel-1/2, Statistical API) and NASA Earthdata for the "
+       "American one (LAADS night-lights today; the same single token already proven against NSIDC for SMAP "
+       "soil moisture, with GPM rainfall, GRACE groundwater and the MODIS land products behind the same door). "
+       "Both free, both integrated. When asked 'can you add X?', the honest answer is usually: the data for X "
+       "is behind a door we already hold the key to. Supply is not our risk.",
+       bold_head="Data access — the two doors:")
+
 d.table(
     ["Sensor / feed", "Measures", "Res / revisit · role"],
     [
