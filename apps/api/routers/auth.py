@@ -74,6 +74,17 @@ async def _permitted_tenants(session: AsyncSession, org_id) -> list[str]:
     return list(row[0]) if row and row[0] else []
 
 
+async def _org_tenant_slug(session: AsyncSession, org_id) -> str | None:
+    """The registry tenant id of the user's own organisation (organisations.
+    org_id — set to the tenant_registry id at onboarding). Drives which
+    subscription the UI's module locks follow."""
+    row = (await session.execute(
+        text("SELECT org_id FROM public.organisations WHERE id = :o"),
+        {"o": org_id},
+    )).first()
+    return row[0] if row else None
+
+
 async def _issue_tokens(session: AsyncSession, user) -> TokenData:
     """Mint an access+refresh pair for `user` and persist the refresh hash."""
     s = get_settings()
@@ -100,6 +111,7 @@ async def _issue_tokens(session: AsyncSession, user) -> TokenData:
             id=user["id"], email=user["email"], role=user["role"],
             org_id=user["org_id"], full_name=user["full_name"],
             permitted_tenants=tenants,
+            tenant_id=await _org_tenant_slug(session, user["org_id"]),
         ),
     )
 
@@ -306,6 +318,7 @@ async def me(
             id=user["id"], email=user["email"], role=user["role"],
             org_id=user["org_id"], full_name=user["full_name"],
             permitted_tenants=current.permitted_tenants,
+            tenant_id=await _org_tenant_slug(session, user["org_id"]),
         ),
         meta=build_meta(),
     )

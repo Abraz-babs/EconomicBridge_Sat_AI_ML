@@ -46,6 +46,11 @@ class AuthUser(BaseModel):
     org_id: UUID
     full_name: str | None = None
     permitted_tenants: list[str] = []
+    # The registry slug of the user's OWN organisation (organisations.org_id
+    # equals the tenant_registry id by onboarding construction). This — not
+    # whichever tenant is being VIEWED — is what the user's subscription
+    # (module locks) must key off. None for legacy/seed accounts.
+    tenant_id: str | None = None
 
 
 class TokenData(BaseModel):

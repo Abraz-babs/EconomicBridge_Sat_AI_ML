@@ -33,6 +33,9 @@ export interface AuthUser {
   org_id: string;
   full_name: string | null;
   permitted_tenants: string[];
+  /** Registry slug of the user's OWN organisation — the subscription that
+   *  module locks follow, regardless of which tenant is being viewed. */
+  tenant_id?: string | null;
 }
 
 interface AuthContextValue {

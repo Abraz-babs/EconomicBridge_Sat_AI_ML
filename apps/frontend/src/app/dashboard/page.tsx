@@ -88,10 +88,15 @@ function DashboardContent() {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const { user, loading, isSuperAdmin } = useAuth();
   const { activeTenant, activeTenantId } = useTenant();
-  // The active tenant's entitled modules (same query the nav uses; React Query
-  // dedupes). undefined while loading → fail-open (render the module).
-  const { data: enabledModules } = useTenantModules(activeTenantId);
+  // Entitlements follow the USER'S OWN organisation's subscription
+  // (user.tenant_id registry slug), not the tenant being viewed — same query
+  // the nav uses (React Query dedupes). undefined while loading → fail-open.
+  // Super-admins are never gated: they administer every plan.
+  const subscriptionTenantId =
+    !isSuperAdmin && user?.tenant_id ? user.tenant_id : activeTenantId;
+  const { data: enabledModules } = useTenantModules(subscriptionTenantId);
   const subscribed =
+    isSuperAdmin ||
     !isModuleTab(activeTab) || enabledModules === undefined || enabledModules.includes(activeTab);
   // Tenant exists but its plan doesn't include this module → clean "not
   // subscribed" state instead of letting the panel hit a 403. (Reports isn't a

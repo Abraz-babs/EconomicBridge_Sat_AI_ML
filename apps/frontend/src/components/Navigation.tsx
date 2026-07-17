@@ -53,7 +53,14 @@ export default function Navigation({
   const { roleConfig } = useRole();
   const { isSuperAdmin, user } = useAuth();
   const { activeTenantId } = useTenant();
-  const { data: enabledModules } = useTenantModules(activeTenantId);
+  // The subscription that locks follow is the USER'S OWN organisation's
+  // (user.tenant_id — its registry slug), NOT whichever tenant is currently
+  // being VIEWED (2026-07-17 fix: a Bizra admin viewing CARE International
+  // was gated by CARE's plan, so their own disallowed modules stayed open).
+  // Fallback to the viewed tenant only for legacy accounts without a slug.
+  const subscriptionTenantId =
+    !isSuperAdmin && user?.tenant_id ? user.tenant_id : activeTenantId;
+  const { data: enabledModules } = useTenantModules(subscriptionTenantId);
 
   const isLocked = (navId: string) => roleConfig.navLocked.includes(navId);
 
@@ -62,7 +69,9 @@ export default function Navigation({
   // the unsubscribed ones are padlocked and clicking opens the subscribe
   // prompt instead of the module. (Hiding also had a fail-open flicker while
   // entitlements loaded.) The API's 403 middleware stays the real enforcement.
+  // Super-admins are never padlocked — they administer plans, not buy them.
   const notEntitled = (id: TabId) =>
+    !isSuperAdmin &&
     MODULE_TAB_IDS.has(id) &&
     enabledModules !== undefined &&
     !enabledModules.includes(id);
