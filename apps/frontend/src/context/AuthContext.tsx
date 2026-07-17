@@ -11,7 +11,7 @@ import {
   useState,
 } from 'react';
 
-import { apiFetch, setAccessToken, setRefreshHandler } from '@/lib/api';
+import { ApiException, apiFetch, setAccessToken, setRefreshHandler } from '@/lib/api';
 
 /**
  * Real authentication for the control plane (super-admin + tenant accounts).
@@ -82,7 +82,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Mint a new access token from the stored refresh token. Returns the token or
-  // null (→ session cleared). Registered with the api client for 401 retries.
+  // null. Registered with the api client for 401 retries.
+  //
+  // Session-clearing policy (2026-07-17 intermittent-logout fix): only clear
+  // when the SERVER says the refresh token is bad (400/401/403). Network
+  // blips, rolling-deploy 5xxs and timeouts are transient — punishing them
+  // with a logout was why the operator kept getting signed out; on those we
+  // keep the tokens and simply let the caller's request fail once (the next
+  // action retries the refresh).
   const doRefresh = useCallback(async (): Promise<string | null> => {
     const refresh = refreshTokenRef.current;
     if (!refresh) return null;
@@ -94,8 +101,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(token);
       store(token, refresh);
       return token;
-    } catch {
-      clearSession();
+    } catch (e) {
+      const status = e instanceof ApiException ? e.status : 0;
+      if (status === 400 || status === 401 || status === 403) {
+        clearSession(); // genuinely invalid/expired/revoked refresh token
+      }
       return null;
     }
   }, [clearSession]);
@@ -119,11 +129,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     refreshTokenRef.current = refresh;
     setAccessToken(access);
-    apiFetch<AuthUser>('/auth/me')
-      .then((env) => setUser(env.data))
-      .catch(() => clearSession())
-      .finally(() => setLoading(false));
+    // Same transient-vs-invalid policy as doRefresh: a flaky connection at
+    // page load must not destroy a valid session. One delayed retry covers
+    // the blip; only an explicit auth rejection clears the tokens.
+    let retryTimer: number | undefined;
+    const hydrate = (attempt: number) => {
+      apiFetch<AuthUser>('/auth/me')
+        .then((env) => { setUser(env.data); setLoading(false); })
+        .catch((e) => {
+          const status = e instanceof ApiException ? e.status : 0;
+          if (status === 401 || status === 403) {
+            clearSession();
+            setLoading(false);
+          } else if (attempt === 0) {
+            retryTimer = window.setTimeout(() => hydrate(1), 2500);
+          } else {
+            setLoading(false); // still offline — keep tokens, render signed-out UI
+          }
+        });
+    };
+    hydrate(0);
+    return () => window.clearTimeout(retryTimer);
   }, [clearSession]);
+
+  // Proactive refresh: renew the access token every ~12 minutes while the tab
+  // is visible, so requests almost never land on the 401-expiry path at all
+  // (the reactive refresh stays as the safety net). A failed background
+  // renewal is harmless — doRefresh only clears on explicit rejection.
+  useEffect(() => {
+    if (!user) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void doRefresh();
+    }, 12 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [user, doRefresh]);
 
   const adopt = useCallback((data: TokenPair) => {
     refreshTokenRef.current = data.refresh_token;
