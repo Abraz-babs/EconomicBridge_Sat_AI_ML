@@ -46,6 +46,25 @@ export function useTenantModules(tenantId: string): UseQueryResult<string[], Api
   });
 }
 
+/** The signed-in user's OWN subscription (their org's enabled modules) —
+ *  what the nav padlocks follow. Served by /auth/my-modules from the JWT:
+ *  the /tenant-modules route can't answer this for partner accounts because
+ *  the permitted_tenants guard 403s tenant headers outside the pilot list
+ *  (the account's own org included) — the 2026-07-17 no-padlocks bug. */
+export function useMyModules(active: boolean): UseQueryResult<string[], ApiException> {
+  return useQuery<string[], ApiException>({
+    queryKey: ['my-modules'],
+    enabled: active,
+    staleTime: 30 * 1000,
+    queryFn: async ({ signal }) => {
+      const env = await apiFetch<{ tenant_id: string | null; enabled: string[] }>(
+        '/auth/my-modules', { signal },
+      );
+      return env.data.enabled;
+    },
+  });
+}
+
 // ─── Super-admin: registry + entitlement management ────────────────────────
 
 export interface TenantCategory {

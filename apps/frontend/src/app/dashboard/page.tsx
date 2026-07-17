@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { RoleProvider } from '@/context/RoleContext';
 import { useAuth } from '@/context/AuthContext';
 import { useTenant, PILOT_TENANT_IDS } from '@/context/TenantContext';
-import { useTenantModules } from '@/hooks/useTenantModules';
+import { useMyModules } from '@/hooks/useTenantModules';
 import EmptyRegion from '@/components/common/EmptyRegion';
 import NotSubscribed from '@/components/common/NotSubscribed';
 import SubscribeModal from '@/components/common/SubscribeModal';
@@ -88,13 +88,12 @@ function DashboardContent() {
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const { user, loading, isSuperAdmin } = useAuth();
   const { activeTenant, activeTenantId } = useTenant();
-  // Entitlements follow the USER'S OWN organisation's subscription
-  // (user.tenant_id registry slug), not the tenant being viewed — same query
-  // the nav uses (React Query dedupes). undefined while loading → fail-open.
-  // Super-admins are never gated: they administer every plan.
-  const subscriptionTenantId =
-    !isSuperAdmin && user?.tenant_id ? user.tenant_id : activeTenantId;
-  const { data: enabledModules } = useTenantModules(subscriptionTenantId);
+  // Entitlements follow the USER'S OWN subscription via /auth/my-modules
+  // (JWT-keyed; same query the nav uses — React Query dedupes). Not the
+  // viewed tenant, and not the X-Tenant-Id path (permitted_tenants 403s
+  // partner accounts asking about their own non-pilot org). undefined while
+  // loading → fail-open. Super-admins are never gated.
+  const { data: enabledModules } = useMyModules(Boolean(user) && !isSuperAdmin);
   const subscribed =
     isSuperAdmin ||
     !isModuleTab(activeTab) || enabledModules === undefined || enabledModules.includes(activeTab);

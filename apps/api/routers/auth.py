@@ -42,11 +42,13 @@ from schemas.auth import (
     ForgotPasswordRequest,
     LoginRequest,
     LogoutRequest,
+    MyModulesData,
     RefreshRequest,
     ResetPasswordRequest,
     TokenData,
 )
 from services.email import send_password_reset_email
+from services.modules import enabled_modules_for
 from schemas.envelope import SuccessResponse, build_meta
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -237,6 +239,21 @@ async def activate(
     data = await _issue_tokens(session, user)
     await session.commit()
     return SuccessResponse(data=data, meta=build_meta())
+
+
+@router.get("/my-modules", response_model=SuccessResponse[MyModulesData])
+async def my_modules(
+    current: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[MyModulesData]:
+    """The signed-in user's own subscription — the entitlement set the UI's
+    module padlocks follow. Keyed off the JWT's org, never the viewed-tenant
+    header (which the permitted_tenants guard rightly restricts)."""
+    slug = await _org_tenant_slug(session, current.org_id)
+    enabled = sorted(await enabled_modules_for(slug)) if slug else []
+    return SuccessResponse(
+        data=MyModulesData(tenant_id=slug, enabled=enabled), meta=build_meta(),
+    )
 
 
 @router.post("/forgot-password", response_model=SuccessResponse[ForgotAck])

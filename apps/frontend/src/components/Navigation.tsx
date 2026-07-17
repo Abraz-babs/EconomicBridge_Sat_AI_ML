@@ -2,8 +2,7 @@
 
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
-import { useTenant } from '@/context/TenantContext';
-import { useTenantModules } from '@/hooks/useTenantModules';
+import { useMyModules } from '@/hooks/useTenantModules';
 
 // Tabs that ARE modules (gated per tenant). overview + admin are always-on.
 const MODULE_TAB_IDS = new Set<string>([
@@ -52,15 +51,12 @@ export default function Navigation({
 }: NavigationProps) {
   const { roleConfig } = useRole();
   const { isSuperAdmin, user } = useAuth();
-  const { activeTenantId } = useTenant();
-  // The subscription that locks follow is the USER'S OWN organisation's
-  // (user.tenant_id — its registry slug), NOT whichever tenant is currently
-  // being VIEWED (2026-07-17 fix: a Bizra admin viewing CARE International
-  // was gated by CARE's plan, so their own disallowed modules stayed open).
-  // Fallback to the viewed tenant only for legacy accounts without a slug.
-  const subscriptionTenantId =
-    !isSuperAdmin && user?.tenant_id ? user.tenant_id : activeTenantId;
-  const { data: enabledModules } = useTenantModules(subscriptionTenantId);
+  // The subscription that locks follow is the USER'S OWN organisation's —
+  // fetched via /auth/my-modules (JWT-keyed). NOT the viewed tenant (locks
+  // must not change with the selector), and NOT via the X-Tenant-Id path
+  // (permitted_tenants 403s partner accounts asking about their own
+  // non-pilot org — which silently disabled all padlocks).
+  const { data: enabledModules } = useMyModules(Boolean(user) && !isSuperAdmin);
 
   const isLocked = (navId: string) => roleConfig.navLocked.includes(navId);
 

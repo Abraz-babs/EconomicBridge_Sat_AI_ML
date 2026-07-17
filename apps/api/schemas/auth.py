@@ -53,6 +53,15 @@ class AuthUser(BaseModel):
     tenant_id: str | None = None
 
 
+class MyModulesData(BaseModel):
+    """The signed-in user's OWN subscription (their org's registry tenant +
+    its enabled module keys). Served from the JWT — deliberately NOT via the
+    X-Tenant-Id path, whose permitted_tenants guard rightly 403s partner
+    accounts asking about non-pilot tenants (their own org included)."""
+    tenant_id: str | None
+    enabled: list[str] = []
+
+
 class TokenData(BaseModel):
     access_token: str
     refresh_token: str
