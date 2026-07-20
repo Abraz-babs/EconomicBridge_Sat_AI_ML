@@ -3,200 +3,257 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0a0f0c" />
 <title>EconomicBridge — AI & Satellite Intelligence for West Africa</title>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.9.3/mapbox-gl.css" rel="stylesheet" />
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.9.3/mapbox-gl.js"></script>
 <style>
+  /* ─── Swiss-EO · dark mission-control (Jul 2026 redesign) ───
+     Single grotesque (Helvetica) + a monospace data layer, hairline rules,
+     near-square corners, flat colour, one light-green accent. No emoji, no
+     gradient text, no glow. Pairs with the light front door as one system. */
   :root{
-    --bg:#0a0e14; --bg2:#0e141d; --ink:#eef3f7; --muted:#8aa0b2;
-    --accent:#36d39a; --accent2:#3ea6ff; --warn:#ff7a45; --crit:#ff4d4d;
-    --glass:rgba(20,28,38,.55); --line:rgba(120,150,175,.18);
-    --font:'Segoe UI',system-ui,-apple-system,sans-serif;
+    --bg:#0a0f0c; --bg2:#0f1613; --bg3:#131c17;
+    --ink:#eef3ef; --ink2:#c3ccc6; --muted:#8a978f;
+    --line:rgba(255,255,255,.12); --line2:rgba(255,255,255,.22);
+    --green:#58c197; --green2:#4bb98a;
+    /* meaningful status colours retained for the live stat row */
+    --accent:#58c197; --accent2:#5aa9e6; --warn:#e08a4a; --crit:#e2685a;
+    --sans:"Helvetica Neue",Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --maxw:1280px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
-  body{font-family:var(--font);background:var(--bg);color:var(--ink);overflow-x:hidden}
+  html{scroll-behavior:smooth}
+  body{font-family:var(--sans);background:var(--bg);color:var(--ink);overflow-x:hidden;line-height:1.6;
+       -webkit-font-smoothing:antialiased}
+  img{max-width:100%;display:block}
+  a{color:inherit;text-decoration:none}
 
-  /* starfield */
-  #stars{position:fixed;inset:0;z-index:0;background:
-     radial-gradient(1200px 600px at 75% -10%, rgba(62,166,255,.12), transparent 60%),
-     radial-gradient(900px 500px at 10% 110%, rgba(54,211,154,.10), transparent 60%),
-     var(--bg);overflow:hidden}
-  .star{position:absolute;width:2px;height:2px;border-radius:50%;background:#cfe3f2;opacity:.6;
+  /* starfield — subtle orbital texture */
+  #stars{position:fixed;inset:0;z-index:0;background:var(--bg);overflow:hidden}
+  .star{position:absolute;width:2px;height:2px;border-radius:50%;background:#cfe3f2;opacity:.5;
         animation:twinkle 4s ease-in-out infinite}
-  @keyframes twinkle{0%,100%{opacity:.2}50%{opacity:.9}}
+  @keyframes twinkle{0%,100%{opacity:.14}50%{opacity:.7}}
 
-  .wrap{position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:0 24px}
+  .wrap{position:relative;z-index:1;max-width:var(--maxw);margin:0 auto;padding:0 24px}
 
-  header{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
-  .brand{display:flex;align-items:center;gap:12px;font-weight:700;letter-spacing:.3px;font-size:19px}
-  .brand .dot{width:30px;height:30px;border-radius:9px;background:
-     linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;font-size:15px}
-  .brand small{display:block;font-weight:400;font-size:11px;color:var(--muted);letter-spacing:.4px}
-  nav a{color:var(--muted);text-decoration:none;margin-left:22px;font-size:14px}
+  /* ─── Header ─── */
+  header{display:flex;align-items:center;justify-content:space-between;padding:20px 0;
+         border-bottom:1px solid var(--line)}
+  .brand{display:flex;align-items:center;gap:13px;font-weight:600;font-size:18px;letter-spacing:-.01em}
+  .brand .mark{width:40px;height:40px;border-radius:2px;border:1px solid var(--line2);
+     display:grid;place-items:center;font-family:var(--mono);font-size:13px;font-weight:500;color:var(--green)}
+  .brand small{display:block;font-weight:400;font-family:var(--mono);font-size:9.5px;color:var(--muted);
+     letter-spacing:.06em;text-transform:uppercase;margin-top:3px}
+  nav a{color:var(--muted);margin-left:24px;font-size:13.5px}
   nav a:hover{color:var(--ink)}
 
-  .hero{display:grid;grid-template-columns:1.05fr .95fr;gap:22px;align-items:stretch;margin-top:8px}
-  @media(max-width:920px){.hero{grid-template-columns:1fr}}
+  /* ─── Full-bleed merged hero (satellite/globe over farmland, frameless) ─── */
+  .lhero{position:relative;z-index:1;min-height:clamp(440px,64vh,600px);display:grid;align-items:center;
+         overflow:hidden;border-bottom:1px solid var(--line)}
+  .lhero-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .lhero-scrim{position:absolute;inset:0;
+     background:linear-gradient(90deg,rgba(6,10,8,.90) 0%,rgba(6,10,8,.62) 45%,rgba(6,10,8,.20) 100%)}
+  .lhero-inner{position:relative;z-index:2;padding:48px 24px}
+  .eyebrow{display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11px;
+     text-transform:uppercase;letter-spacing:.14em;color:var(--ink2);margin-bottom:22px}
+  .eyebrow::before{content:"";width:8px;height:8px;background:var(--green)}
+  .lhero h1{font-size:clamp(34px,5vw,58px);line-height:1.03;font-weight:600;letter-spacing:-.028em;
+     max-width:720px;margin-bottom:20px}
+  .lhero h1 em{font-style:normal;color:var(--green)}
+  .lhero p{color:var(--ink2);font-size:clamp(15px,1.7vw,18px);max-width:560px;margin-bottom:30px}
+  .lhero-actions{display:flex;flex-wrap:wrap;align-items:center;gap:16px 22px}
+  .tlink{color:var(--ink);font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.06em;
+     border-bottom:1px solid var(--line2);padding-bottom:3px}
+  .tlink:hover{color:var(--green);border-color:var(--green)}
+  .telem{margin-top:34px;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.03em;
+     display:inline-flex;align-items:center;gap:10px}
+  .telem::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green);
+     box-shadow:0 0 0 0 rgba(88,193,151,.5);animation:pulse 2.4s infinite}
 
-  .panel{position:relative;border:1px solid var(--line);border-radius:18px;overflow:hidden;
-         background:var(--bg2);min-height:420px}
+  /* ─── Credibility rule ─── */
+  .cred{display:flex;flex-wrap:wrap;justify-content:center;gap:9px 28px;padding:16px 0;
+        border-bottom:1px solid var(--line)}
+  .cred span{color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.04em;
+     text-transform:uppercase;display:inline-flex;align-items:center;gap:8px}
+  .cred span::before{content:"";width:5px;height:5px;background:var(--green);flex:none}
+
+  /* ─── Section scaffolding ─── */
+  .sec{padding:64px 0 0}
+  .section-kicker{color:var(--green);font-family:var(--mono);font-size:11.5px;font-weight:500;
+     text-transform:uppercase;letter-spacing:.16em;display:inline-flex;align-items:center;gap:9px;margin-bottom:18px}
+  .section-kicker::before{content:"";width:7px;height:7px;background:var(--green)}
+
+  /* ─── Live operations · maps (kept) ─── */
+  .maps{display:grid;grid-template-columns:1.05fr .95fr;gap:16px;align-items:stretch}
+  @media(max-width:920px){.maps{grid-template-columns:1fr}}
+  .panel{position:relative;border:1px solid var(--line);border-radius:2px;overflow:hidden;
+         background:var(--bg2);min-height:440px}
   .panel .map{position:absolute;inset:0}
-  .panel .label{position:absolute;top:14px;left:16px;z-index:3;font-size:12px;letter-spacing:1.5px;
-     text-transform:uppercase;color:var(--muted);background:rgba(8,12,18,.55);
-     padding:6px 11px;border-radius:8px;border:1px solid var(--line);
-     -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+  .panel .label{position:absolute;top:14px;left:14px;z-index:3;font-family:var(--mono);font-size:10.5px;
+     letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);background:rgba(6,10,8,.66);
+     padding:6px 11px;border-radius:2px;border:1px solid var(--line);
+     -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:inline-flex;align-items:center;gap:8px}
+  .panel .label::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green);
+     box-shadow:0 0 0 0 rgba(88,193,151,.5);animation:pulse 2.4s infinite}
 
-  /* orbiting satellite over the globe */
+  /* orbiting satellite node over the globe (CSS mark, no emoji) */
   .orbit{position:absolute;left:50%;top:52%;width:340px;height:340px;margin:-170px 0 0 -170px;z-index:4;
-     border:1px dashed rgba(62,166,255,.35);border-radius:50%;transform:rotateX(68deg);
-     animation:spin 16s linear infinite;pointer-events:none}
-  .sat{position:absolute;top:-34px;left:50%;margin-left:-34px;width:68px;height:68px;
-     font-size:58px;line-height:68px;text-align:center;
-     filter:drop-shadow(0 0 12px rgba(62,166,255,.95));animation:counter 16s linear infinite}
+     border:1px dashed rgba(90,169,230,.30);border-radius:50%;transform:rotateX(68deg);
+     animation:spin 18s linear infinite;pointer-events:none}
+  .sat{position:absolute;top:-6px;left:50%;margin-left:-6px;width:12px;height:12px;border-radius:2px;
+     background:var(--green);box-shadow:0 0 14px 2px rgba(88,193,151,.9);animation:counter 18s linear infinite}
   @keyframes spin{to{transform:rotateX(68deg) rotateZ(360deg)}}
   @keyframes counter{to{transform:rotateZ(-360deg)}}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(88,193,151,.5)}70%{box-shadow:0 0 0 9px rgba(88,193,151,0)}100%{box-shadow:0 0 0 0 rgba(88,193,151,0)}}
 
-  /* glass card helper (used by stats) */
-  .glass{background:var(--glass);border:1px solid var(--line);
-     -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
-     border-radius:14px;padding:16px 18px}
-  /* intro band — headline sits above the maps so the globe stays clear */
-  .intro{text-align:center;max-width:780px;margin:18px auto 30px}
-  .intro h1{font-size:34px;line-height:1.18;margin-bottom:12px}
-  .intro h1 b{background:linear-gradient(90deg,var(--accent),var(--accent2));
-     -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .intro p{color:var(--muted);font-size:15px;line-height:1.6;max-width:620px;margin:0 auto}
-  @media(max-width:560px){.intro h1{font-size:26px}}
-
-  .statRow{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin:26px 0 8px}
+  /* ─── Stat row (count-up, kept, mono) ─── */
+  .statRow{display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin:24px 0 0;
+     border-top:1px solid var(--line)}
   @media(max-width:920px){.statRow{grid-template-columns:repeat(3,1fr)}}
   @media(max-width:560px){.statRow{grid-template-columns:repeat(2,1fr)}}
-  .stat{background:var(--glass);border:1px solid var(--line);border-radius:14px;padding:16px;
-     -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-  .stat .v{font-size:24px;font-weight:700}
-  .stat .v.accent{color:var(--accent)} .stat .v.blue{color:var(--accent2)}
+  .stat{padding:20px 18px 20px 0;border-right:1px solid var(--line)}
+  .stat:nth-child(6n){border-right:0}
+  .stat .v{font-family:var(--mono);font-size:24px;font-weight:500;letter-spacing:-.02em}
+  .stat .v.accent{color:var(--green)} .stat .v.blue{color:var(--accent2)}
   .stat .v.warn{color:var(--warn)} .stat .v.crit{color:var(--crit)}
-  .stat .k{font-size:11.5px;color:var(--muted);margin-top:4px;letter-spacing:.3px}
+  .stat .k{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:8px;
+     text-transform:uppercase;letter-spacing:.04em}
 
-  /* ticker */
-  .ticker{margin-top:18px;border:1px solid var(--line);border-radius:12px;background:rgba(8,12,18,.5);
-     overflow:hidden;white-space:nowrap;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
-  .ticker .run{display:inline-block;padding:11px 0;animation:slide 34s linear infinite}
-  .ticker span{margin:0 26px;font-size:13px;color:#bcd0df}
-  .ticker .pin{color:var(--accent)}
+  /* ─── Ticker ─── */
+  .ticker{margin-top:20px;border:1px solid var(--line);border-radius:2px;background:var(--bg2);
+     overflow:hidden;white-space:nowrap}
+  .ticker .run{display:inline-block;padding:11px 0;animation:slide 40s linear infinite}
+  .ticker span{margin:0 26px;font-family:var(--mono);font-size:12px;color:var(--ink2);letter-spacing:.02em}
+  .ticker .pin{color:var(--green)}
   @keyframes slide{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
-  /* modules */
-  .modwrap{margin:34px 0 10px}
-  .modwrap h3{font-size:14px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
-  .mods{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  /* ─── Modules ─── */
+  .modwrap{padding-top:64px}
+  .mods{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:4px}
   @media(max-width:920px){.mods{grid-template-columns:repeat(2,1fr)}}
-  .mod{position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:16px}
-  .mod .ic{font-size:20px} .mod .t{font-weight:600;margin:8px 0 4px;font-size:14.5px}
-  .mod .d{font-size:12px;color:var(--muted);line-height:1.5}
-  .mod .tag{position:absolute;top:12px;right:12px;font-size:10px;letter-spacing:.5px;padding:3px 8px;border-radius:20px}
-  .tag.live{background:rgba(54,211,154,.15);color:var(--accent);border:1px solid rgba(54,211,154,.4)}
-  .tag.pro{background:rgba(255,122,69,.13);color:var(--warn);border:1px solid rgba(255,122,69,.4)}
+  @media(max-width:520px){.mods{grid-template-columns:1fr}}
+  .mod{position:relative;background:var(--bg2);border:1px solid var(--line);border-radius:2px;overflow:hidden;
+     transition:border-color 150ms ease}
+  .mod:hover{border-color:rgba(88,193,151,.5)}
+  .modscene{position:relative;height:96px;background:#04070c}
+  .modscene img{width:100%;height:100%;object-fit:cover;opacity:.88;display:block}
+  .modscene::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(15,22,19,.92))}
+  .mod .tag{position:absolute;top:11px;right:11px;z-index:2;font-family:var(--mono);font-size:9.5px;
+     letter-spacing:.06em;padding:3px 8px;border-radius:2px}
+  .tag.live{background:rgba(88,193,151,.14);color:var(--green);border:1px solid rgba(88,193,151,.42)}
+  .tag.pro{background:rgba(224,138,74,.12);color:var(--warn);border:1px solid rgba(224,138,74,.42)}
+  .mod-inner{padding:15px 16px 18px}
+  .mod .t{font-weight:600;margin:0 0 6px;font-size:14.5px;color:var(--ink)}
+  .mod .d{font-size:12.5px;color:var(--muted);line-height:1.55}
 
-  /* CTA */
-  .cta{display:flex;flex-direction:column;align-items:center;gap:14px;margin:46px 0 30px;text-align:center}
-  .cta h2{font-size:22px}
-  .explore{display:inline-flex;align-items:center;gap:10px;padding:15px 30px;border-radius:40px;
-     font-size:16px;font-weight:700;color:#04140d;text-decoration:none;cursor:pointer;border:0;
-     background:linear-gradient(135deg,var(--accent),var(--accent2));
-     box-shadow:0 0 0 0 rgba(54,211,154,.55);animation:glow 2.6s ease-in-out infinite}
-  @keyframes glow{0%,100%{box-shadow:0 0 22px 2px rgba(54,211,154,.35)}50%{box-shadow:0 0 34px 8px rgba(62,166,255,.45)}}
-  .explore:hover{transform:translateY(-1px)}
-  footer{color:var(--muted);font-size:12px;text-align:center;padding:26px 0;border-top:1px solid var(--line);margin-top:24px}
-  .fallback{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:13px;
-     background:linear-gradient(135deg,#0c111a,#0e141d)}
+  /* ─── CTA band (over orbit photo) ─── */
+  .ctaband{position:relative;border-radius:2px;overflow:hidden;border:1px solid var(--line);margin:64px 0 26px}
+  .ctaband > img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.55}
+  .ctaband::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(6,10,8,.90),rgba(6,10,8,.55))}
+  .cta{position:relative;z-index:2;display:flex;flex-direction:column;align-items:flex-start;gap:16px;
+     padding:52px 40px;text-align:left}
+  .cta h2{font-size:clamp(22px,3vw,30px);font-weight:600;letter-spacing:-.02em}
+  .explore{display:inline-flex;align-items:center;gap:10px;padding:14px 28px;border-radius:2px;
+     font-size:14px;font-weight:600;color:#06120c;cursor:pointer;border:0;background:var(--green)}
+  .explore:hover{background:var(--green2)}
+  .cta .note{color:var(--ink2);font-family:var(--mono);font-size:11px;letter-spacing:.03em}
 
-  /* ─── EO refresh (Jul 2026): credibility strip · module scenes · CTA band ─── */
-  .cred{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 26px;margin:18px auto 4px;max-width:900px}
-  .cred span{color:#9fe8c6;font-size:11px;letter-spacing:.06em;display:inline-flex;align-items:center;gap:7px}
-  .cred span::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--accent);flex:none}
-  .mod{padding:0;overflow:hidden}
-  .modscene{position:relative;height:88px;background:#04070c}
-  .modscene img{width:100%;height:100%;object-fit:cover;opacity:.9;display:block}
-  .modscene::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(14,20,29,.9))}
-  .mod .tag{z-index:2}
-  .mod-inner{padding:11px 14px 15px}
-  .mod-inner .ic{font-size:16px;opacity:.85}
-  .ctaband{position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--line);margin:40px 0 26px}
-  .ctaband > img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-  .ctaband::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(4,7,12,.78),rgba(4,7,12,.5))}
-  .ctaband .cta{position:relative;z-index:2;margin:0;padding:44px 20px}
+  footer{color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.03em;text-align:center;
+     padding:28px 0;border-top:1px solid var(--line);margin-top:24px}
+  .fallback{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);
+     font-family:var(--mono);font-size:12px;background:var(--bg2)}
 </style>
 </head>
 <body>
 <div id="stars"></div>
+
 <div class="wrap">
   <header>
-    <div class="brand">
-      <span class="dot">🌍</span>
+    <a class="brand" href="/">
+      <span class="mark">EB</span>
       <div>EconomicBridge<small>AI &amp; Satellite Mapping · West Africa</small></div>
-    </div>
+    </a>
     <nav>
       <a href="#modules">Modules</a>
       <a href="#coverage">Coverage</a>
       <a href="#explore">Pricing</a>
     </nav>
   </header>
+</div>
 
-  <!-- INTRO band — sits between the header and the maps so it never covers the globe -->
-  <section class="intro">
-    <h1>Turning <b>satellites</b> into economic opportunity</h1>
+<!-- FULL-BLEED MERGED HERO — satellite & green-blue Earth melting into farmland -->
+<section class="lhero">
+  <img class="lhero-bg" src="/site-assets/hero-merge.jpg"
+       alt="A satellite and the green-blue Earth over West African farmland — Earth observation for agriculture"
+       fetchpriority="high" />
+  <div class="lhero-scrim"></div>
+  <div class="wrap lhero-inner">
+    <div class="eyebrow">Earth observation · West Africa</div>
+    <h1>Turning <em>satellites</em> into economic opportunity</h1>
     <p>Poverty, farmland, disaster &amp; connectivity intelligence for 52 West African
        administrative units — built on live NASA, Copernicus, World Bank &amp; UNICEF GIGA feeds.</p>
-    <div class="cred">
-      <span>Backed by AWS</span>
-      <span>3 Esri integrations live</span>
-      <span>NDPA 2023</span>
-      <span>99.5% SLA · externally measured</span>
-      <span>Daily autonomous scans</span>
+    <div class="lhero-actions">
+      <button type="button" class="explore" onclick="enterApp()">Explore EconomicBridge →</button>
+      <a class="tlink" href="#modules">Seven modules ↓</a>
     </div>
-  </section>
+    <div class="telem">14°30′N 04°12′E · satellite over West African farmland · live feeds active</div>
+  </div>
+</section>
 
-  <!-- HERO: globe (with orbiting satellite) + Africa blinker map -->
-  <section class="hero">
-    <div class="panel" id="globePanel">
-      <div class="label">Live orbital view</div>
-      <div id="globe" class="map"></div>
-      <div class="orbit"><div class="sat">🛰️</div></div>
-    </div>
-
-    <div class="panel" id="africaPanel">
-      <div class="label">Active coverage · 3 countries</div>
-      <div id="africa" class="map"></div>
-    </div>
-  </section>
-
-  <!-- TEASER STATS (count-up) -->
-  <div class="statRow" id="coverage">
-    <div class="stat"><div class="v accent" data-to="120000" data-suffix="+">0</div><div class="k">Schools mapped (GIGA)</div></div>
-    <div class="stat"><div class="v blue" data-to="10">0</div><div class="k">Pilot regions live</div></div>
-    <div class="stat"><div class="v" data-to="6">0</div><div class="k">Live data feeds</div></div>
-    <div class="stat"><div class="v crit" data-to="30">0</div><div class="k">Active fires today</div></div>
-    <div class="stat"><div class="v warn" data-to="250" data-suffix="+">0</div><div class="k">Villages identified</div></div>
-    <div class="stat"><div class="v" data-to="3">0</div><div class="k">Countries</div></div>
+<div class="wrap">
+  <!-- credibility rule -->
+  <div class="cred">
+    <span>Backed by AWS</span>
+    <span>3 Esri integrations live</span>
+    <span>NDPA 2023</span>
+    <span>99.5% SLA · externally measured</span>
+    <span>Daily autonomous scans</span>
   </div>
 
-  <!-- LIVE TICKER -->
-  <div class="ticker"><div class="run" id="run"></div></div>
+  <!-- LIVE OPERATIONS: globe (with orbiting satellite) + Africa blinker map -->
+  <section class="sec">
+    <div class="section-kicker">Live operations</div>
+    <div class="maps">
+      <div class="panel" id="globePanel">
+        <div class="label">Live orbital view</div>
+        <div id="globe" class="map"></div>
+        <div class="orbit"><div class="sat"></div></div>
+      </div>
+      <div class="panel" id="africaPanel">
+        <div class="label">Active coverage · 3 countries</div>
+        <div id="africa" class="map"></div>
+      </div>
+    </div>
+
+    <!-- TEASER STATS (count-up) -->
+    <div class="statRow" id="coverage">
+      <div class="stat"><div class="v accent" data-to="120000" data-suffix="+">0</div><div class="k">Schools mapped (GIGA)</div></div>
+      <div class="stat"><div class="v blue" data-to="10">0</div><div class="k">Pilot regions live</div></div>
+      <div class="stat"><div class="v" data-to="6">0</div><div class="k">Live data feeds</div></div>
+      <div class="stat"><div class="v crit" data-to="30">0</div><div class="k">Active fires today</div></div>
+      <div class="stat"><div class="v warn" data-to="250" data-suffix="+">0</div><div class="k">Villages identified</div></div>
+      <div class="stat"><div class="v" data-to="3">0</div><div class="k">Countries</div></div>
+    </div>
+
+    <!-- LIVE TICKER -->
+    <div class="ticker"><div class="run" id="run"></div></div>
+  </section>
 
   <!-- MODULES -->
   <section class="modwrap" id="modules">
-    <h3>Seven intelligence modules</h3>
+    <div class="section-kicker">Seven intelligence modules</div>
     <div class="mods">
-      <div class="mod"><div class="modscene"><img src="/site-assets/photo-mapping.jpg" loading="lazy" alt="Night-lights view of Earth from orbit"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="ic">🛰️</div><div class="t">Poverty Mapping</div><div class="d">VIIRS nightlights + WorldPop — vulnerable settlements the census missed.</div></div></div>
-      <div class="mod"><div class="modscene"><img src="/site-assets/mod-aid.jpg" loading="lazy" alt="Satellite view of settlements served by aid agencies"><span class="tag pro">PRO</span></div><div class="mod-inner"><div class="ic">🤝</div><div class="t">Aid Coordination</div><div class="d">Agency overlap + gap analysis across LGAs to stop duplicated relief.</div></div></div>
-      <div class="mod"><div class="modscene"><img src="/site-assets/mod-farmland.jpg" loading="lazy" alt="Satellite view of farmland field patterns"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="ic">🌾</div><div class="t">Farmland Protection</div><div class="d">NASA FIRMS heat + encroachment &amp; 48–72h conflict prediction.</div></div></div>
-      <div class="mod"><div class="modscene"><img src="/site-assets/mod-cropguard.jpg" loading="lazy" alt="Sentinel-2 land-cover classification of cropland"><span class="tag pro">PRO</span></div><div class="mod-inner"><div class="ic">🌱</div><div class="t">CropGuard</div><div class="d">Sentinel-2 NDVI anomaly + crop-disease detection from leaf photos.</div></div></div>
-      <div class="mod"><div class="modscene"><img src="/site-assets/mod-shockguard.jpg" loading="lazy" alt="Satellite view of a reservoir and river system"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="ic">🌊</div><div class="t">ShockGuard</div><div class="d">Sentinel-1 SAR flood + drought early warning, 48h ahead.</div></div></div>
-      <div class="mod"><div class="modscene"><img src="/site-assets/mod-mobility.jpg" loading="lazy" alt="Satellite view of an urban area"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="ic">🧭</div><div class="t">Mobility Compass</div><div class="d">World Bank cost-of-living + income, ₦ and $, for resettlement.</div></div></div>
-      <div class="mod"><div class="modscene"><img src="/site-assets/mod-skills.jpg" loading="lazy" alt="Satellite view of a town with schools"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="ic">🏫</div><div class="t">SkillsBridge</div><div class="d">UNICEF GIGA school density + connectivity gap index per LGA.</div></div></div>
-      <div class="mod"><div class="modscene"><img src="/site-assets/mod-sms.jpg" loading="lazy" alt="Night-lights satellite view for field dispatch"><span class="tag pro">PRO</span></div><div class="mod-inner"><div class="ic">📡</div><div class="t">SMS Alerts</div><div class="d">AWS SNS / Twilio dispatch to field teams on high-confidence events.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/photo-mapping.jpg" loading="lazy" alt="Night-lights view of Earth from orbit"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="t">Poverty Mapping</div><div class="d">VIIRS nightlights + WorldPop — vulnerable settlements the census missed.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-aid.jpg" loading="lazy" alt="Satellite view of settlements served by aid agencies"><span class="tag pro">PRO</span></div><div class="mod-inner"><div class="t">Aid Coordination</div><div class="d">Agency overlap + gap analysis across LGAs to stop duplicated relief.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-farmland.jpg" loading="lazy" alt="Satellite view of farmland field patterns"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="t">Farmland Protection</div><div class="d">NASA FIRMS heat + encroachment &amp; 48–72h conflict prediction.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-cropguard.jpg" loading="lazy" alt="Sentinel-2 land-cover classification of cropland"><span class="tag pro">PRO</span></div><div class="mod-inner"><div class="t">CropGuard</div><div class="d">Sentinel-2 NDVI anomaly + crop-disease detection from leaf photos.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-shockguard.jpg" loading="lazy" alt="Satellite view of a reservoir and river system"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="t">ShockGuard</div><div class="d">Sentinel-1 SAR flood + drought early warning, 48h ahead.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-mobility.jpg" loading="lazy" alt="Satellite view of an urban area"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="t">Mobility Compass</div><div class="d">World Bank cost-of-living + income, ₦ and $, for resettlement.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-skills.jpg" loading="lazy" alt="Satellite view of a town with schools"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="t">SkillsBridge</div><div class="d">UNICEF GIGA school density + connectivity gap index per LGA.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-sms.jpg" loading="lazy" alt="Night-lights satellite view for field dispatch"><span class="tag pro">PRO</span></div><div class="mod-inner"><div class="t">SMS Alerts</div><div class="d">AWS SNS / Twilio dispatch to field teams on high-confidence events.</div></div></div>
     </div>
   </section>
 
@@ -206,7 +263,7 @@
     <section class="cta">
       <h2>Step inside the live dashboard</h2>
       <button type="button" class="explore" onclick="enterApp()">Explore EconomicBridge →</button>
-      <div style="color:#bcd6c6;font-size:12px">Open-access overview · paid modules unlock per subscription &amp; region</div>
+      <div class="note">Open-access overview · paid modules unlock per subscription &amp; region</div>
     </section>
   </div>
 
@@ -236,10 +293,10 @@ function countUp(){document.querySelectorAll('.stat .v').forEach(el=>{
 
 // ticker
 (function(){const items=[
-  "🔥 28 active fires detected — Senegal","🏫 7,371 schools mapped — Ghana",
-  "🌊 Sentinel-1 flood watch — Kebbi","🧭 Median income ₦269,833 ($294) — Kebbi",
-  "🛰️ VNP46A2 nightlight refresh — 10 regions","🌱 NDVI anomaly scan — Benue",
-  "📡 World Bank ICT feed synced — 3 countries","⚠️ Conflict risk model — 48h horizon"];
+  "28 active fires detected — Senegal","7,371 schools mapped — Ghana",
+  "Sentinel-1 flood watch — Kebbi","Median income ₦269,833 ($294) — Kebbi",
+  "VNP46A2 nightlight refresh — 10 regions","NDVI anomaly scan — Benue",
+  "World Bank ICT feed synced — 3 countries","Conflict risk model — 48h horizon"];
   const html=items.map(i=>`<span><span class="pin">●</span> ${i}</span>`).join('');
   document.getElementById('run').innerHTML=html+html;})();
 
@@ -256,7 +313,7 @@ function blip(color){const el=document.createElement('div');el.className='blip';
   el.style.cssText=`width:11px;height:11px;border-radius:50%;background:${color};
     box-shadow:0 0 0 0 ${color}99;animation:pulse 2.1s infinite`;return el;}
 const pulseCss=document.createElement('style');
-pulseCss.textContent=`@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(54,211,154,.6)}70%{box-shadow:0 0 0 16px rgba(54,211,154,0)}100%{box-shadow:0 0 0 0 rgba(54,211,154,0)}}`;
+pulseCss.textContent=`@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(88,193,151,.6)}70%{box-shadow:0 0 0 16px rgba(88,193,151,0)}100%{box-shadow:0 0 0 0 rgba(88,193,151,0)}}`;
 document.head.appendChild(pulseCss);
 
 window.addEventListener('load',()=>{
@@ -278,8 +335,8 @@ window.addEventListener('load',()=>{
         type:'Feature',geometry:{type:'LineString',coordinates:[p.c,HUB]}}))};
       africa.addSource('links',{type:'geojson',data:links});
       africa.addLayer({id:'links',type:'line',source:'links',
-        paint:{'line-color':'#3ea6ff','line-width':1,'line-opacity':0.35,'line-dasharray':[2,3]}});
-      PILOTS.forEach(p=>{new mapboxgl.Marker({element:blip('#36d39a')}).setLngLat(p.c)
+        paint:{'line-color':'#5aa9e6','line-width':1,'line-opacity':0.35,'line-dasharray':[2,3]}});
+      PILOTS.forEach(p=>{new mapboxgl.Marker({element:blip('#58c197')}).setLngLat(p.c)
         .setPopup(new mapboxgl.Popup({offset:14,closeButton:false}).setText(p.name)).addTo(africa);});
     });
   }catch(e){document.querySelectorAll('.map').forEach(m=>m.innerHTML='<div class="fallback">Map failed to load</div>');}
