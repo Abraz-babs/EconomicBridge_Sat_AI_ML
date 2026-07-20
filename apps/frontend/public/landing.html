@@ -111,6 +111,22 @@
   footer{color:var(--muted);font-size:12px;text-align:center;padding:26px 0;border-top:1px solid var(--line);margin-top:24px}
   .fallback{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:13px;
      background:linear-gradient(135deg,#0c111a,#0e141d)}
+
+  /* ─── EO refresh (Jul 2026): credibility strip · module scenes · CTA band ─── */
+  .cred{display:flex;flex-wrap:wrap;justify-content:center;gap:8px 26px;margin:18px auto 4px;max-width:900px}
+  .cred span{color:#9fe8c6;font-size:11px;letter-spacing:.06em;display:inline-flex;align-items:center;gap:7px}
+  .cred span::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--accent);flex:none}
+  .mod{padding:0;overflow:hidden}
+  .modscene{position:relative;height:88px;background:#04070c}
+  .modscene img{width:100%;height:100%;object-fit:cover;opacity:.9;display:block}
+  .modscene::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(14,20,29,.9))}
+  .mod .tag{z-index:2}
+  .mod-inner{padding:11px 14px 15px}
+  .mod-inner .ic{font-size:16px;opacity:.85}
+  .ctaband{position:relative;border-radius:18px;overflow:hidden;border:1px solid var(--line);margin:40px 0 26px}
+  .ctaband > img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .ctaband::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(4,7,12,.78),rgba(4,7,12,.5))}
+  .ctaband .cta{position:relative;z-index:2;margin:0;padding:44px 20px}
 </style>
 </head>
 <body>
@@ -133,6 +149,13 @@
     <h1>Turning <b>satellites</b> into economic opportunity</h1>
     <p>Poverty, farmland, disaster &amp; connectivity intelligence for 52 West African
        administrative units — built on live NASA, Copernicus, World Bank &amp; UNICEF GIGA feeds.</p>
+    <div class="cred">
+      <span>Backed by AWS</span>
+      <span>3 Esri integrations live</span>
+      <span>NDPA 2023</span>
+      <span>99.5% SLA · externally measured</span>
+      <span>Daily autonomous scans</span>
+    </div>
   </section>
 
   <!-- HERO: globe (with orbiting satellite) + Africa blinker map -->
@@ -166,25 +189,28 @@
   <section class="modwrap" id="modules">
     <h3>Seven intelligence modules</h3>
     <div class="mods">
-      <div class="mod"><span class="tag live">LIVE</span><div class="ic">🛰️</div><div class="t">Poverty Mapping</div><div class="d">VIIRS nightlights + WorldPop — vulnerable settlements the census missed.</div></div>
-      <div class="mod"><span class="tag pro">PRO</span><div class="ic">🤝</div><div class="t">Aid Coordination</div><div class="d">Agency overlap + gap analysis across LGAs to stop duplicated relief.</div></div>
-      <div class="mod"><span class="tag live">LIVE</span><div class="ic">🌾</div><div class="t">Farmland Protection</div><div class="d">NASA FIRMS heat + encroachment &amp; 48–72h conflict prediction.</div></div>
-      <div class="mod"><span class="tag pro">PRO</span><div class="ic">🌱</div><div class="t">CropGuard</div><div class="d">Sentinel-2 NDVI anomaly + crop-disease detection from leaf photos.</div></div>
-      <div class="mod"><span class="tag live">LIVE</span><div class="ic">🌊</div><div class="t">ShockGuard</div><div class="d">Sentinel-1 SAR flood + drought early warning, 48h ahead.</div></div>
-      <div class="mod"><span class="tag live">LIVE</span><div class="ic">🧭</div><div class="t">Mobility Compass</div><div class="d">World Bank cost-of-living + income, ₦ and $, for resettlement.</div></div>
-      <div class="mod"><span class="tag live">LIVE</span><div class="ic">🏫</div><div class="t">SkillsBridge</div><div class="d">UNICEF GIGA school density + connectivity gap index per LGA.</div></div>
-      <div class="mod"><span class="tag pro">PRO</span><div class="ic">📡</div><div class="t">SMS Alerts</div><div class="d">AWS SNS / Twilio dispatch to field teams on high-confidence events.</div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/photo-mapping.jpg" loading="lazy" alt="Night-lights view of Earth from orbit"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="ic">🛰️</div><div class="t">Poverty Mapping</div><div class="d">VIIRS nightlights + WorldPop — vulnerable settlements the census missed.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-aid.jpg" loading="lazy" alt="Satellite view of settlements served by aid agencies"><span class="tag pro">PRO</span></div><div class="mod-inner"><div class="ic">🤝</div><div class="t">Aid Coordination</div><div class="d">Agency overlap + gap analysis across LGAs to stop duplicated relief.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-farmland.jpg" loading="lazy" alt="Satellite view of farmland field patterns"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="ic">🌾</div><div class="t">Farmland Protection</div><div class="d">NASA FIRMS heat + encroachment &amp; 48–72h conflict prediction.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-cropguard.jpg" loading="lazy" alt="Sentinel-2 land-cover classification of cropland"><span class="tag pro">PRO</span></div><div class="mod-inner"><div class="ic">🌱</div><div class="t">CropGuard</div><div class="d">Sentinel-2 NDVI anomaly + crop-disease detection from leaf photos.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-shockguard.jpg" loading="lazy" alt="Satellite view of a reservoir and river system"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="ic">🌊</div><div class="t">ShockGuard</div><div class="d">Sentinel-1 SAR flood + drought early warning, 48h ahead.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-mobility.jpg" loading="lazy" alt="Satellite view of an urban area"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="ic">🧭</div><div class="t">Mobility Compass</div><div class="d">World Bank cost-of-living + income, ₦ and $, for resettlement.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-skills.jpg" loading="lazy" alt="Satellite view of a town with schools"><span class="tag live">LIVE</span></div><div class="mod-inner"><div class="ic">🏫</div><div class="t">SkillsBridge</div><div class="d">UNICEF GIGA school density + connectivity gap index per LGA.</div></div></div>
+      <div class="mod"><div class="modscene"><img src="/site-assets/mod-sms.jpg" loading="lazy" alt="Night-lights satellite view for field dispatch"><span class="tag pro">PRO</span></div><div class="mod-inner"><div class="ic">📡</div><div class="t">SMS Alerts</div><div class="d">AWS SNS / Twilio dispatch to field teams on high-confidence events.</div></div></div>
     </div>
   </section>
 
-  <!-- CTA -->
-  <section class="cta" id="explore">
-    <h2>Step inside the live dashboard</h2>
-    <button type="button" class="explore" onclick="enterApp()">Explore EconomicBridge →</button>
-    <div style="color:var(--muted);font-size:12px">Open-access overview · paid modules unlock per subscription &amp; region</div>
-  </section>
+  <!-- CTA (over a real orbit photo) -->
+  <div class="ctaband" id="explore">
+    <img src="/site-assets/photo-cta.jpg" alt="A satellite over the blue Earth" loading="lazy" decoding="async" />
+    <section class="cta">
+      <h2>Step inside the live dashboard</h2>
+      <button type="button" class="explore" onclick="enterApp()">Explore EconomicBridge →</button>
+      <div style="color:#bcd6c6;font-size:12px">Open-access overview · paid modules unlock per subscription &amp; region</div>
+    </section>
+  </div>
 
-  <footer>EconomicBridge — operated by Bizra Farms Integrated Nigeria Ltd · af-south-1 data residency · © 2026</footer>
+  <footer>EconomicBridge — operated by Bizra Farms Integrated Nigeria Ltd · AWS eu-west-1 (Ireland) · © 2026</footer>
 </div>
 
 <script>

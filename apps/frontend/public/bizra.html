@@ -416,6 +416,28 @@
         .about-large { inset: 0; }
         .cta-band { grid-template-columns: 1fr; }
       }
+
+      /* ─── EO refresh (Jul 2026): credibility strip · module satellite scenes · orbit band ─── */
+      .cred-strip { background: var(--green-soft); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+      .cred-inner { max-width: 1120px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; gap: 10px 30px; justify-content: center; align-items: center; }
+      .cred-inner span { color: var(--green-dark); font-size: 12.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 7px; }
+      .cred-inner span::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex: none; }
+      /* Give each module card a real satellite scene of what it watches */
+      .module-card { padding: 0; overflow: hidden; }
+      .module-scene { position: relative; height: 120px; background: #04160c; }
+      .module-scene img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: .92; }
+      .module-scene::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 52%, rgba(4, 77, 42, 0.78)); }
+      .module-scene .module-no { position: absolute; top: 10px; left: 10px; margin: 0; z-index: 2; }
+      .module-inner { padding: 14px 20px 20px; }
+      /* Cinematic orbit band — the ascent from field to satellite */
+      .orbit-band { position: relative; min-height: 270px; display: grid; place-items: center; text-align: center; overflow: hidden; background: #04070c; }
+      .orbit-band > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+      .orbit-band::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(3, 8, 14, 0.80), rgba(3, 8, 14, 0.42)); }
+      .orbit-inner { position: relative; z-index: 2; max-width: 740px; padding: 46px 24px; }
+      .orbit-inner .kick { color: #7be3b4; font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 12px; }
+      .orbit-inner h2 { color: #fff; font-size: clamp(26px, 3.4vw, 38px); margin: 0 0 10px; line-height: 1.15; }
+      .orbit-inner p { color: #cfe3d8; font-size: 15px; line-height: 1.7; margin: 0; }
+      @media (max-width: 680px) { .cred-inner { gap: 8px 18px; font-size: 12px; } }
     </style>
   </head>
   <body>
@@ -502,6 +524,17 @@
           <div><b>500+</b><span>Positive Reviews</span></div>
         </div>
       </section>
+
+      <!-- ─── CREDIBILITY STRIP (EconomicBridge) ─── -->
+      <div class="cred-strip">
+        <div class="cred-inner">
+          <span>Backed by AWS</span>
+          <span>3 Esri integrations live</span>
+          <span>NDPA 2023 compliant</span>
+          <span>99.5% SLA · externally measured</span>
+          <span>447 LGAs scanned daily</span>
+        </div>
+      </div>
 
       <!-- ─── ABOUT ─── -->
       <section class="section" id="about">
@@ -630,6 +663,16 @@
         </div>
       </section>
 
+      <!-- ─── ORBIT BAND (field → satellite) ─── -->
+      <section class="orbit-band" aria-label="From the field to the satellite">
+        <img src="/site-assets/photo-impact.jpg" alt="A satellite over the Earth at the day–night terminator" loading="lazy" decoding="async" />
+        <div class="orbit-inner">
+          <div class="kick">From the soil to the satellite</div>
+          <h2>The same fields we farm, now watched from orbit</h2>
+          <p>Bizra Farms grew from agriculture into Earth observation. EconomicBridge turns open satellite data into daily decisions for the governments and institutions protecting West African livelihoods.</p>
+        </div>
+      </section>
+
       <!-- ─── PLATFORM ─── -->
       <section class="section platform" id="platform">
         <div class="wrap">
@@ -640,46 +683,60 @@
           </div>
           <div class="module-grid">
             <div class="module-card">
-              <div class="module-no">01</div>
-              <h3>Economic Visibility</h3>
-              <p>Maps vulnerable settlements, household pressure, and poverty intensity so partners target support with evidence.</p>
-              <span class="module-meta">3,000+ villages targetable</span>
+              <div class="module-scene"><img src="/site-assets/photo-mapping.jpg" loading="lazy" decoding="async" alt="Night-lights view of Earth from orbit — populated settlements glowing" /><div class="module-no">01</div></div>
+              <div class="module-inner">
+                <h3>Economic Visibility</h3>
+                <p>Maps vulnerable settlements, household pressure, and poverty intensity so partners target support with evidence.</p>
+                <span class="module-meta">3,000+ villages targetable</span>
+              </div>
             </div>
             <div class="module-card">
-              <div class="module-no">02</div>
-              <h3>Aid Coordination</h3>
-              <p>Shows who serves which communities, where no agency is present, and where programs overlap.</p>
-              <span class="module-meta">Gap &amp; duplication detection</span>
+              <div class="module-scene"><img src="/site-assets/mod-aid.jpg" loading="lazy" decoding="async" alt="Satellite view of dense settlements served by aid agencies" /><div class="module-no">02</div></div>
+              <div class="module-inner">
+                <h3>Aid Coordination</h3>
+                <p>Shows who serves which communities, where no agency is present, and where programs overlap.</p>
+                <span class="module-meta">Gap &amp; duplication detection</span>
+              </div>
             </div>
             <div class="module-card">
-              <div class="module-no">03</div>
-              <h3>Farmland Protection</h3>
-              <p>Detects conflict-risk and encroachment patterns, plus economic value at risk, before losses mount.</p>
-              <span class="module-meta">SAR · 24–72h warning</span>
+              <div class="module-scene"><img src="/site-assets/mod-farmland.jpg" loading="lazy" decoding="async" alt="Satellite view of farmland field patterns under monitoring" /><div class="module-no">03</div></div>
+              <div class="module-inner">
+                <h3>Farmland Protection</h3>
+                <p>Detects conflict-risk and encroachment patterns, plus economic value at risk, before losses mount.</p>
+                <span class="module-meta">SAR · 24–72h warning</span>
+              </div>
             </div>
             <div class="module-card">
-              <div class="module-no">04</div>
-              <h3>CropGuard</h3>
-              <p>Combines AI crop-disease prediction, NDVI anomaly detection, and crop-price intelligence.</p>
-              <span class="module-meta">ResNet-50 · trained model</span>
+              <div class="module-scene"><img src="/site-assets/mod-cropguard.jpg" loading="lazy" decoding="async" alt="Sentinel-2 10 m land-cover classification of cropland" /><div class="module-no">04</div></div>
+              <div class="module-inner">
+                <h3>CropGuard</h3>
+                <p>Combines AI crop-disease prediction, NDVI anomaly detection, and crop-price intelligence.</p>
+                <span class="module-meta">ResNet-50 · trained model</span>
+              </div>
             </div>
             <div class="module-card">
-              <div class="module-no">05</div>
-              <h3>ShockGuard</h3>
-              <p>Flood, drought, and heat early-warning workflows so responders prioritize before a shock peaks.</p>
-              <span class="module-meta">SMS response path</span>
+              <div class="module-scene"><img src="/site-assets/mod-shockguard.jpg" loading="lazy" decoding="async" alt="Satellite view of a reservoir and river system for flood monitoring" /><div class="module-no">05</div></div>
+              <div class="module-inner">
+                <h3>ShockGuard</h3>
+                <p>Flood, drought, and heat early-warning workflows so responders prioritize before a shock peaks.</p>
+                <span class="module-meta">SMS response path</span>
+              </div>
             </div>
             <div class="module-card">
-              <div class="module-no">06</div>
-              <h3>Mobility Compass</h3>
-              <p>Maps income mobility, affordability, and capacity to absorb displacement pressure.</p>
-              <span class="module-meta">USD &amp; NGN views</span>
+              <div class="module-scene"><img src="/site-assets/mod-mobility.jpg" loading="lazy" decoding="async" alt="Satellite view of an urban area — economy and movement" /><div class="module-no">06</div></div>
+              <div class="module-inner">
+                <h3>Mobility Compass</h3>
+                <p>Maps income mobility, affordability, and capacity to absorb displacement pressure.</p>
+                <span class="module-meta">USD &amp; NGN views</span>
+              </div>
             </div>
             <div class="module-card">
-              <div class="module-no">07</div>
-              <h3>SkillsBridge</h3>
-              <p>Identifies where digital learning and remote-work access should land first for underserved youth.</p>
-              <span class="module-meta">Connectivity &amp; youth signal</span>
+              <div class="module-scene"><img src="/site-assets/mod-skills.jpg" loading="lazy" decoding="async" alt="Satellite view of a town where schools and youth are located" /><div class="module-no">07</div></div>
+              <div class="module-inner">
+                <h3>SkillsBridge</h3>
+                <p>Identifies where digital learning and remote-work access should land first for underserved youth.</p>
+                <span class="module-meta">Connectivity &amp; youth signal</span>
+              </div>
             </div>
           </div>
           <div class="platform-cta">
