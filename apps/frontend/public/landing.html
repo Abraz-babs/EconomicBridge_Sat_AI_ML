@@ -103,8 +103,9 @@
   .orbit{position:absolute;left:50%;top:52%;width:340px;height:340px;margin:-170px 0 0 -170px;z-index:4;
      border:1px dashed rgba(90,169,230,.30);border-radius:50%;transform:rotateX(68deg);
      animation:spin 18s linear infinite;pointer-events:none}
-  .sat{position:absolute;top:-6px;left:50%;margin-left:-6px;width:12px;height:12px;border-radius:2px;
-     background:var(--green);box-shadow:0 0 14px 2px rgba(88,193,151,.9);animation:counter 18s linear infinite}
+  .sat{position:absolute;top:-17px;left:50%;margin-left:-24px;width:48px;height:34px;color:var(--green);
+     filter:drop-shadow(0 0 7px rgba(88,193,151,.85));animation:counter 18s linear infinite}
+  .sat svg{width:48px;height:34px;display:block}
   @keyframes spin{to{transform:rotateX(68deg) rotateZ(360deg)}}
   @keyframes counter{to{transform:rotateZ(-360deg)}}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(88,193,151,.5)}70%{box-shadow:0 0 0 9px rgba(88,193,151,0)}100%{box-shadow:0 0 0 0 rgba(88,193,151,0)}}
@@ -220,7 +221,7 @@
       <div class="panel" id="globePanel">
         <div class="label">Live orbital view</div>
         <div id="globe" class="map"></div>
-        <div class="orbit"><div class="sat"></div></div>
+        <div class="orbit"><div class="sat"><svg viewBox="0 0 64 34" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="9" width="16" height="16" rx="1"/><line x1="9" y1="9" x2="9" y2="25"/><rect x="47" y="9" width="16" height="16" rx="1"/><line x1="55" y1="9" x2="55" y2="25"/><line x1="17" y1="17" x2="24" y2="17"/><line x1="40" y1="17" x2="47" y2="17"/></g><rect x="24" y="10" width="16" height="14" rx="2" fill="currentColor"/><line x1="32" y1="10" x2="32" y2="3" stroke="currentColor" stroke-width="2"/><circle cx="32" cy="2.5" r="2.5" fill="currentColor"/></svg></div></div>
       </div>
       <div class="panel" id="africaPanel">
         <div class="label">Active coverage · 3 countries</div>
