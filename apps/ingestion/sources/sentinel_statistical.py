@@ -17,10 +17,13 @@ Two canonical evalscripts ship with the module:
   EVALSCRIPT_S2_NDVI  — Sentinel-2 L2A NDVI = (B08 - B04) / (B08 + B04).
                         Drives the drought + NDVI anomaly detectors.
 
-The API uses Processing Units (PU). Each request over our pilot ROIs
-(state-sized, daily aggregation, 60-day window) costs ~3-6 PU. CDSE's
-free tier gives us 30000 PU/month, so we have headroom — but DON'T call
-this from the request hot path. Schedule the ingest task instead.
+The API uses Processing Units (PU). Each per-LGA request (small box, ~90-120
+day window) costs a few PU, and the daily encroachment + ShockGuard sweeps
+issue many — enough to exhaust CDSE's free 30000 PU/month if left unbounded
+(it did, Jul 2026: two sweeps double-fetching the same LGA slice). Two guards
+now keep us inside the quota: the per-day series cache in encroachment_detector
+(one fetch shared by both sweeps) and the monthly-quota circuit breaker below.
+DON'T call this from the request hot path — schedule the ingest task instead.
 """
 from __future__ import annotations
 
@@ -50,6 +53,41 @@ def _retry_after_seconds(header: str | None, attempt: int) -> float:
         except ValueError:
             pass
     return min(2.0 ** attempt, _MAX_BACKOFF_SECONDS)
+
+
+# ─── Monthly-quota circuit breaker ──────────────────────────────────────────
+# CDSE's free tier allots a fixed number of Processing Units + requests per
+# calendar month. When it's spent, every Statistical call returns 403
+# ACCESS_INSUFFICIENT_PROCESSING_UNITS until CDSE re-activates the account on the
+# 1st of next month. Hammering it meanwhile only burns the request allowance and
+# slows the sweeps, so on the first such 403 we trip a breaker and skip all
+# Statistical calls (empty result = "no new data") until month roll-over. Process
+# -global; a pod restart re-learns it from the next real 403.
+_QUOTA_EXHAUSTED_CODE = "ACCESS_INSUFFICIENT_PROCESSING_UNITS"
+_quota_blocked_until: datetime | None = None
+
+
+def _first_of_next_month(now: datetime) -> datetime:
+    year, month = (now.year + 1, 1) if now.month == 12 else (now.year, now.month + 1)
+    return datetime(year, month, 1, tzinfo=timezone.utc)
+
+
+def _quota_breaker_open(now: datetime) -> bool:
+    """True while the monthly-quota breaker is tripped. Auto-resets once the
+    blocked-until date (1st of next month, UTC) has passed."""
+    global _quota_blocked_until
+    if _quota_blocked_until is None:
+        return False
+    if now < _quota_blocked_until:
+        return True
+    _quota_blocked_until = None
+    return False
+
+
+def _trip_quota_breaker(now: datetime) -> datetime:
+    global _quota_blocked_until
+    _quota_blocked_until = _first_of_next_month(now)
+    return _quota_blocked_until
 
 
 # ─── Canonical evalscripts ────────────────────────────────────────────────
@@ -201,6 +239,14 @@ class SentinelStatisticalClient:
         if start >= end:
             raise ValueError("start must be earlier than end")
 
+        now = datetime.now(timezone.utc)
+        if _quota_breaker_open(now):
+            log.debug(
+                "statistical: CDSE monthly quota breaker open until %s — skipping call",
+                _quota_blocked_until,
+            )
+            return []
+
         token = await self._copernicus.access_token()
         body = _build_request_body(
             bbox=bbox, start=start, end=end, dataset=dataset,
@@ -234,9 +280,16 @@ class SentinelStatisticalClient:
                 )
                 await asyncio.sleep(delay)
         if resp.status_code != 200:
-            raise CopernicusError(
-                f"CDSE Statistical {resp.status_code}: {resp.text[:300]}"
-            )
+            body = resp.text[:300]
+            if resp.status_code == 403 and _QUOTA_EXHAUSTED_CODE in body:
+                until = _trip_quota_breaker(now)
+                log.error(
+                    "CDSE monthly quota exhausted (%s) — pausing all Statistical "
+                    "calls until %s (CDSE re-activates on the 1st)",
+                    _QUOTA_EXHAUSTED_CODE, until,
+                )
+                return []
+            raise CopernicusError(f"CDSE Statistical {resp.status_code}: {body}")
         try:
             payload = resp.json()
         except ValueError as exc:

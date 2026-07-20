@@ -80,8 +80,13 @@ ALERT_THRESHOLD = float(os.environ.get("ENCROACHMENT_ALERT_THRESHOLD", "0.30"))
 LGA_BOX_HALF_M = 1500   # ~3 km box around an LGA centroid — captures local farmland
 LGA_NDVI_WINDOW_DAYS = 90
 LGA_SAR_WINDOW_DAYS = 120
-# Sentinel revisit ~5-6 days; refresh each LGA on that cadence (env-tunable).
-REVISIT_DAYS = max(1, int(os.environ.get("ENCROACHMENT_REVISIT_DAYS", "6")))
+# Sentinel revisit ~5-6 days, but each due LGA costs 2 CDSE Statistical calls
+# (NDVI + SAR) and BOTH the encroachment and ShockGuard sweeps scan the same
+# rolling slice — so the naive daily CDSE load was 4 calls/LGA. A 12-day revisit
+# (env-tunable) keeps the whole-month Processing-Unit spend inside the free CDSE
+# quota; the shared same-day series cache below removes the ShockGuard double-
+# fetch. Only dial ENCROACHMENT_REVISIT_DAYS down with confirmed PU headroom.
+REVISIT_DAYS = max(1, int(os.environ.get("ENCROACHMENT_REVISIT_DAYS", "12")))
 
 # VIIRS Black Marble "new light in dark farmland" — a YEAR-ROUND human-activity
 # signal (NASA, daily). A light appearing where it was dark (baseline below
@@ -385,13 +390,29 @@ def select_lgas(
     return [g for i, g in enumerate(lgas) if (i + d) % REVISIT_DAYS == 0]
 
 
+# Shared same-day series cache. The encroachment sweep (07:00 UTC) and the
+# ShockGuard sweep (07:30 UTC) select the SAME rolling LGA slice, so without a
+# cache each due LGA's NDVI + SAR series is pulled from CDSE twice a day. Keyed
+# by (lon, lat, UTC-day ordinal); the second sweep reuses the first's result, so
+# each LGA costs 2 Statistical calls/day instead of 4 — the single biggest lever
+# keeping us inside the free monthly Processing-Unit quota, at zero coverage
+# cost. Stale-day entries are evicted on write so the dict stays small.
+_SERIES_CACHE: dict[tuple[float, float, int], tuple[list[float], list[float], date | None]] = {}
+
+
 async def _fetch_lga_series(
     client: SentinelStatisticalClient, lon: float, lat: float,
 ) -> tuple[list[float], list[float], date | None]:
     """Sentinel-2 NDVI + Sentinel-1 SAR series over a small box around one LGA
     centroid, oldest→newest. Mirrors the Farm Check query (per-pixel cloud
-    masking on the optical pass)."""
+    masking on the optical pass). Cached per (lon, lat, UTC-day) so the two daily
+    sweeps share one CDSE fetch instead of double-billing it — see _SERIES_CACHE."""
     end = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    day = end.toordinal()
+    key = (round(lon, 4), round(lat, 4), day)
+    hit = _SERIES_CACHE.get(key)
+    if hit is not None:
+        return hit
     bbox = bbox_around(lat, lon, LGA_BOX_HALF_M)
     ndvi_points = await client.compute_time_series(
         bbox=bbox, start=end - timedelta(days=LGA_NDVI_WINDOW_DAYS), end=end,
@@ -406,7 +427,11 @@ async def _fetch_lga_series(
     ndvi = [p.mean for p in ndvi_points if p.mean is not None]
     sar = [p.mean for p in sar_points if p.mean is not None]
     dates = [p.interval_from.date() for p in (ndvi_points + sar_points) if p.mean is not None]
-    return ndvi, sar, (max(dates) if dates else None)
+    result = (ndvi, sar, (max(dates) if dates else None))
+    for stale in [k for k in _SERIES_CACHE if k[2] != day]:
+        _SERIES_CACHE.pop(stale, None)
+    _SERIES_CACHE[key] = result
+    return result
 
 
 async def _nightlight_by_point(
