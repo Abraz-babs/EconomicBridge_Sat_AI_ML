@@ -20,6 +20,7 @@ from typing import Any
 import httpx
 import pytest
 
+import sources.sentinel_statistical as ss
 from config import get_settings
 from sources.copernicus import CopernicusClient, CopernicusError
 from sources.sentinel_statistical import (
@@ -28,8 +29,13 @@ from sources.sentinel_statistical import (
     SentinelStatisticalClient,
     StatPoint,
     _build_request_body,
+    _first_of_next_month,
     _parse_iso,
     _parse_response,
+    _QUOTA_EXHAUSTED_CODE,
+    _quota_breaker_open,
+    _retry_after_seconds,
+    _trip_quota_breaker,
 )
 
 
@@ -302,3 +308,135 @@ def test_iso_parser_round_trips_with_z():
     dt = _parse_iso("2026-04-15T12:34:56Z")
     assert dt.year == 2026 and dt.month == 4 and dt.day == 15
     assert dt.tzinfo is not None
+
+
+# ─── Monthly-quota circuit breaker + 429 retry ─────────────────────────────
+# Guards the CDSE free-tier PU budget (see 31c3a54): on a 403
+# ACCESS_INSUFFICIENT_PROCESSING_UNITS we trip a process-global breaker and
+# skip all Statistical calls until the 1st of next month; 429s are retried
+# with Retry-After-aware backoff. The breaker is module-global, so every test
+# that touches it resets the state via `reset_breaker` to avoid bleeding into
+# the response-shape tests above.
+
+
+@pytest.fixture
+def reset_breaker():
+    ss._quota_blocked_until = None
+    yield
+    ss._quota_blocked_until = None
+
+
+def test_first_of_next_month_rolls_within_year():
+    nxt = _first_of_next_month(datetime(2026, 7, 25, 14, 0, tzinfo=timezone.utc))
+    assert (nxt.year, nxt.month, nxt.day) == (2026, 8, 1)
+    assert nxt.tzinfo is timezone.utc
+
+
+def test_first_of_next_month_rolls_over_december():
+    nxt = _first_of_next_month(datetime(2026, 12, 31, 23, 59, tzinfo=timezone.utc))
+    assert (nxt.year, nxt.month, nxt.day) == (2027, 1, 1)
+
+
+def test_breaker_closed_by_default(reset_breaker):
+    assert _quota_breaker_open(datetime(2026, 7, 25, tzinfo=timezone.utc)) is False
+
+
+def test_breaker_opens_then_auto_resets_after_rollover(reset_breaker):
+    now = datetime(2026, 7, 25, tzinfo=timezone.utc)
+    until = _trip_quota_breaker(now)
+    assert until == datetime(2026, 8, 1, tzinfo=timezone.utc)
+    # Inside the blocked window the breaker reads open.
+    assert _quota_breaker_open(datetime(2026, 7, 26, tzinfo=timezone.utc)) is True
+    # Once the 1st arrives it auto-closes and clears the stored date.
+    assert _quota_breaker_open(datetime(2026, 8, 1, tzinfo=timezone.utc)) is False
+    assert ss._quota_blocked_until is None
+
+
+@pytest.mark.parametrize("header,attempt,expected", [
+    ("5", 0, 5.0),               # honour Retry-After
+    ("999", 0, 30.0),            # capped at _MAX_BACKOFF_SECONDS
+    ("not-a-number", 3, 8.0),    # unparseable header -> 2**attempt
+    (None, 4, 16.0),             # no header -> exponential backoff
+    (None, 10, 30.0),            # backoff capped
+])
+def test_retry_after_seconds(header, attempt, expected):
+    assert _retry_after_seconds(header, attempt) == expected
+
+
+@pytest.mark.asyncio
+async def test_quota_403_trips_breaker_and_returns_empty(configured, reset_breaker):
+    """A 403 ACCESS_INSUFFICIENT_PROCESSING_UNITS yields [] (not an error) and
+    arms the breaker so subsequent calls short-circuit until month roll-over."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "openid-connect/token" in str(request.url):
+            return httpx.Response(200, content=json.dumps({
+                "access_token": "t", "expires_in": 1800, "token_type": "Bearer",
+            }).encode())
+        return httpx.Response(403, content=f"quota spent: {_QUOTA_EXHAUSTED_CODE}".encode())
+
+    copernicus = CopernicusClient(http=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    client = SentinelStatisticalClient(copernicus)
+    out = await client.compute_time_series(
+        bbox=(3.6, 10.8, 5.5, 13.2),
+        start=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        dataset="sentinel-1-grd",
+        evalscript=EVALSCRIPT_S1_VV_DB,
+    )
+    assert out == []
+    assert ss._quota_blocked_until is not None
+
+
+@pytest.mark.asyncio
+async def test_open_breaker_short_circuits_without_calling(configured, reset_breaker):
+    """While the breaker is open, no HTTP call is made — not even a token fetch."""
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(500, content=b"should never be reached")
+
+    ss._quota_blocked_until = _first_of_next_month(datetime.now(timezone.utc))
+    copernicus = CopernicusClient(http=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    client = SentinelStatisticalClient(copernicus)
+    out = await client.compute_time_series(
+        bbox=(3.6, 10.8, 5.5, 13.2),
+        start=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        dataset="sentinel-1-grd",
+        evalscript=EVALSCRIPT_S1_VV_DB,
+    )
+    assert out == []
+    assert calls["n"] == 0
+
+
+@pytest.mark.asyncio
+async def test_429_is_retried_then_succeeds(configured, reset_breaker, monkeypatch):
+    """A 429 is retried (backoff slept out) and the following 200 is parsed."""
+    async def _no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(ss.asyncio, "sleep", _no_sleep)
+    state = {"stat_calls": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "openid-connect/token" in str(request.url):
+            return httpx.Response(200, content=json.dumps({
+                "access_token": "t", "expires_in": 1800, "token_type": "Bearer",
+            }).encode())
+        state["stat_calls"] += 1
+        if state["stat_calls"] == 1:
+            return httpx.Response(429, headers={"Retry-After": "0"}, content=b"slow down")
+        return httpx.Response(200, content=json.dumps(_stat_payload(points=2)).encode())
+
+    copernicus = CopernicusClient(http=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    client = SentinelStatisticalClient(copernicus)
+    out = await client.compute_time_series(
+        bbox=(3.6, 10.8, 5.5, 13.2),
+        start=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        dataset="sentinel-1-grd",
+        evalscript=EVALSCRIPT_S1_VV_DB,
+    )
+    assert state["stat_calls"] == 2   # one retry
+    assert len(out) == 2
