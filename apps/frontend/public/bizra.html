@@ -477,7 +477,7 @@
         <img class="hero-full-bg" src="/site-assets/hero-merge.jpg" alt="A satellite and the green-blue Earth over West African farmland — Earth observation for agriculture" fetchpriority="high" />
         <div class="hero-full-scrim"></div>
         <div class="hero-full-inner">
-          <div class="eyebrow">Earth observation · West Africa</div>
+          <div class="eyebrow">EconomicBridge · by Bizra Farms Integrated</div>
           <h1>Satellite intelligence for the fields that <span>feed West Africa</span></h1>
           <p class="hero-copy">AI and satellite intelligence that helps governments, NGOs, and farmers detect risk earlier and protect livelihoods faster across Nigeria and ECOWAS.</p>
           <div class="hero-actions">
@@ -782,12 +782,9 @@
             <div class="section-kicker">Testimonials</div>
             <h2>Trusted by farmers and the partners we serve</h2>
           </div>
-          <div class="testimonial-grid">
-            <div class="testimonial-tabs" id="testimonialTabs"></div>
-            <div class="testimonial-panel">
-              <p class="quote" id="quoteText"></p>
-              <div class="quote-name" id="quoteName"></div>
-            </div>
+          <div class="testimonial-panel" style="max-width:760px;margin:0 auto;text-align:center;">
+            <p class="quote">“Bizra Farms has transformed our approach to agriculture. Their organic, tech-driven methods have revitalized our farm and substantially increased our yield.”</p>
+            <div class="quote-name">Mustapha G. · verified Bizra Farms customer</div>
           </div>
         </div>
       </section>
@@ -961,52 +958,7 @@
       });
       updateImpact();
 
-      // ─── Testimonials ───
-      const testimonials = [
-        {
-          label: "Mustapha G. — Satisfied Farmer",
-          quote:
-            "Bizra Farms has transformed our approach to agriculture. Their organic, tech-driven methods have revitalized our farm and substantially increased our yield.",
-          name: "Verified Bizra Farms customer",
-        },
-        {
-          label: "Aid Partner",
-          quote:
-            "The value is the combination of poverty visibility, aid coverage, and disaster warning in one place for faster coordination.",
-          name: "Message for development partners",
-        },
-        {
-          label: "State Agency",
-          quote:
-            "EconomicBridge gives decision-makers a practical view of hotspots, vulnerable communities, and where response should begin.",
-          name: "Message for public-sector teams",
-        },
-      ];
-      const testimonialTabs = document.querySelector("#testimonialTabs");
-      const quoteText = document.querySelector("#quoteText");
-      const quoteName = document.querySelector("#quoteName");
-      function selectTestimonial(index) {
-        const item = testimonials[index];
-        quoteText.textContent = '"' + item.quote + '"';
-        quoteName.textContent = item.name;
-        testimonialTabs.querySelectorAll("button").forEach((button, i) => {
-          button.classList.toggle("active", i === index);
-        });
-      }
-      testimonialTabs.innerHTML = testimonials
-        .map(
-          (item, index) =>
-            '<button type="button" class="' +
-            (index === 0 ? "active" : "") +
-            '" data-testimonial="' + index + '">' + item.label + "</button>"
-        )
-        .join("");
-      testimonialTabs.querySelectorAll("button").forEach((button) => {
-        button.addEventListener("click", () =>
-          selectTestimonial(Number(button.dataset.testimonial))
-        );
-      });
-      selectTestimonial(0);
+      // Testimonials: a single verified customer quote is rendered statically in the markup above.
 
       // ─── Contact form → POST /api/v1/contact (emails the operator via SES) ───
       // API origin: same-origin in production (ALB serves /api/v1); the local
