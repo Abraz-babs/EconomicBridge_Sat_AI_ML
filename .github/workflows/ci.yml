@@ -68,7 +68,10 @@ jobs:
           # and by the Slice 15 coverage reporting respectively. Install
           # unconditionally for the matrix in case a service's dev file
           # omits them.
-          pip install ruff pytest pytest-asyncio pytest-cov httpx
+          # ruff is PINNED: 0.16.0 (2026-07-23) broadened its default rule set
+          # (I001/RUF100/UP007/... ~600 new findings) and would fail CI on
+          # unchanged, previously-green code. Bump deliberately, never float.
+          pip install ruff==0.15.22 pytest pytest-asyncio pytest-cov httpx
 
       - name: Ruff (lint)
         run: ruff check apps/${{ matrix.service }}
