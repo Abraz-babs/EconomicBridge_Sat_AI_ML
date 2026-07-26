@@ -331,8 +331,16 @@ export default function ShockGuardPanel() {
             </div>
           )}
           {events.map((ev) => {
-            // Live per-LGA scan vs kept historical examples — labelled honestly.
-            const isHistorical = ev.source === 'seed_v1';
+            // Live per-LGA scan vs recorded past events — labelled honestly.
+            // `historical_v1` rows are DOCUMENTED disasters (see
+            // scripts/historical_shocks_data.py); their metrics carry the
+            // reporting source so the chip can be backed by a citation rather
+            // than just asserting "historical".
+            const isHistorical =
+              ev.source === 'historical_v1' || ev.source === 'seed_v1';
+            const cite = ev.metrics as
+              | { source?: string; source_url?: string; event_date?: string }
+              | undefined;
             return (
             <div key={ev.id} className="fp-alert-item">
               <div className="fp-alert-top">
@@ -369,6 +377,28 @@ export default function ShockGuardPanel() {
                 <span className={bandClass(ev.confidence_band)}>{ev.confidence_band}</span>
                 <span>{fmtAge(ev.created_at)}</span>
               </div>
+              {/* A HISTORICAL chip is only credible if the record can be
+                  checked — show who reported it and link the report. */}
+              {isHistorical && cite?.source && (
+                <div className="fp-alert-meta">
+                  <span>
+                    Recorded event
+                    {cite.event_date ? ` · ${cite.event_date}` : ''} ·{' '}
+                    {cite.source_url ? (
+                      <a
+                        href={cite.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: 'inherit', textDecoration: 'underline' }}
+                      >
+                        {cite.source}
+                      </a>
+                    ) : (
+                      cite.source
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
             );
           })}

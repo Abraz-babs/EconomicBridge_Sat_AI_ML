@@ -272,12 +272,15 @@ def shock_status(
 ) -> tuple[str, str]:
     """Honest status chip for a shock event row.
 
-    Seed rows and events older than _ACTIVE_MAX_AGE_DAYS are HISTORICAL
-    (grey) regardless of severity — only recent detector rows wear a live
-    severity chip.
+    Recorded past events, legacy seed rows, and anything older than
+    _ACTIVE_MAX_AGE_DAYS are HISTORICAL (grey) regardless of severity — only
+    recent detector rows wear a live severity chip. `historical_v1` rows carry
+    their real event date, so age alone would already catch them; naming the
+    source keeps the intent explicit if that date handling ever changes.
     """
     age_days = (now - created_at).days if created_at is not None else 9999
-    if source == "seed_v1" or age_days > _ACTIVE_MAX_AGE_DAYS:
+    src = source or ""
+    if src == "seed_v1" or src.startswith("historical") or age_days > _ACTIVE_MAX_AGE_DAYS:
         return "HISTORICAL", "s-historical"
     return _SEVERITY_STATUS.get(str(severity), ("MONITOR", "s-monitor"))
 
