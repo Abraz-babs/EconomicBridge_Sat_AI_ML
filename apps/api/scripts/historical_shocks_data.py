@@ -18,6 +18,11 @@ Rules for adding an entry — do not relax them:
     `note`.
   * A government FORECAST ("31 states at high risk") is NOT an event. Only
     recorded impact counts.
+  * Record EVERY documented rainy-season disaster, not just floods — the point
+    is to show what we capture across the season. Differentiate by
+    `event_type` (flood / drought / rainstorm / windstorm / landslide /
+    erosion); never force one hazard into another's label to fit a schema.
+    Migration 0036 widened the DB CHECK for exactly this.
 
 Tenants with no verified entry are deliberately left absent rather than filled
 with plausible-looking rows.
@@ -276,6 +281,41 @@ _PLATEAU_2025 = HistoricalShock(
     ),
 )
 
+_PLATEAU_RIYOM_2026 = HistoricalShock(
+    event_date=date(2026, 6, 2),
+    event_type="rainstorm",
+    title="Riyom rainstorm — Tom Gangare, Sopp Ward",
+    severity="high",
+    houses_destroyed=100,
+    lgas=("Riyom",),
+    note=(
+        "Violent rainstorm levelled over 100 houses and displaced families; "
+        "health facilities, places of worship and other infrastructure "
+        "destroyed. Recorded as a rainstorm, not a flood — the damage was "
+        "wind and rain impact, with no reported inundation."
+    ),
+    source_name="Daily Post (2 Jun 2026)",
+    source_url=(
+        "https://dailypost.ng/2026/06/02/"
+        "rainstorm-destroys-100-houses-displaces-families-in-plateau-community/"
+    ),
+)
+
+_PLATEAU_BASSA_2026 = HistoricalShock(
+    event_date=date(2026, 7, 20),
+    event_type="rainstorm",
+    title="Bassa rainstorm — Zogot community",
+    severity="medium",
+    houses_destroyed=20,
+    lgas=("Bassa",),
+    note=(
+        "Heavy downpour destroyed more than 20 houses and displaced several "
+        "families; farmland and household property damaged."
+    ),
+    source_name="allAfrica / Vanguard (20 Jul 2026)",
+    source_url="https://allafrica.com/stories/202607200089.html",
+)
+
 _SENEGAL_2022 = HistoricalShock(
     event_date=date(2022, 8, 6),
     event_type="flood",
@@ -310,7 +350,7 @@ HISTORICAL_EVENTS: dict[str, tuple[HistoricalShock, ...]] = {
     "kaduna": (_KADUNA_2024,),
     "fct": (_FCT_2024,),
     "zamfara": (_ZAMFARA_2024,),
-    "plateau": (_PLATEAU_2025,),
+    "plateau": (_PLATEAU_2025, _PLATEAU_RIYOM_2026, _PLATEAU_BASSA_2026),
     "ghana": (_GHANA_AKOSOMBO_2023,),
     "senegal": (_SENEGAL_2022,),
 }

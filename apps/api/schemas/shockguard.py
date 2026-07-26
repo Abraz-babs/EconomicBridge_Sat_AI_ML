@@ -8,7 +8,17 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
-ShockEventType = Literal["flood", "drought"]
+# What the automated detectors can DETECT — the /scan endpoint's domain.
+DetectableShockType = Literal["flood", "drought"]
+
+# What the register can RECORD. ShockGuard is a rainy-season disaster register,
+# not a flood log: rainstorms, landslides and gully erosion are real, separately
+# reported hazards. Dropping them hides disasters we captured; forcing them into
+# 'flood' corrupts the data. They are recorded under their own type instead
+# (migration 0036 widens the DB CHECK to match).
+ShockEventType = Literal[
+    "flood", "drought", "rainstorm", "windstorm", "landslide", "erosion",
+]
 Severity = Literal["low", "medium", "high", "critical"]
 ConfidenceBand = Literal["HIGH", "MEDIUM", "LOW"]
 
@@ -39,7 +49,8 @@ class ShockScanRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    event_type: ShockEventType
+    # Narrow on purpose: only flood + drought have detectors behind them.
+    event_type: DetectableShockType
     # Demo mode: inject a synthetic anomaly so the dashboard shows
     # a clear positive event for walkthroughs/screenshots.
     demo_inject_anomaly: bool = False
@@ -60,7 +71,7 @@ class ShockScanRequest(BaseModel):
 class ShockScanData(BaseModel):
     event_id: UUID | None
     tenant_id: str
-    event_type: ShockEventType
+    event_type: DetectableShockType
     detector_name: str
     detector_version: str
 

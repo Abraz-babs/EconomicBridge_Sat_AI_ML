@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import EBMap from '@/components/map/EBMap';
+import { hazardIcon, hazardLabel, hazardStyle } from './hazard';
 import { haloRadiusPx, haloRows } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
 import type { ShockEventRow } from '@/hooks/useShockGuard';
@@ -40,16 +41,13 @@ interface PositionedEvent extends ShockEventRow {
 
 
 function colourFor(ev: ShockEventRow): [number, number, number, number] {
-  if (ev.event_type === 'flood') {
-    // Blue ramp for floods
-    if (ev.severity === 'critical') return [37, 52, 148, 230];
-    if (ev.severity === 'high')     return [65, 174, 218, 220];
-    return [102, 194, 165, 200];
-  }
-  // Drought = red/orange ramp
-  if (ev.severity === 'critical') return [224, 90, 43, 230];
-  if (ev.severity === 'high')     return [255, 140, 0, 220];
-  return [240, 175, 60, 200];
+  // Hue carries the HAZARD, alpha carries the severity. The old version keyed
+  // colour off `flood ? blue : orange`, so every non-flood type — rainstorm,
+  // landslide, erosion — was painted as drought.
+  const [r, g, b] = hazardStyle(ev.event_type).rgb;
+  const alpha =
+    ev.severity === 'critical' ? 235 : ev.severity === 'high' ? 220 : 200;
+  return [r, g, b, alpha];
 }
 
 
@@ -57,9 +55,9 @@ function colourFor(ev: ShockEventRow): [number, number, number, number] {
 function tooltipFor(obj: unknown): string | null {
   const e = obj as PositionedEvent;
   if (!e?.event_type) return null;
-  const icon = e.event_type === 'flood' ? '🌊' : '🔥';
+  const { icon, label } = hazardStyle(e.event_type);
   const lines = [
-    `${icon} ${e.event_type.toUpperCase()} · ${e.severity}`,
+    `${icon} ${label.toUpperCase()} · ${e.severity}`,
     `Location: ${e.lga ?? '—'}`,
   ];
   if (e.population_at_risk != null && e.affected_area_km2 != null) {
@@ -177,7 +175,7 @@ export default function ShockEventsMap({ tenant, events }: Props) {
           data: positioned,
           getPosition: (p) => p.position,
           getText: (p) => {
-            const icon = p.event_type === 'flood' ? '🌊' : '🔥';
+            const icon = hazardIcon(p.event_type);
             const label = p.lga ?? tenant.name;
             return `${icon} ${label} · ${p.severity}`;
           },
@@ -193,8 +191,16 @@ export default function ShockEventsMap({ tenant, events }: Props) {
     ];
   }, [layerKit, positioned, pulseRows, tenant.name, pulse]);
 
-  const floodCount = positioned.filter((p) => p.event_type === 'flood').length;
-  const droughtCount = positioned.length - floodCount;
+  // Count each hazard on its own. `total - floods` silently reported
+  // rainstorms as droughts.
+  const byType = positioned.reduce<Record<string, number>>((acc, p) => {
+    acc[p.event_type] = (acc[p.event_type] ?? 0) + 1;
+    return acc;
+  }, {});
+  const typeSummary = Object.entries(byType)
+    .sort((a, b) => b[1] - a[1])
+    .map(([t, n]) => `${n} ${hazardLabel(t).toLowerCase()}`)
+    .join(' · ');
   const syntheticCount = positioned.filter((p) => p.synthetic_location).length;
 
   return (
@@ -205,20 +211,24 @@ export default function ShockEventsMap({ tenant, events }: Props) {
       ariaLabel={`Shock events map — ${tenant.name}`}
       legend={
         <>
-          <div className="fp-legend-item">
-            <div className="fp-legend-dot fp-legend-dot--flood" />
-            Flood
-          </div>
-          <div className="fp-legend-item">
-            <div className="fp-legend-dot fp-legend-dot--critical" />
-            Drought
-          </div>
+          {Object.keys(byType).sort().map((t) => {
+            const { rgb, label } = hazardStyle(t);
+            return (
+              <div className="fp-legend-item" key={t}>
+                <div
+                  className="fp-legend-dot"
+                  style={{ background: `rgb(${rgb.join(',')})` }}
+                />
+                {label}
+              </div>
+            );
+          })}
         </>
       }
       overlay={
         <>
-          {positioned.length} event{positioned.length === 1 ? '' : 's'} ·{' '}
-          {floodCount} flood · {droughtCount} drought<br />
+          {positioned.length} event{positioned.length === 1 ? '' : 's'}
+          {typeSummary && <> · {typeSummary}</>}<br />
           Circle size ≈ affected area
           {syntheticCount > 0 && (
             <>

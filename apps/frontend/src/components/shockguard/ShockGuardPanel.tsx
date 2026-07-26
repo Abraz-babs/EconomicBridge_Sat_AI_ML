@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
+import { hazardIcon, hazardLabel } from './hazard';
 import {
   useShockEvents,
   useShockScan,
@@ -345,8 +346,8 @@ export default function ShockGuardPanel() {
             <div key={ev.id} className="fp-alert-item">
               <div className="fp-alert-top">
                 <span className="fp-alert-location">
-                  {ev.event_type === 'flood' ? '🌊' : '🔥'}{' '}
-                  {ev.event_type.toUpperCase()} · {ev.lga ?? stateLabel}
+                  {hazardIcon(ev.event_type)}{' '}
+                  {hazardLabel(ev.event_type).toUpperCase()} · {ev.lga ?? stateLabel}
                 </span>
                 <span style={{
                   fontSize: '9px', fontWeight: 700, letterSpacing: '0.04em',
@@ -414,7 +415,7 @@ export default function ShockGuardPanel() {
 
 function ShockScanCard({ scan }: { scan: ShockScanData }) {
   const headline = scan.triggered
-    ? `${scan.event_type === 'flood' ? '🌊' : '🔥'} ${scan.event_type.toUpperCase()} DETECTED · ${scan.severity}`
+    ? `${hazardIcon(scan.event_type)} ${hazardLabel(scan.event_type).toUpperCase()} DETECTED · ${scan.severity}`
     : `No ${scan.event_type} activity · baseline holding`;
 
   const metricsLine = useMemo(() => {
