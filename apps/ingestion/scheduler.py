@@ -36,6 +36,7 @@ from tasks.encroachment_detector import run_encroachment_sweep
 from tasks.pass_imagery_sweep import run_pass_imagery_sweep
 from tasks.poverty_ingest import ingest_all as poverty_ingest_all
 from tasks.satellite_observations_ingest import ingest_all as satobs_ingest_all
+from tasks.rainstorm_scan import run_rainfall_scan
 from tasks.shockguard_scan import run_shockguard_scan
 from tasks.skills_ingest import ingest_skills_for_tenant
 from tasks.worldpop_raster_sample import sweep_tenant as worldpop_sweep_tenant
@@ -51,6 +52,7 @@ JOB_ID_WORLDPOP_WEEKLY = "worldpop_weekly_sun_07utc"
 JOB_ID_POVERTY_WEEKLY = "poverty_viirs_weekly_mon_0630utc"
 JOB_ID_ENCROACHMENT_DAILY = "encroachment_daily_0700utc"
 JOB_ID_SHOCKGUARD_DAILY = "shockguard_scan_daily_0730utc"
+JOB_ID_RAINFALL_DAILY = "imerg_rainfall_daily_0800utc"
 JOB_ID_MOBILITY_MONTHLY = "mobility_worldbank_monthly_1st_08utc"
 JOB_ID_AID_MONTHLY = "aid_hapi_monthly_1st_09utc"
 JOB_ID_SKILLS_MONTHLY = "skills_giga_monthly_1st_10utc"
@@ -122,6 +124,30 @@ def setup_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(hour=7, minute=0, timezone="UTC"),
         id=JOB_ID_ENCROACHMENT_DAILY,
         name="Encroachment & land-disturbance detector (all pilots, daily)",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=21600,
+    )
+
+    scheduler.add_job(
+        run_rainfall_scan,
+        # IMERG exceptional-rainfall advisory. Daily at 08:00 UTC, after the
+        # ShockGuard SAR scan — the two are complementary: SAR sees water already
+        # on the ground, rainfall sees the driver a day earlier.
+        #
+        # Fires when a day exceeds that LGA's OWN p99 wet day (thresholds range
+        # 24-163 mm across LGAs, so no fixed millimetre gate would work). Measured
+        # rate on 90 days of real data: 1.03% of LGA-days, ~4-5 advisories/day
+        # nationally. Writes event_type='flood' — validation proved daily rainfall
+        # cannot see wind-damage storms, so it never claims to.
+        #
+        # Runs off the CDSE processing-unit budget entirely (NASA archive), so it
+        # keeps working when Copernicus quota is spent. 3 requests/day cover all
+        # 447 LGAs; the 90-day baseline refetch makes a run ~15 min, hence the
+        # generous misfire grace.
+        trigger=CronTrigger(hour=8, minute=0, timezone="UTC"),
+        id=JOB_ID_RAINFALL_DAILY,
+        name="IMERG exceptional-rainfall advisory (all pilots, daily)",
         replace_existing=True,
         max_instances=1,
         misfire_grace_time=21600,

@@ -22,9 +22,11 @@ from processors.rainstorm_signal import compute_rainstorm
 from sources.gpm_imerg import (
     GpmImergClient,
     ImergAuthError,
+    RegionGrid,
     _lat_index,
     _lon_index,
     _parse_ascii,
+    _parse_region_ascii,
 )
 
 
@@ -296,3 +298,88 @@ async def test_run_is_inert_without_a_token(monkeypatch) -> None:
 
     assert await rainstorm_scan.run() == {}
     get_settings.cache_clear()
+
+
+# ─── region grid (the fetch strategy that makes this a feed) ──────────────
+# Per-LGA fetching cost 447 x 90 ~ 40,000 requests/run. One region grid per day
+# covers every LGA in it, so 3 requests/day serve all 447. These pin the parsing
+# and the index arithmetic that makes that safe.
+
+
+def test_region_parse_indexes_rows_by_their_own_longitude() -> None:
+    """Each data row labels its longitude in DEGREES. We read that back rather
+    than assuming rows arrive in index order — a reordered or partial response
+    would otherwise shift every LGA's rainfall onto its neighbour, silently."""
+    body = (
+        "Dataset: 3B-DAY-L.MS.MRG.3IMERG.20260602-...nc4\n"
+        "precipitation.lat, 9.45, 9.55, 9.65\n"
+        "precipitation.precipitation[precipitation.time=1][precipitation.lon=8.65],"
+        " 1.0, 2.0, 3.0\n"
+        "precipitation.precipitation[precipitation.time=1][precipitation.lon=8.55],"
+        " 4.0, 5.0, 6.0\n"
+    )
+    rows = _parse_region_ascii(body)
+    # 8.65 -> cell 1886, 8.55 -> cell 1885, regardless of the order they arrived
+    assert rows[_lon_index(8.65)] == [1.0, 2.0, 3.0]
+    assert rows[_lon_index(8.55)] == [4.0, 5.0, 6.0]
+    assert len(rows) == 2                      # the lat coordinate row excluded
+
+
+def test_lon_index_maps_a_point_into_its_containing_cell() -> None:
+    """Verified against a live response 2026-07-26: requesting index 1886 returns
+    centre 8.65, and cell 1886 spans [8.60, 8.70). Riyom's 8.691 must therefore
+    map to 1886. Using round() instead of floor lands on 1887 — one cell (~11 km)
+    east, which is wrong but produces perfectly plausible-looking numbers."""
+    assert _lon_index(8.691) == 1886
+    # Exact cell boundaries: (8.60+180)/0.1 is 1885.9999999999998 in binary
+    # floating point, so this is the regression for the epsilon in _lon_index.
+    assert _lon_index(8.60) == 1886
+    assert _lon_index(8.59) == 1885
+    assert _lat_index(9.50) == 995
+
+
+def test_region_grid_samples_the_same_3x3_window_as_a_point_fetch() -> None:
+    grid = RegionGrid(
+        day=date(2026, 6, 2),
+        lat0=994,
+        rows={1885: [1.0, 2.0, 3.0], 1886: [4.0, 99.0, 6.0], 1887: [7.0, 8.0, 9.0]},
+    )
+    got = grid.sample(8.691, 9.576)            # -> lon 1886, lat 995
+    assert got is not None
+    assert got.cells == 9
+    assert got.max_mm == 99.0
+
+
+def test_region_grid_drops_fill_values() -> None:
+    grid = RegionGrid(
+        day=date(2026, 6, 2), lat0=994,
+        rows={1886: [-9999.9, 12.5, -9999.9]},
+    )
+    got = grid.sample(8.691, 9.576)
+    assert got is not None
+    assert got.cells == 1 and got.max_mm == 12.5
+
+
+def test_every_pilot_tenant_is_mapped_to_a_region() -> None:
+    """An unmapped tenant silently gets no grids and therefore no advisories —
+    it would look like 'no rain' forever rather than erroring."""
+    from db import PILOT_TENANT_IDS
+    from tasks.rainstorm_scan import REGIONS, TENANT_REGION
+
+    for tenant in PILOT_TENANT_IDS:
+        assert tenant in TENANT_REGION, f"{tenant} has no IMERG region"
+        assert TENANT_REGION[tenant] in REGIONS
+
+
+def test_rainfall_job_is_registered_and_does_not_clash_with_shockguard() -> None:
+    import inspect
+
+    from scheduler import (
+        JOB_ID_RAINFALL_DAILY,
+        JOB_ID_SHOCKGUARD_DAILY,
+        setup_scheduler,
+    )
+
+    src = inspect.getsource(setup_scheduler)
+    assert "run_rainfall_scan" in src
+    assert JOB_ID_RAINFALL_DAILY != JOB_ID_SHOCKGUARD_DAILY

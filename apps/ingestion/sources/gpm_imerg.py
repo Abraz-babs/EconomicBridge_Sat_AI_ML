@@ -95,12 +95,60 @@ class DailyRain:
         return self.max_mm > 0.0
 
 
+@dataclass(frozen=True)
+class RegionGrid:
+    """One day's rainfall over a whole region, sampled per LGA afterwards.
+
+    Fetching a point at a time costs one request per LGA per day — 447 LGAs x
+    90 days is ~40,000 requests, which is not a feed, it is an outage. A region
+    is a single request whose payload is tens of KB, so three of them (Nigeria,
+    Ghana, Senegal) cover every pilot LGA for a day.
+    """
+
+    day: date
+    lat0: int                         # grid index of the first lat column
+    rows: dict[int, list[float]]      # lon index -> values along lat0..lat0+n
+
+    def sample(self, lon: float, lat: float) -> DailyRain | None:
+        """Window summary at a point, same 3x3 rule as the per-point path."""
+        lon_i, lat_i = _lon_index(lon), _lat_index(lat)
+        vals: list[float] = []
+        for li in range(lon_i - _WINDOW, lon_i + _WINDOW + 1):
+            row = self.rows.get(li)
+            if not row:
+                continue
+            for lj in range(lat_i - _WINDOW, lat_i + _WINDOW + 1):
+                k = lj - self.lat0
+                if 0 <= k < len(row) and row[k] > _FILL_BELOW:
+                    vals.append(row[k])
+        if not vals:
+            return None
+        return DailyRain(
+            day=self.day,
+            mean_mm=round(sum(vals) / len(vals), 2),
+            max_mm=round(max(vals), 2),
+            cells=len(vals),
+        )
+
+
+# Cell i spans [-180 + i*0.1, -180 + (i+1)*0.1); its published centre is
+# -179.95 + i*0.1. So the containing cell is a FLOOR, not a round — round()
+# lands one cell (~11 km) east and produces perfectly plausible wrong numbers.
+#
+# The epsilon is not cosmetic: (8.60 + 180) / 0.1 evaluates to
+# 1885.9999999999998 in binary floating point, so a bare int() puts an exact
+# cell boundary in the cell below. Every 0.1-degree boundary is affected.
+_INDEX_EPSILON = 1e-9
+
+
 def _lon_index(lon: float) -> int:
-    return min(_LON_CELLS - 1, max(0, int((lon + 180.0) / _GRID_STEP)))
+    idx = int((lon + 180.0) / _GRID_STEP + _INDEX_EPSILON)
+    return min(_LON_CELLS - 1, max(0, idx))
 
 
 def _lat_index(lat: float) -> int:
-    return min(_LAT_CELLS - 1, max(0, int((lat + 90.0) / _GRID_STEP)))
+    idx = int((lat + 90.0) / _GRID_STEP + _INDEX_EPSILON)
+    return min(_LAT_CELLS - 1, max(0, idx))
 
 
 def _window(idx: int, cells: int) -> tuple[int, int]:
@@ -140,6 +188,41 @@ def _parse_ascii(body: str) -> list[float]:
             except ValueError:
                 continue
     return values
+
+
+def _parse_region_ascii(body: str) -> dict[int, list[float]]:
+    """Parse a multi-row region response into {lon_index: [values by lat]}.
+
+    Each data row is one longitude, carrying that column's values across the
+    requested latitude span, and labels its own longitude in DEGREES:
+
+        precipitation.precipitation[...][precipitation.lon=8.55], 3.2, 3.4, ...
+
+    Reading the degree back out of the label (rather than assuming rows arrive
+    in index order) means a reordered or partial response cannot silently
+    shift every LGA's rainfall onto its neighbour.
+    """
+    out: dict[int, list[float]] = {}
+    for raw in body.splitlines():
+        label, _, rest = raw.partition(",")
+        if not rest or "lon=" not in label or "[" not in label:
+            continue
+        try:
+            lon_deg = float(label.split("lon=")[1].rstrip("]").strip())
+        except (IndexError, ValueError):
+            continue
+        vals: list[float] = []
+        for token in rest.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                vals.append(float(token))
+            except ValueError:
+                continue
+        if vals:
+            out[_lon_index(lon_deg)] = vals
+    return out
 
 
 class GpmImergClient:
@@ -258,6 +341,47 @@ class GpmImergClient:
             if row is not None:
                 out.append(row)
         return out
+
+    async def region_grid(
+        self, *, lon0: int, lon1: int, lat0: int, lat1: int, day: date,
+    ) -> RegionGrid | None:
+        """One request covering a whole region for `day`.
+
+        Index bounds are grid cells, not degrees — callers derive them from LGA
+        centroids via _lon_index/_lat_index so there is one place that knows the
+        grid layout.
+        """
+        if not self.configured:
+            return None
+        body: str | None = None
+        async with self._ctx() as client:
+            for minor in _MINOR_VERSIONS:
+                granule = _GRANULE.format(ymd=day.strftime("%Y%m%d"), minor=minor)
+                url = (
+                    f"{_OPENDAP_ROOT}/{day:%Y}/{day:%m}/{granule}.ascii"
+                    f"?precipitation[0][{lon0}:{lon1}][{lat0}:{lat1}]"
+                )
+                resp = await client.get(url, headers=self._headers())
+                if resp.status_code == 200:
+                    body = resp.text
+                    break
+                if resp.status_code in (401, 403):
+                    raise ImergAuthError(
+                        "GES DISC rejected the Earthdata token "
+                        f"({resp.status_code}). If the same token works against "
+                        "LAADS, this is APPLICATION AUTHORISATION, not expiry: "
+                        "approve 'NASA GESDISC DATA ARCHIVE' at "
+                        "urs.earthdata.nasa.gov > Applications > Authorized Apps."
+                    )
+                if resp.status_code == 404:
+                    continue
+                raise ImergError(f"IMERG {resp.status_code}: {resp.text[:200]}")
+
+        if body is None:
+            log.info("imerg: no granule published for %s", day)
+            return None
+        rows = _parse_region_ascii(body)
+        return RegionGrid(day=day, lat0=lat0, rows=rows) if rows else None
 
     async def probe(self) -> tuple[bool, str]:
         """Cheap health check that distinguishes the failure modes.

@@ -43,7 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import PILOT_TENANT_IDS, get_session_factory, set_tenant_schema
 from processors.rainstorm_signal import RainstormSignal, compute_rainstorm
-from sources.gpm_imerg import GpmImergClient, ImergAuthError
+from sources.gpm_imerg import GpmImergClient, ImergAuthError, RegionGrid
 from tasks.encroachment_detector import select_lgas
 
 log = logging.getLogger(__name__)
@@ -56,18 +56,29 @@ DETECTOR_VERSION = "1.0.0"
 # wet days behind it; at roughly half of rainy-season days being wet, 90 days
 # is the smallest window that reliably clears that bar.
 #
-# BLOCKER 1 — fetch strategy. At 90 days x 447 LGAs this is ~40,000 OPeNDAP
-# calls per run at ~3 s each. Before scheduling, either (a) fetch a per-TENANT
-# bbox instead of a per-LGA point (one call covers all of a state's LGAs, so a
-# full baseline rebuild is ~900 calls and the daily delta is ~10), or (b) cache
-# each LGA's p99 threshold and fetch only the current day. (a) is the cleaner
-# fix and the client already supports arbitrary index windows.
-#
-# BLOCKER 2 — no operational validation. The detector is calibrated against
-# real climatology but has never fired on a known event, because the four we
-# have are not rainfall-visible. It needs a season of shadow running before
-# anyone is alerted from it.
+# Fetch strategy: pulling each LGA point separately cost one request each —
+# 447 LGAs x 90 days is ~40,000 requests per run, which is not a feed, it is
+# an outage. We now pull one REGION grid per day and sample every LGA out of
+# it, so 3 requests cover all 447 LGAs for a day and a full 90-day baseline is
+# ~270 requests (~15 min).
 BASELINE_DAYS = 90
+
+# Regional grids as IMERG cell indices (0.1 deg), derived from the pilot LGA
+# centroids with a small margin. Kept explicit rather than recomputed per run
+# so request size stays predictable and reviewable: Nigeria ~4.5k cells
+# (~57 KB), Ghana ~3k, Senegal ~2.5k.
+REGIONS: dict[str, tuple[int, int, int, int]] = {
+    # name: (lon0, lon1, lat0, lat1)
+    "nigeria": (1836, 1903, 966, 1031),
+    "ghana": (1767, 1812, 947, 1012),
+    "senegal": (1623, 1683, 1023, 1064),
+}
+TENANT_REGION: dict[str, str] = {
+    "kebbi": "nigeria", "benue": "nigeria", "plateau": "nigeria",
+    "kaduna": "nigeria", "niger": "nigeria", "zamfara": "nigeria",
+    "nasarawa": "nigeria", "fct": "nigeria",
+    "ghana": "ghana", "senegal": "senegal",
+}
 # IMERG Late publishes ~1 day behind; asking for today returns nothing.
 LATENCY_DAYS = 1
 
@@ -138,14 +149,35 @@ async def _record_run(
     })
 
 
+async def fetch_region_window(
+    client: GpmImergClient, region: str, *, end: date, days: int,
+) -> list[RegionGrid]:
+    """Every available day of one region's grid, oldest first."""
+    lon0, lon1, lat0, lat1 = REGIONS[region]
+    grids: list[RegionGrid] = []
+    for offset in range(days - 1, -1, -1):
+        day = end - timedelta(days=offset)
+        try:
+            grid = await client.region_grid(
+                lon0=lon0, lon1=lon1, lat0=lat0, lat1=lat1, day=day,
+            )
+        except ImergAuthError:
+            raise
+        except Exception as exc:            # noqa: BLE001 — one bad day
+            log.warning("imerg region %s %s skipped: %s", region, day, exc)
+            continue
+        if grid is not None:
+            grids.append(grid)
+    return grids
+
+
 async def scan_tenant(
     session: AsyncSession, client: GpmImergClient, tenant: str, *,
-    trigger: str = "scheduled", today: date | None = None,
+    grids: list[RegionGrid], trigger: str = "scheduled",
 ) -> int:
-    """Scan every LGA of one tenant. Returns rows written."""
+    """Scan every LGA of one tenant against pre-fetched region grids."""
     started_at = datetime.now(timezone.utc)
     await set_tenant_schema(session, tenant)
-    end = (today or date.today()) - timedelta(days=LATENCY_DAYS)
 
     batch = select_lgas(tenant, full=True)      # cheap feed → no rolling slice
     if not batch:
@@ -156,9 +188,13 @@ async def scan_tenant(
     await _replace_prior(session)
     written = 0
     for g in batch:
-        series = await client.series(
-            g["lon"], g["lat"], end=end, days=BASELINE_DAYS,
-        )
+        # Sample this LGA out of the already-fetched grids. Days with no
+        # granule are simply absent, never zero — a gap is 'unknown', and
+        # zero-filling would drag the baseline down and manufacture anomalies.
+        series = [
+            s for s in (grid.sample(g["lon"], g["lat"]) for grid in grids)
+            if s is not None
+        ]
         if len(series) <= 1:
             continue
         sig = compute_rainstorm([r.max_mm for r in series])
@@ -173,20 +209,38 @@ async def scan_tenant(
     return written
 
 
-async def run(trigger: str = "scheduled") -> dict[str, int]:
-    """Sweep every pilot tenant. Returns {tenant: rows_written}."""
+async def run(
+    trigger: str = "scheduled", today: date | None = None,
+) -> dict[str, int]:
+    """Sweep every pilot tenant. Returns {tenant: advisories_written}.
+
+    Each REGION's grid window is fetched once and shared by every tenant in
+    it, so Nigeria's eight tenants cost one set of requests rather than eight.
+    """
     client = GpmImergClient()
     if not client.configured:
-        log.warning("rainstorm scan: no EARTHDATA_TOKEN — skipped")
+        log.warning("rainfall scan: no EARTHDATA_TOKEN — skipped")
         return {}
+
+    end = (today or date.today()) - timedelta(days=LATENCY_DAYS)
+    region_grids: dict[str, list[RegionGrid]] = {}
+    for region in REGIONS:
+        region_grids[region] = await fetch_region_window(
+            client, region, end=end, days=BASELINE_DAYS,
+        )
+        log.info("imerg region %s: %d days", region, len(region_grids[region]))
 
     results: dict[str, int] = {}
     factory = get_session_factory()
     async with factory() as session:
         for tenant in sorted(PILOT_TENANT_IDS):
+            grids = region_grids.get(TENANT_REGION.get(tenant, ""), [])
+            if not grids:
+                results[tenant] = 0
+                continue
             try:
                 results[tenant] = await scan_tenant(
-                    session, client, tenant, trigger=trigger,
+                    session, client, tenant, grids=grids, trigger=trigger,
                 )
             except ImergAuthError as exc:
                 # Credentials are global, not per-tenant: continuing would emit
@@ -196,10 +250,15 @@ async def run(trigger: str = "scheduled") -> dict[str, int]:
                 await session.rollback()
                 raise
             except Exception as exc:            # noqa: BLE001 — one bad tenant
-                log.exception("rainstorm scan failed for %s: %s", tenant, exc)
+                log.exception("rainfall scan failed for %s: %s", tenant, exc)
                 await session.rollback()
                 results[tenant] = 0
         await session.commit()
     total = sum(results.values())
-    log.info("rainstorm scan: %d events across %d tenants", total, len(results))
+    log.info("rainfall scan: %d advisories across %d tenants", total, len(results))
     return results
+
+
+async def run_rainfall_scan() -> None:
+    """Scheduler entry point."""
+    await run(trigger="scheduled")
