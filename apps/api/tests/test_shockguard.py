@@ -391,3 +391,46 @@ def test_event_row_still_accepts_numeric_detector_metrics() -> None:
         "metrics": {"z_score": -3.2, "backscatter_delta_db": -5.1},
     })
     assert row.metrics["z_score"] == -3.2
+
+
+def test_statewide_historical_row_is_not_given_a_false_lga() -> None:
+    """A source that reported at state level must not have an LGA invented for
+    it by the representative-LGA fallback (the 2024 Zamfara floods rendering as
+    'Talata Mafara'). Coordinates still come from the fallback so the map plots.
+    """
+    row = _event_row(
+        {
+            "id": uuid4(), "tenant_id": "zamfara", "event_type": "flood",
+            "detector_name": "historical_record", "detector_version": "1.0.0",
+            "severity": "high", "confidence": 1.0, "confidence_band": "HIGH",
+            "requires_human_review": False, "projected_onset_hours": 0,
+            "affected_area_km2": 0.0, "population_at_risk": 0,
+            "lga": None, "zone_name": "2024 rainy-season floods",
+            "lon": None, "lat": None, "source": "historical_v1",
+            "created_at": datetime(2024, 9, 17, tzinfo=timezone.utc),
+            "metrics": {"lga_breakdown_published": False, "source": "OCHA"},
+        },
+        ("Talata Mafara", 6.06, 12.57),
+    )
+    assert row.lga is None, "statewide event must not borrow an LGA name"
+    assert row.location is not None and row.location.lat == 12.57
+
+
+def test_ordinary_row_still_gets_the_representative_lga() -> None:
+    """The fallback must keep working for ROI-level scans, which genuinely
+    have no LGA rather than a deliberately statewide one."""
+    row = _event_row(
+        {
+            "id": uuid4(), "tenant_id": "kebbi", "event_type": "flood",
+            "detector_name": "shock_flood_v1", "detector_version": "0.1.0",
+            "severity": "medium", "confidence": 0.7, "confidence_band": "MEDIUM",
+            "requires_human_review": True, "projected_onset_hours": 6,
+            "affected_area_km2": 12.0, "population_at_risk": 500,
+            "lga": None, "zone_name": None, "lon": None, "lat": None,
+            "source": "detector_v1",
+            "created_at": datetime(2026, 7, 20, tzinfo=timezone.utc),
+            "metrics": {"z_score": -2.4},
+        },
+        ("Argungu", 4.52, 12.74),
+    )
+    assert row.lga == "Argungu"

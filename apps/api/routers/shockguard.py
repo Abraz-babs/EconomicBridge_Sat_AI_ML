@@ -67,9 +67,19 @@ def _event_row(
     """
     lon, lat = r.get("lon"), r.get("lat")
     lga = r.get("lga")
+    metrics = r.get("metrics") or {}
+    # A documented event whose source reported at STATE level has lga=NULL on
+    # purpose. Backfilling the tenant's representative LGA there would put a
+    # place name on the record that the source never named — e.g. showing the
+    # 2024 Zamfara floods as "Talata Mafara". Take the fallback COORDINATES so
+    # the map can still plot the state, but leave the label empty; the panel
+    # renders `ev.lga ?? stateLabel`, which correctly reads as statewide.
+    deliberately_statewide = (
+        lga is None and metrics.get("lga_breakdown_published") is False
+    )
     if fallback is not None:
         fb_lga, fb_lon, fb_lat = fallback
-        if lga is None:
+        if lga is None and not deliberately_statewide:
             lga = fb_lga
         if lon is None or lat is None:
             lon, lat = fb_lon, fb_lat
