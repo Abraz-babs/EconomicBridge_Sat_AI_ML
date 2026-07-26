@@ -112,24 +112,26 @@ def _window(idx: int, cells: int) -> tuple[int, int]:
 def _parse_ascii(body: str) -> list[float]:
     """Pull the numeric payload out of an OPeNDAP DAP2 `.ascii` response.
 
-    The format is a header block, then `name[i][j], v1, v2, ...` rows. We want
-    every float on the data rows and nothing from the coordinate arrays that
-    follow, so we stop at the first blank line after data begins.
+    Verified against a live GES DISC response (2026-07-26) — the real shape is:
+
+        Dataset: 3B-DAY-L.MS.MRG.3IMERG.20260602-...nc4
+        precipitation.lat, 9.45, 9.55, 9.65
+        precipitation.precipitation[precipitation.time=16949][precipitation.lon=8.55], 3.285, 3.45, 3.915
+
+    Note the second line: the COORDINATE array is emitted alongside the data
+    and is comma-separated exactly like it. Taking every comma-separated float
+    would silently fold latitudes (~9.5) into the rainfall series as phantom
+    ~9 mm readings — no error, just quietly wrong numbers.
+
+    Data rows are distinguishable by the bracketed indices in their label;
+    coordinate rows (`precipitation.lat`) have none. That is the whole rule.
     """
     values: list[float] = []
-    started = False
     for raw in body.splitlines():
-        line = raw.strip()
-        if not line:
-            if started:
-                break
-            continue
-        if line.lower().startswith("dataset") or line.startswith("---"):
-            continue
-        if "," not in line:
-            continue
-        # "precipitation[0][1885][994], 61.2, 3.4" → take the post-comma floats
-        for token in line.split(",")[1:]:
+        label, _, rest = raw.partition(",")
+        if not rest or "[" not in label:
+            continue                       # header, blank, or coordinate array
+        for token in rest.split(","):
             token = token.strip()
             if not token:
                 continue
@@ -137,7 +139,6 @@ def _parse_ascii(body: str) -> list[float]:
                 values.append(float(token))
             except ValueError:
                 continue
-        started = True
     return values
 
 

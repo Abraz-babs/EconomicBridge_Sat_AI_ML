@@ -125,14 +125,25 @@ def test_grid_indices_are_clamped_not_wrapped() -> None:
 # ─── ascii parsing ────────────────────────────────────────────────────────
 
 
-def test_parse_ascii_extracts_only_data_values() -> None:
+def test_parse_ascii_ignores_the_coordinate_array() -> None:
+    """Verbatim shape of a live GES DISC response (captured 2026-07-26).
+
+    The `precipitation.lat` row is comma-separated exactly like the data rows.
+    Parsing it as data folds latitudes (~9.5) into the series as phantom ~9 mm
+    readings — silently wrong, never an error. Data rows carry bracketed
+    indices; coordinate rows do not.
+    """
     body = (
-        "Dataset {\n} 3B-DAY-L;\n"
-        "---------------------------------------------\n"
-        "precipitation[0][1885][994], 61.2, 3.4\n"
-        "precipitation[0][1886][994], 118.7, 0.0\n"
+        "Dataset: 3B-DAY-L.MS.MRG.3IMERG.20260602-S000000-E235959.V07C.nc4\n"
+        "precipitation.lat, 9.45000000000001, 9.55, 9.65000000000001\n"
+        "precipitation.precipitation[precipitation.time=16949]"
+        "[precipitation.lon=8.55], 3.285, 3.45, 3.915\n"
+        "precipitation.precipitation[precipitation.time=16949]"
+        "[precipitation.lon=8.65], 9.465, 3.965, 5.885\n"
     )
-    assert _parse_ascii(body) == [61.2, 3.4, 118.7, 0.0]
+    out = _parse_ascii(body)
+    assert out == [3.285, 3.45, 3.915, 9.465, 3.965, 5.885]
+    assert 9.55 not in out          # the latitude, not a rainfall value
 
 
 # ─── client behaviour ─────────────────────────────────────────────────────
