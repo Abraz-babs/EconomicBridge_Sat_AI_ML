@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -118,7 +118,12 @@ class ShockEventRow(BaseModel):
     # Real point geometry when the detector/seed attached one — drives the
     # map marker. Null for events with no geometry (map then synthesises one).
     location: LonLat | None = None
-    metrics: dict[str, float] = Field(default_factory=dict)
+    # Detector rows carry numbers (z_score, backscatter delta dB, NDVI delta).
+    # `historical_v1` rows also carry provenance strings/bools — title, source,
+    # source_url, event_date, note — so this cannot be dict[str, float]:
+    # pydantic coerces per-value and a str raises float_parsing, 500-ing the
+    # whole endpoint (production incident 2026-07-26).
+    metrics: dict[str, Any] = Field(default_factory=dict)
     source: str
     created_at: datetime
 

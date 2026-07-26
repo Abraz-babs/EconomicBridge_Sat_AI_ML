@@ -345,3 +345,49 @@ def test_representative_lga_returns_real_place():
     assert lga is not None
     assert lon is not None and lat is not None
     assert representative_lga("does-not-exist") == (None, None, None)
+
+
+# ─── metrics must accept provenance, not just numbers ─────────────────────
+# Production incident 2026-07-26: ShockEventRow.metrics was dict[str, float],
+# so the first historical_v1 row (whose metrics carry source/source_url/title
+# strings) failed pydantic float_parsing and 500-ed GET /shockguard/events
+# for every tenant. Detector rows are numeric; documented-event rows are not.
+
+
+def test_event_row_metrics_accepts_string_provenance() -> None:
+    row = _event_row({
+        "id": uuid4(), "tenant_id": "niger", "event_type": "flood",
+        "detector_name": "historical_record", "detector_version": "1.0.0",
+        "severity": "critical", "confidence": 1.0, "confidence_band": "HIGH",
+        "requires_human_review": False, "projected_onset_hours": 0,
+        "affected_area_km2": 0.0, "population_at_risk": 0,
+        "lga": "Mokwa", "zone_name": "Mokwa flood disaster",
+        "lon": 5.05, "lat": 9.29, "source": "historical_v1",
+        "created_at": datetime(2025, 5, 29, 12, 0, tzinfo=timezone.utc),
+        "metrics": {
+            "record_type": "documented_historical_event",
+            "source": "UN News (Jun 2025)",
+            "source_url": "https://news.un.org/en/story/2025/06/1163951",
+            "event_date": "2025-05-29",
+            "lga_breakdown_published": True,
+            "deaths": 151,
+        },
+    })
+    assert row.metrics["source"] == "UN News (Jun 2025)"
+    assert row.metrics["deaths"] == 151
+    assert row.metrics["lga_breakdown_published"] is True
+
+
+def test_event_row_still_accepts_numeric_detector_metrics() -> None:
+    row = _event_row({
+        "id": uuid4(), "tenant_id": "kebbi", "event_type": "flood",
+        "detector_name": "shock_flood_v1", "detector_version": "0.1.0",
+        "severity": "high", "confidence": 0.8, "confidence_band": "HIGH",
+        "requires_human_review": False, "projected_onset_hours": 12,
+        "affected_area_km2": 40.0, "population_at_risk": 900,
+        "lga": "Argungu", "zone_name": None, "lon": 4.52, "lat": 12.74,
+        "source": "shockguard_scan_v1",
+        "created_at": datetime(2026, 7, 1, tzinfo=timezone.utc),
+        "metrics": {"z_score": -3.2, "backscatter_delta_db": -5.1},
+    })
+    assert row.metrics["z_score"] == -3.2
