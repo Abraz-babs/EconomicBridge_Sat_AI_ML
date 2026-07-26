@@ -1,6 +1,7 @@
 """Tests for ShockGuard flood + drought detectors + HTTP contract (Slice 05)."""
 from __future__ import annotations
 
+import inspect
 from datetime import date, datetime, timezone
 from uuid import uuid4
 
@@ -8,7 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
-from routers.shockguard import _event_row
+from routers.shockguard import SEED_SOURCE_PATTERN, _event_row, list_events
+from scripts.seed_shockguard_events import SEED_SOURCE
 from services.shock_detector import (
     DROUGHT_BASELINE_DAYS,
     DROUGHT_RECENT_DAYS,
@@ -345,3 +347,34 @@ def test_representative_lga_returns_real_place():
     assert lga is not None
     assert lon is not None and lat is not None
     assert representative_lga("does-not-exist") == (None, None, None)
+
+
+# ─── Seed fixtures must never be served ───────────────────────────────────
+# Regression for the 2026-07-26 audit: all 10 provisioned tenants were serving
+# 5 `seed_v1` fixture rows each as if they were real flood/drought detections.
+# DB-free (CI has no Postgres): pins the seed-script <-> API contract and the
+# NULL-safe SQL guard.
+
+
+def test_seed_source_is_matched_by_the_api_filter() -> None:
+    """The seed script's source must satisfy the API's exclusion pattern,
+    else the filter silently stops catching fixture rows."""
+    assert SEED_SOURCE_PATTERN.endswith("%") and "%" not in SEED_SOURCE_PATTERN[:-1]
+    assert SEED_SOURCE.startswith(SEED_SOURCE_PATTERN[:-1])
+
+
+@pytest.mark.parametrize(
+    "source", ["detector_v1", "shockguard_scan_v1", "sentinel1_unet_v1"]
+)
+def test_real_detection_sources_survive_the_filter(source: str) -> None:
+    """Every genuine provenance tag must pass the prefix filter."""
+    assert not source.startswith(SEED_SOURCE_PATTERN[:-1])
+
+
+def test_events_sql_excludes_seed_rows_null_safely() -> None:
+    """The guard must be NULL-safe and bound, and must survive the optional
+    event_type filter being appended (AND, not a second WHERE)."""
+    sql = inspect.getsource(list_events)
+    assert "COALESCE(source, '') NOT LIKE :seed_pattern" in sql
+    assert "AND event_type = :event_type" in sql
+    assert 'where_clause = ""' not in sql

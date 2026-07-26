@@ -39,6 +39,13 @@ from services.tenants import tenant_schema_name
 
 router = APIRouter(prefix="/shockguard", tags=["shockguard"])
 
+# scripts/seed_shockguard_events.py stamps its fixture rows source='seed_v1'.
+# Real provenance, in ascending order of genuineness:
+#   detector_v1        — statistical detector over a SYNTHETIC series (0020)
+#   shockguard_scan_v1 — the live CDSE Sentinel scan (tasks/shockguard_scan.py)
+#   sentinel1_unet_v1  — reserved for real U-Net flood segmentation
+SEED_SOURCE_PATTERN = "seed%"
+
 
 def _trace_id(request: Request) -> UUID:
     return getattr(request.state, "trace_id", uuid4())
@@ -254,15 +261,23 @@ async def list_events(
 ) -> SuccessResponse[ShockEventListData]:
     tenant_id = _require_tenant(request)
 
-    where_clause = ""
-    params: dict[str, object] = {"limit": limit}
+    # Seed fixtures (scripts/seed_shockguard_events.py, source 'seed_v1') are
+    # demo scaffolding, not detections. Serving them puts fabricated floods and
+    # droughts — with severity and a named LGA — on the ShockGuard map, which is
+    # indefensible in front of an agency. Filtered here at the read path so a
+    # re-seed can't re-expose them. NULL-safe: a bare NOT LIKE yields NULL for a
+    # NULL source, which would silently drop real detections. The outbound
+    # agency digests are already narrower (services/agency_alerts.py pins
+    # source='shockguard_scan_v1'), so no fabricated row has ever been emailed.
+    where_clause = "WHERE COALESCE(source, '') NOT LIKE :seed_pattern"
+    params: dict[str, object] = {"limit": limit, "seed_pattern": SEED_SOURCE_PATTERN}
     if event_type:
         if event_type not in ("flood", "drought"):
             raise HTTPException(
                 status_code=400,
                 detail=f"Unsupported event_type {event_type!r}",
             )
-        where_clause = "WHERE event_type = :event_type"
+        where_clause += " AND event_type = :event_type"
         params["event_type"] = event_type
 
     result = await session.execute(
