@@ -33,6 +33,12 @@ from services import lga_geo
 
 router = APIRouter(prefix="/cropguard", tags=["cropguard"])
 
+# scripts/seed_cropguard_predictions.py stamps placeholder rows with a
+# `*-seed` model_version (currently "0.0.0-seed") so they stay identifiable.
+# Those rows are demo scaffolding, never real inference, and must not reach
+# the Disease Geography map — a blank map is honest, fabricated pins are not.
+SEED_VERSION_PATTERN = "%-seed"
+
 
 def _trace_id(request: Request) -> UUID:
     return getattr(request.state, "trace_id", uuid4())
@@ -77,7 +83,9 @@ async def list_lgas(request: Request) -> SuccessResponse[LgaListData]:
     summary="List recent crop disease predictions for a tenant",
     description=(
         "Returns the most recent rows from `tenant_<id>.crop_predictions`, "
-        "newest first. `X-Tenant-Id` header is required."
+        "newest first. `X-Tenant-Id` header is required. Placeholder rows "
+        "written by scripts/seed_cropguard_predictions.py (model_version "
+        "`*-seed`) are never served — see the WHERE clause below."
     ),
 )
 async def list_predictions(
@@ -100,11 +108,20 @@ async def list_predictions(
                    created_at, lga, zone_name,
                    ST_X(location) AS lon, ST_Y(location) AS lat
               FROM crop_predictions
+             -- Seed rows are synthetic placeholders, not inference. Serving
+             -- them puts fabricated diagnoses on the Disease Geography map,
+             -- which is a credibility risk in front of an agency. An honest
+             -- empty map is correct until a real leaf photo is uploaded.
+             -- COALESCE keeps rows whose model_version is NULL (NULL NOT LIKE
+             -- is NULL, which would silently drop real inference rows). The
+             -- pattern is bound, not inlined, so no %-escaping ambiguity
+             -- between the asyncpg and psycopg paramstyles.
+             WHERE COALESCE(model_version, '') NOT LIKE :seed_pattern
              ORDER BY created_at DESC
              LIMIT :limit
             """
         ),
-        {"limit": limit},
+        {"limit": limit, "seed_pattern": SEED_VERSION_PATTERN},
     )
     rows = result.mappings().all()
 

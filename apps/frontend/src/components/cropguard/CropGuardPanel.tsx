@@ -260,9 +260,12 @@ export default function CropGuardPanel() {
             Disease Geography — {stateLabel}
           </span>
           <span className="ev-map-meta">
-            {recent.length} prediction{recent.length === 1 ? '' : 's'} ·
-            Sources: ResNet-50 + Sentinel-2 ROI · synthesised positions for
-            non-geolocated uploads
+            {/* Leaf photos only — this map carries NO satellite layer. The
+                statewide per-LGA Sentinel-2 coverage is the Crop Health map
+                below; claiming Sentinel-2 here read as missing LGA coverage. */}
+            {recent.length} leaf-photo diagnos{recent.length === 1 ? 'is' : 'es'} ·
+            Source: ResNet-50 on uploaded photos · one pin per upload, not a
+            statewide scan — see Statewide Crop Health below for every LGA
           </span>
         </div>
         <CropGuardMap tenant={activeTenant} predictions={recent} />

@@ -50,6 +50,11 @@ export default function CropHealthPanel() {
     return c;
   }, [rows]);
 
+  // An LGA row exists once the sweep has visited it, but the reading is only
+  // real when NDVI came back. Reporting row count as "covered" overstates
+  // coverage whenever CDSE is rate-limited or quota-frozen, so state both.
+  const withReading = useMemo(() => rows.filter((r) => r.ndvi != null).length, [rows]);
+
   const tooltip = (o: unknown): string | null => {
     const r = o as CropHealthRow;
     if (!r?.lga) return null;
@@ -76,7 +81,10 @@ export default function CropHealthPanel() {
             {HEALTH_STYLE[h].label}: <strong>{counts[h] ?? 0}</strong>
           </span>
         ))}
-        <span className="ev-map-meta">{rows.length} LGAs covered</span>
+        <span className="ev-map-meta">
+          {withReading} of {rows.length} LGAs with a current reading
+          {withReading < rows.length && ' · rest awaiting next satellite revisit'}
+        </span>
       </div>
 
       {isLoading && <div className="fp-alert-empty">Loading crop health…</div>}

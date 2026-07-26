@@ -13,6 +13,7 @@ endpoint reads).
 """
 from __future__ import annotations
 
+import inspect
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -20,8 +21,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
-from routers.cropguard import _row_to_response
-from scripts.seed_cropguard_predictions import TENANT_CROPS, _classes_for
+from routers.cropguard import SEED_VERSION_PATTERN, _row_to_response, list_predictions
+from scripts.seed_cropguard_predictions import (
+    SEED_VERSION,
+    TENANT_CROPS,
+    _classes_for,
+)
 
 
 # ─── Per-state crop realism (regression: Kebbi must not grow plantain) ─────
@@ -134,6 +139,44 @@ def test_row_to_response_location_none_when_no_gps() -> None:
     row = _base_prediction_row() | {"lon": None, "lat": None}
     pred = _row_to_response(row)
     assert pred.location is None
+
+
+# ─── Seed rows must never be served ───────────────────────────────────────
+# Regression for the 2026-07-26 finding: every provisioned tenant carried 5
+# `0.0.0-seed` placeholder rows, and the Disease Geography map rendered them
+# as if they were real diagnoses. DB-free by design (CI has no Postgres), so
+# these pin the seed-script ↔ API contract and the SQL guard itself.
+
+
+def _like_suffix_match(value: str, pattern: str) -> bool:
+    """Evaluate the one SQL LIKE form we use: a leading-% suffix pattern."""
+    assert pattern.startswith("%") and "%" not in pattern[1:], (
+        f"guard only models suffix patterns, got {pattern!r}"
+    )
+    return value.endswith(pattern[1:])
+
+
+def test_seed_version_is_matched_by_the_api_filter() -> None:
+    """The seed script's version must actually satisfy the API's exclusion
+    pattern — otherwise the filter silently stops catching seed rows."""
+    assert _like_suffix_match(SEED_VERSION, SEED_VERSION_PATTERN)
+
+
+@pytest.mark.parametrize("version", ["0.1.0", "1.0.0", "0.1.0-trained", "seed-0.1.0"])
+def test_real_model_versions_are_not_filtered(version: str) -> None:
+    """Genuine inference rows must survive the filter — including versions
+    that merely contain the word 'seed' without the `-seed` suffix."""
+    assert not _like_suffix_match(version, SEED_VERSION_PATTERN)
+
+
+def test_predictions_sql_excludes_seed_rows_null_safely() -> None:
+    """The query must filter seed rows, and must do it NULL-safely: a bare
+    `model_version NOT LIKE ...` evaluates to NULL for NULL versions, which
+    would silently drop real rows. Bound param, not an inlined pattern."""
+    sql = inspect.getsource(list_predictions)
+    assert "NOT LIKE :seed_pattern" in sql
+    assert "COALESCE(model_version, '')" in sql
+    assert "seed_pattern" in sql.split("text(")[-1]
 
 
 # ─── Integration: real DB round-trip ──────────────────────────────────────
