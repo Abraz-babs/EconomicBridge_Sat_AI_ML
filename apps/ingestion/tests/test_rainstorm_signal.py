@@ -206,3 +206,64 @@ async def test_unconfigured_client_is_inert(token, monkeypatch) -> None:
     client = GpmImergClient()
     assert client.configured is False
     assert await client.daily_rain(8.691, 9.576, date(2026, 6, 2)) is None
+
+
+# ─── rainstorm_scan task ──────────────────────────────────────────────────
+# The SQL here is never executed by CI (no Postgres), so these pin the shapes
+# that would only otherwise fail in production: real ingestion_runs column
+# names, and the auth-abort contract.
+
+
+def test_run_audit_uses_real_ingestion_runs_columns() -> None:
+    """migration 0004 defines records_ingested / error_message / dry_run.
+    Writing records_written / error would raise UndefinedColumn at runtime and
+    only surface on a live sweep."""
+    import inspect
+
+    from tasks import rainstorm_scan
+
+    src = inspect.getsource(rainstorm_scan._record_run)
+    # Look at the INSERT column list only — the docstring deliberately names
+    # the wrong-but-tempting columns as a warning, so a whole-source substring
+    # check would match its own comment.
+    cols = src.split("INSERT INTO public.ingestion_runs (", 1)[1].split(")", 1)[0]
+    assert "records_ingested" in cols
+    assert "error_message" in cols
+    assert "dry_run" in cols
+    assert "records_written" not in cols
+
+
+def test_insert_writes_the_rainstorm_type_and_is_review_flagged() -> None:
+    """Rows must land as 'rainstorm' (migration 0036 allows it) and stay
+    human-review flagged — this is modelled hazard, not observed damage."""
+    import inspect
+
+    from tasks import rainstorm_scan
+
+    sql = inspect.getsource(rainstorm_scan._insert)
+    assert "'rainstorm'" in sql
+    assert "TRUE" in sql          # requires_human_review
+
+
+def test_scan_replaces_prior_rows_of_its_own_source_only() -> None:
+    """Idempotent per run, and must never touch historical_v1 or the CDSE
+    scan's rows."""
+    import inspect
+
+    from tasks import rainstorm_scan
+
+    sql = inspect.getsource(rainstorm_scan._replace_prior)
+    assert "source = :s" in sql
+    assert rainstorm_scan.SOURCE == "rainstorm_scan_v1"
+
+
+@pytest.mark.asyncio
+async def test_run_is_inert_without_a_token(monkeypatch) -> None:
+    monkeypatch.setenv("EARTHDATA_TOKEN", "")
+    from config import get_settings
+
+    get_settings.cache_clear()
+    from tasks import rainstorm_scan
+
+    assert await rainstorm_scan.run() == {}
+    get_settings.cache_clear()
