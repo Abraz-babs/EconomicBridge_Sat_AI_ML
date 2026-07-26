@@ -16,6 +16,7 @@ from typing import Annotated, Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import bindparam as sa_bindparam
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +39,16 @@ from services.tenants import tenant_schema_name
 
 
 router = APIRouter(prefix="/shockguard", tags=["shockguard"])
+
+# The LIVE scheduled detectors. Anything listed here counts toward the panel's
+# "last scan" / "active shocks" monitoring line. ADD A DETECTOR HERE WHEN YOU
+# SCHEDULE IT — these two queries were pinned to 'shockguard_scan_v1' alone, so
+# the IMERG rainfall advisory shipped, ran daily, and was completely invisible
+# on the dashboard: its rows were never counted and its run never refreshed
+# "last scan". A feed nobody can see is not a feed.
+#   shockguard_scan_v1  — Sentinel-1 SAR drop + Sentinel-2 NDVI decline (07:30)
+#   rainstorm_scan_v1   — GPM IMERG exceptional rainfall, flood precursor (08:00)
+LIVE_SCAN_SOURCES: tuple[str, ...] = ("shockguard_scan_v1", "rainstorm_scan_v1")
 
 
 def _trace_id(request: Request) -> UUID:
@@ -296,20 +307,28 @@ async def list_events(
     fallback = lga_geo.representative_lga(tenant_id)
     events = [_event_row(r, fallback) for r in rows]
 
-    # Monitoring status — the scheduled scan stamps public.ingestion_runs each
-    # run, so the panel can show "scanned today, all clear" instead of looking
-    # stale when shocks are (correctly) absent. active_shock_count is how many
-    # signals the latest scan currently flags (its rows replace each run).
+    # Monitoring status — each scheduled scan stamps public.ingestion_runs, so
+    # the panel can show "scanned today, all clear" instead of looking stale
+    # when shocks are (correctly) absent. active_shock_count is how many signals
+    # the latest scans currently flag (their rows replace each run).
+    #
+    # BOTH live detectors count. These were pinned to 'shockguard_scan_v1'
+    # alone, so the IMERG rainfall advisory (added 2026-07-27) ran daily and was
+    # completely invisible on the dashboard: its rows never counted and its run
+    # never refreshed "last scan". A feed nobody can see is not a feed.
     last_scan_at = (await session.execute(
         text(
             "SELECT MAX(finished_at) FROM public.ingestion_runs "
-            "WHERE source = 'shockguard_scan_v1' AND tenant_id = :t "
+            "WHERE source IN :sources AND tenant_id = :t "
             "AND status = 'succeeded'"
-        ),
-        {"t": tenant_id},
+        ).bindparams(sa_bindparam("sources", expanding=True)),
+        {"sources": list(LIVE_SCAN_SOURCES), "t": tenant_id},
     )).scalar()
     active_shock_count = int((await session.execute(
-        text("SELECT count(*) FROM shock_events WHERE source = 'shockguard_scan_v1'")
+        text(
+            "SELECT count(*) FROM shock_events WHERE source IN :sources"
+        ).bindparams(sa_bindparam("sources", expanding=True)),
+        {"sources": list(LIVE_SCAN_SOURCES)},
     )).scalar() or 0)
 
     return SuccessResponse(

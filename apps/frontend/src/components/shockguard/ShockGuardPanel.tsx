@@ -42,6 +42,23 @@ function bandClass(b: 'HIGH' | 'MEDIUM' | 'LOW'): string {
   return `cg-band cg-band-${b.toLowerCase()}`;
 }
 
+/** Human-readable instrument behind an event row, keyed on its source tag.
+ *  Keep in sync with LIVE_SCAN_SOURCES in routers/shockguard.py. */
+function instrumentLabel(source: string, detector: string): string {
+  switch (source) {
+    case 'rainstorm_scan_v1':
+      return 'GPM IMERG rainfall';
+    case 'shockguard_scan_v1':
+      return 'Sentinel-1 SAR / Sentinel-2 NDVI';
+    case 'sentinel1_unet_v1':
+      return 'Sentinel-1 U-Net';
+    case 'historical_v1':
+      return 'Recorded event';
+    default:
+      return detector;
+  }
+}
+
 function sevClass(s: string): string {
   const map: Record<string, string> = {
     critical: 'fp-sev-crit', high: 'fp-sev-high',
@@ -118,8 +135,8 @@ export default function ShockGuardPanel() {
         <div>
           <div className="cg-title">ShockGuard — Disaster Early Warning</div>
           <div className="cg-subtitle">
-            48-hour flood + drought advance alerts · Sentinel-1 SAR backscatter ·
-            MODIS thermal + NDVI composite
+            Flood + drought early warning · Sentinel-1 SAR backscatter ·
+            Sentinel-2 NDVI · GPM IMERG rainfall
           </div>
         </div>
         <div
@@ -182,7 +199,7 @@ export default function ShockGuardPanel() {
             Continuously monitored · last scan <strong>{fmtAge(lastScanAt)}</strong> ·{' '}
             {activeShockCount > 0
               ? `${activeShockCount} active shock${activeShockCount > 1 ? 's' : ''}`
-              : 'no active flood/drought signal'}
+              : 'no active flood, drought or extreme-rainfall signal'}
           </span>
         </div>
       )}
@@ -374,7 +391,10 @@ export default function ShockGuardPanel() {
                 )}
               </div>
               <div className="fp-alert-meta">
-                <span>{ev.detector_name} {ev.detector_version}</span>
+                {/* Which instrument found this. Without it a rainfall advisory
+                    and a SAR detection look identical in the feed, and the
+                    rainfall feed reads as if it were not running at all. */}
+                <span>{instrumentLabel(ev.source, ev.detector_name)}</span>
                 <span className={bandClass(ev.confidence_band)}>{ev.confidence_band}</span>
                 <span>{fmtAge(ev.created_at)}</span>
               </div>

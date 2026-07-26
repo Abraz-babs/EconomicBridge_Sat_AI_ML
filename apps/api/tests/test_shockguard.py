@@ -434,3 +434,30 @@ def test_ordinary_row_still_gets_the_representative_lga() -> None:
         ("Argungu", 4.52, 12.74),
     )
     assert row.lga == "Argungu"
+
+
+# ─── the monitoring line must cover EVERY live detector ───────────────────
+# 2026-07-27: the IMERG rainfall advisory shipped and ran daily while the panel
+# stayed blind to it — "last scan" and "active shocks" were pinned to
+# shockguard_scan_v1 alone, so a working feed looked like nothing at all.
+
+
+def test_live_scan_sources_covers_every_scheduled_detector() -> None:
+    """Every source a scheduled task writes must be counted by the panel.
+    A detector missing here runs daily and is invisible to the user."""
+    from routers.shockguard import LIVE_SCAN_SOURCES
+
+    assert "shockguard_scan_v1" in LIVE_SCAN_SOURCES
+    assert "rainstorm_scan_v1" in LIVE_SCAN_SOURCES
+
+
+def test_monitoring_queries_are_not_pinned_to_one_source() -> None:
+    """Both the last-scan and active-count queries must use the expanding
+    source list, not a hardcoded literal."""
+    import inspect
+
+    from routers.shockguard import list_events
+
+    src = inspect.getsource(list_events)
+    assert src.count("LIVE_SCAN_SOURCES") >= 2
+    assert "source = 'shockguard_scan_v1'" not in src
