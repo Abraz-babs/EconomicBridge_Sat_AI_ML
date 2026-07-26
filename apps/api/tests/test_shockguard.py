@@ -461,3 +461,30 @@ def test_monitoring_queries_are_not_pinned_to_one_source() -> None:
     src = inspect.getsource(list_events)
     assert src.count("LIVE_SCAN_SOURCES") >= 2
     assert "source = 'shockguard_scan_v1'" not in src
+
+
+def test_shock_measure_columns_are_nullable() -> None:
+    """Regression for a silent production failure (2026-07-27).
+
+    projected_onset_hours / affected_area_km2 / population_at_risk were
+    NOT NULL DEFAULT 0. Both scheduled scans write explicit NULL — which
+    overrides a DEFAULT — so every detection raised NotNullViolationError.
+    shockguard_scan_v1 had never persisted a row in production because of it,
+    and we had blamed the empty feed on the Copernicus quota.
+
+    Migration 0037 drops NOT NULL for all ten tenant schemas.
+    """
+    import pathlib
+    import re
+
+    mig = pathlib.Path(__file__).resolve().parents[1] / "migrations" / "versions"
+    src = (mig / "0037_shock_event_measures_nullable.py").read_text(encoding="utf-8")
+    for column in (
+        "projected_onset_hours", "affected_area_km2", "population_at_risk",
+    ):
+        assert column in src
+    assert "DROP NOT NULL" in src
+    # every pilot tenant, not just the one that surfaced the bug
+    tenants = re.search(r"PILOT_TENANTS.*?\)", src, re.S).group(0)
+    for tenant in ("kebbi", "zamfara", "senegal", "ghana", "fct", "nasarawa"):
+        assert tenant in tenants

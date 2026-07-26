@@ -383,3 +383,16 @@ def test_rainfall_job_is_registered_and_does_not_clash_with_shockguard() -> None
     src = inspect.getsource(setup_scheduler)
     assert "run_rainfall_scan" in src
     assert JOB_ID_RAINFALL_DAILY != JOB_ID_SHOCKGUARD_DAILY
+
+
+def test_insert_leaves_unquantified_measures_null_not_zero() -> None:
+    """A rainfall advisory does not estimate onset hours, area or population.
+    Writing 0 would render "~0 at risk over 0 km2 · onset in 0h" — a false
+    statement of no risk, not an absence of data. Migration 0037 makes the
+    columns nullable so NULL is expressible; this pins that we use it."""
+    import inspect
+
+    from tasks import rainstorm_scan
+
+    sql = inspect.getsource(rainstorm_scan._insert)
+    assert "NULL, NULL, NULL" in sql
