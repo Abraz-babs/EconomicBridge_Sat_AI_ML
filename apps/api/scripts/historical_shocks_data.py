@@ -256,6 +256,26 @@ _GHANA_AKOSOMBO_2023 = HistoricalShock(
     source_url="https://reliefweb.int/disaster/fl-2023-000215-gha",
 )
 
+_PLATEAU_2025 = HistoricalShock(
+    event_date=date(2025, 8, 17),
+    event_type="flood",
+    title="Shendam floods — Shimankar district communities",
+    severity="high",
+    houses_destroyed=50,
+    lgas=("Shendam",),
+    note=(
+        "NEMA's Jos Operations Office ran an on-the-spot assessment of the "
+        "flood-ravaged communities: Shimankar, Kalong, Anguwan Dadi, Unguwan "
+        "Yargam, Wali, Gisa and Unguwan Zam. Over 50 houses plus schools and a "
+        "worship centre destroyed in Menkaat, Shimankar district."
+    ),
+    source_name="Daily Post — NEMA on-the-spot assessment, Plateau (17 Aug 2025)",
+    source_url=(
+        "https://dailypost.ng/2025/08/17/"
+        "plateau-nema-conducts-on-the-spot-assessment-in-flood-ravaged-communities/"
+    ),
+)
+
 _SENEGAL_2022 = HistoricalShock(
     event_date=date(2022, 8, 6),
     event_type="flood",
@@ -279,8 +299,9 @@ _SENEGAL_2022 = HistoricalShock(
 )
 
 
-# Tenant → its documented events. A tenant with no verified event is ABSENT
-# on purpose (see module docstring) — currently: plateau.
+# Tenant → its documented events. A tenant with no verified event would be
+# ABSENT on purpose (see module docstring) rather than filled with invented
+# rows; all 10 pilots currently have at least one sourced event.
 HISTORICAL_EVENTS: dict[str, tuple[HistoricalShock, ...]] = {
     "kebbi": (_KEBBI_2024, _KEBBI_ARGUNGU_2024),
     "niger": (_NIGER_MOKWA_2025, _NIGER_2024),
@@ -289,12 +310,14 @@ HISTORICAL_EVENTS: dict[str, tuple[HistoricalShock, ...]] = {
     "kaduna": (_KADUNA_2024,),
     "fct": (_FCT_2024,),
     "zamfara": (_ZAMFARA_2024,),
+    "plateau": (_PLATEAU_2025,),
     "ghana": (_GHANA_AKOSOMBO_2023,),
     "senegal": (_SENEGAL_2022,),
 }
 
 # Tenants still needing a sourced event before they show any history.
-TENANTS_AWAITING_RESEARCH: tuple[str, ...] = ("plateau",)
+# Empty: all 10 pilots now carry at least one documented event.
+TENANTS_AWAITING_RESEARCH: tuple[str, ...] = ()
 
 __all__ = [
     "HISTORICAL_EVENTS",
