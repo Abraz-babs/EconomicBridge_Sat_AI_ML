@@ -1,11 +1,19 @@
-"""Scheduled per-LGA extreme-rainfall scan (rainstorm early warning).
+"""Scheduled per-LGA exceptional-rainfall scan (flood-risk advisory).
 
-Completes ShockGuard's hazard coverage. The satellite detectors we already run
-see a flood (SAR backscatter drop) and drought (NDVI decline); neither can see a
-rainstorm, because violent rain leaves no such signature. This task reads GPM
-IMERG daily rainfall per LGA and writes a `rainstorm` shock_event when a day is
-both genuinely damaging in absolute terms and far above that LGA's own wet-day
-baseline (see processors/rainstorm_signal.py for why both gates are required).
+NOT WIRED INTO THE SCHEDULER, deliberately — see the two blockers at the end.
+
+Originally built as rainstorm early warning. Validation on real IMERG data
+(2026-07-26) proved daily rainfall cannot see wind-damage storms: Riyom sat at
+p72 of its own distribution on the day 100+ houses fell, Bassa at p25, Shendam
+at p45. Mokwa (151 deaths) reached only p93 — its flood came from a failed
+railway embankment, not exceptional rain. Full evidence in
+processors/rainstorm_signal.py.
+
+So this emits `flood`, not `rainstorm`: exceptional rainfall for a given LGA is
+a genuine flood precursor (a volume-driven hazard IMERG can see), while roof
+damage from a convective downburst is not something this instrument observes.
+Calling these rows `rainstorm` would repeat exactly the mislabelling this whole
+change set removed.
 
 Design notes
 ------------
@@ -44,18 +52,31 @@ SOURCE = "rainstorm_scan_v1"
 DETECTOR = "imerg_extreme_rainfall"
 DETECTOR_VERSION = "1.0.0"
 
-# Days of history per LGA. Enough wet days to build a seasonal baseline without
-# making the sweep slow: ~30 days spans the current rainfall regime rather than
-# averaging the dry season into the wet one.
-BASELINE_DAYS = 30
+# Days of history per LGA. A p99 wet-day percentile needs MIN_WET_DAYS (20)
+# wet days behind it; at roughly half of rainy-season days being wet, 90 days
+# is the smallest window that reliably clears that bar.
+#
+# BLOCKER 1 — fetch strategy. At 90 days x 447 LGAs this is ~40,000 OPeNDAP
+# calls per run at ~3 s each. Before scheduling, either (a) fetch a per-TENANT
+# bbox instead of a per-LGA point (one call covers all of a state's LGAs, so a
+# full baseline rebuild is ~900 calls and the daily delta is ~10), or (b) cache
+# each LGA's p99 threshold and fetch only the current day. (a) is the cleaner
+# fix and the client already supports arbitrary index windows.
+#
+# BLOCKER 2 — no operational validation. The detector is calibrated against
+# real climatology but has never fired on a known event, because the four we
+# have are not rainfall-visible. It needs a season of shadow running before
+# anyone is alerted from it.
+BASELINE_DAYS = 90
 # IMERG Late publishes ~1 day behind; asking for today returns nothing.
 LATENCY_DAYS = 1
 
 
 def _zone_label(lga: str, sig: RainstormSignal) -> str:
     return (
-        f"Extreme rainfall over {lga}: {sig.rain_mm:.0f} mm/day "
-        f"({sig.ratio:.1f}x the wet-day norm of {sig.baseline_mm:.0f} mm)"
+        f"Exceptional rainfall over {lga}: {sig.rain_mm:.0f} mm/day — "
+        f"p{sig.percentile:.0f} for this LGA (its p99 day is "
+        f"{sig.threshold_mm:.0f} mm, median wet day {sig.baseline_mm:.0f} mm)"
     )
 
 
@@ -78,7 +99,7 @@ async def _insert(
             projected_onset_hours, affected_area_km2, population_at_risk,
             location, lga, zone_name, metrics, source
         ) VALUES (
-            :tenant_id, 'rainstorm', :detector, :dver,
+            :tenant_id, 'flood', :detector, :dver,
             :severity, :confidence, :band, TRUE,
             NULL, NULL, NULL,
             ST_SetSRID(ST_MakePoint(:lon, :lat), 4326),

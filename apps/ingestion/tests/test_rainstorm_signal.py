@@ -18,11 +18,7 @@ from datetime import date
 import httpx
 import pytest
 
-from processors.rainstorm_signal import (
-    EXTREME_MM,
-    HEAVY_MM,
-    compute_rainstorm,
-)
+from processors.rainstorm_signal import compute_rainstorm
 from sources.gpm_imerg import (
     GpmImergClient,
     ImergAuthError,
@@ -33,74 +29,93 @@ from sources.gpm_imerg import (
 
 
 # ─── compute_rainstorm ────────────────────────────────────────────────────
+# Calibrated and validated on real IMERG (245 days/LGA, 2026-07-26). The
+# numbers below are taken from that fetch, not invented, so the tests fail if
+# anyone re-tunes the detector away from measured climatology.
 
 
-def _dry_season(n: int = 20) -> list[float]:
-    """Mostly-dry baseline with a few drizzle days."""
-    return [0.0] * (n - 4) + [0.4, 1.2, 0.8, 2.0]
+# Mokwa's REAL wet-day distribution, sampled every other day from the 245-day
+# IMERG fetch of 2026-07-26 (median 6.4 mm, p99 47.5 mm). Using measured data
+# rather than an invented curve is the point: a hand-made distribution is what
+# let the first version's thresholds look reasonable while being unusable.
+MOKWA_WET_DAYS = [
+    1.0, 1.0, 1.1, 1.1, 1.3, 1.4, 1.5, 1.6, 1.8, 1.9, 2.0, 2.0,
+    2.4, 3.0, 3.3, 3.4, 3.6, 3.7, 4.0, 4.1, 4.3, 4.9, 5.0, 5.4,
+    5.8, 5.9, 6.0, 6.1, 6.7, 6.9, 7.2, 7.2, 8.4, 8.6, 8.7, 9.3,
+    10.2, 10.6, 10.8, 11.4, 12.6, 13.2, 13.5, 14.3, 14.7, 16.3, 17.6, 18.3,
+    18.4, 19.1, 20.5, 21.8, 28.0, 32.4, 34.5, 43.6,
+]
 
 
-def _wet_season(n: int = 20) -> list[float]:
-    """A genuinely wet Middle-Belt baseline: ~12 mm on wet days."""
-    return [0.0, 14.0, 9.0, 11.0, 0.0, 16.0, 12.0, 8.0, 13.0, 10.0] * (n // 10)
+def _mokwa_like() -> list[float]:
+    """Real Mokwa climatology: the measured wet days plus its ~54% dry days."""
+    return [*([0.0] * 66), *MOKWA_WET_DAYS]
 
 
 def test_ordinary_wet_day_is_not_flagged() -> None:
-    """15 mm in a wet season is a normal day, not a rainstorm."""
-    assert compute_rainstorm([*_wet_season(), 15.0]) is None
+    assert compute_rainstorm([*_mokwa_like(), 12.0]) is None
 
 
-def test_drizzle_spike_in_dry_season_is_not_flagged() -> None:
-    """The relative anomaly is enormous (6 mm vs a ~1 mm baseline) but nobody's
-    roof comes off — the absolute gate must reject it. This is the case a plain
-    z-score gets wrong."""
-    assert compute_rainstorm([*_dry_season(), 6.0]) is None
+def test_mokwa_disaster_day_is_correctly_NOT_flagged() -> None:
+    """THE key regression. Mokwa 2025-05-29 killed 151 people, and its 26.1 mm
+    ranked p93 in Mokwa's own distribution — wet, not exceptional. Catching it
+    needs the p90 mark, which flags ~6% of all LGA-days (~4,100 alerts/season
+    nationally). We accept the miss rather than ship that noise; the flood came
+    from a failed railway embankment, not from the rain.
+
+    If this test starts failing, someone has lowered the threshold to chase a
+    past event. Read the module docstring before changing it."""
+    assert compute_rainstorm([*_mokwa_like(), 26.14]) is None
 
 
-def test_extreme_day_against_wet_baseline_is_flagged() -> None:
-    sig = compute_rainstorm([*_wet_season(), 120.0])
+def test_genuinely_exceptional_day_is_flagged() -> None:
+    """Well past the LGA's p99 (47.5 mm) — the case this detector exists for.
+    75 mm is 1.58x that, which lands 'high'; severity is a ratio to the LGA's
+    own p99, not an absolute millimetre band."""
+    sig = compute_rainstorm([*_mokwa_like(), 75.0])
     assert sig is not None
-    assert sig.rain_mm == 120.0
+    assert sig.rain_mm == 75.0
+    assert sig.percentile >= 99.0
+    assert sig.severity in ("high", "critical")
+
+
+def test_far_past_p99_reads_critical() -> None:
+    sig = compute_rainstorm([*_mokwa_like(), 110.0])   # 2.3x Mokwa's p99
+    assert sig is not None
     assert sig.severity == "critical"
-    assert sig.confidence_band == "HIGH"
-    assert sig.baseline_mm > 0
-    assert sig.ratio > 2.0
 
 
-def test_heavy_day_is_medium_not_critical() -> None:
-    sig = compute_rainstorm([*_wet_season(), HEAVY_MM + 1.0])
-    assert sig is not None
-    assert sig.severity == "medium"
+def test_severity_scales_with_exceedance_of_the_lgas_own_p99() -> None:
+    mild = compute_rainstorm([*_mokwa_like(), 21.0])
+    big = compute_rainstorm([*_mokwa_like(), 90.0])
+    assert big is not None and big.severity == "critical"
+    if mild is not None:
+        assert mild.severity in ("medium", "high")
 
 
-def test_heavy_rain_in_an_already_soaked_climate_needs_the_ratio() -> None:
-    """A place where 40 mm days are routine should not alarm at 55 mm."""
-    soaked = [40.0, 45.0, 38.0, 42.0, 44.0, 39.0, 41.0, 43.0] * 3
-    assert compute_rainstorm([*soaked, 55.0]) is None
+def test_absolute_floor_guards_the_arid_case() -> None:
+    """In a very dry LGA even the p99 wet day can be small. 8 mm is not a flood
+    risk anywhere, however unusual it is locally."""
+    arid = ([0.0] * 8 + [1.5, 2.0, 1.2, 3.0]) * 10
+    assert compute_rainstorm([*arid, 8.0]) is None
 
 
-def test_thin_baseline_requires_the_extreme_bar() -> None:
-    """With too few wet days to judge 'unusual', only a truly extreme total
-    qualifies — and it is reported with reduced confidence."""
-    thin = [0.0] * 18 + [2.0, 3.0]           # 2 wet days, below MIN_WET_DAYS
-    assert compute_rainstorm([*thin, HEAVY_MM + 5]) is None
-    sig = compute_rainstorm([*thin, EXTREME_MM + 5])
-    assert sig is not None
-    assert sig.confidence_band in ("MEDIUM", "LOW")
+def test_thin_history_returns_none_rather_than_guessing() -> None:
+    assert compute_rainstorm([*([0.0] * 40 + [5.0] * 5), 60.0]) is None
 
 
 def test_returns_none_without_enough_history() -> None:
     assert compute_rainstorm([80.0]) is None
 
 
-def test_metrics_disclose_the_resolution_limit() -> None:
-    """The payload must say IMERG is hazard-level, not damage-level — this text
-    is what stops an operator reading a pin as 'this village was destroyed'."""
-    sig = compute_rainstorm([*_wet_season(), 130.0])
+def test_metrics_state_this_is_not_rainstorm_detection() -> None:
+    """The payload must not let a reader infer we detect wind damage — that
+    claim is exactly what validation disproved."""
+    sig = compute_rainstorm([*_mokwa_like(), 80.0])
     assert sig is not None
-    m = sig.as_metrics()
-    assert "not a damage assessment" in str(m["interpretation"])
-    assert m["instrument"].startswith("GPM IMERG")
+    text = str(sig.as_metrics()["interpretation"])
+    assert "NOT a rainstorm detection" in text
+    assert "not a damage assessment" in text
 
 
 # ─── grid indexing ────────────────────────────────────────────────────────
@@ -244,15 +259,18 @@ def test_run_audit_uses_real_ingestion_runs_columns() -> None:
     assert "records_written" not in cols
 
 
-def test_insert_writes_the_rainstorm_type_and_is_review_flagged() -> None:
-    """Rows must land as 'rainstorm' (migration 0036 allows it) and stay
-    human-review flagged — this is modelled hazard, not observed damage."""
+def test_insert_writes_flood_not_rainstorm() -> None:
+    """Validation proved daily rainfall cannot see wind-damage storms, so these
+    rows must NOT claim to be rainstorms. Exceptional rainfall is a flood
+    precursor; labelling it 'rainstorm' would repeat the mislabelling this whole
+    change set removed. Stays human-review flagged: modelled, not observed."""
     import inspect
 
     from tasks import rainstorm_scan
 
     sql = inspect.getsource(rainstorm_scan._insert)
-    assert "'rainstorm'" in sql
+    assert "'flood'" in sql
+    assert "'rainstorm'" not in sql
     assert "TRUE" in sql          # requires_human_review
 
 
