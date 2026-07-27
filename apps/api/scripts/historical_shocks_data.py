@@ -316,6 +316,82 @@ _PLATEAU_BASSA_2026 = HistoricalShock(
     source_url="https://allafrica.com/stories/202607200089.html",
 )
 
+# ─── Rainstorms / windstorms ──────────────────────────────────────────────
+# Recorded as their own type, not folded into 'flood'. These are wind-and-rain
+# damage events: roofs off, mud walls down, no inundation. Our satellites
+# cannot see them (validated 2026-07-26 — daily rainfall totals on these days
+# are ordinary), so the register grows here only from documented reports.
+
+_NIGER_WINDSTORM_2026 = HistoricalShock(
+    event_date=date(2026, 5, 8),
+    event_type="rainstorm",
+    title="Windstorm across six LGAs — 1,000+ houses destroyed",
+    severity="critical",
+    houses_destroyed=1000,
+    lgas=("Mokwa", "Bida", "Lavun", "Katcha", "Gbako", "Mariga"),
+    note=(
+        "Communities named include Sawmill, Kpege and Tifin Madza (Mokwa), "
+        "Cheniyan and Masaga (Bida) and Durgu (Mariga). NSEMA began rapid "
+        "assessment. No deaths reported. Struck the same Mokwa LGA that the "
+        "2025 flood devastated — a different hazard, a year apart."
+    ),
+    source_name="Punch (8 May 2026)",
+    source_url=(
+        "https://punchng.com/"
+        "windstorm-destroys-over-1000-houses-displaces-residents-in-niger-communities/"
+    ),
+)
+
+_KEBBI_WINDSTORM_2026 = HistoricalShock(
+    event_date=date(2026, 5, 6),
+    event_type="rainstorm",
+    title="Suru windstorm — houses and food stores destroyed",
+    severity="high",
+    lgas=("Suru",),
+    note=(
+        "Sambera, Jeroki, Becinga, Nassarawa, Tunga Soja, Tauken Mage, Tunga "
+        "Muminu Oro and Ciwan Wanzam hit on the Wednesday night. Houses, food "
+        "storage and property destroyed; residents reported no lives lost. "
+        "House count not published, so none is recorded here."
+    ),
+    source_name="Punch (8 May 2026)",
+    source_url="https://punchng.com/windstorm-ravages-kebbi-communities-destroys-houses/",
+)
+
+_KADUNA_RAINSTORM_2026 = HistoricalShock(
+    event_date=date(2026, 5, 4),
+    event_type="rainstorm",
+    title="Chikun rainstorm — Dokan Mai-Jama'a and Sabon Gyero",
+    severity="high",
+    deaths=2,
+    houses_destroyed=50,
+    lgas=("Chikun",),
+    note=(
+        "Monday-evening storm lasting over 40 minutes; the village head "
+        "reported 50+ houses severely affected, many flattened. Families left "
+        "homeless."
+    ),
+    source_name="Punch (6 May 2026)",
+    source_url="https://punchng.com/rainstorm-kills-two-ravages-50-kaduna-homes/",
+)
+
+_ZAMFARA_WINDSTORM_2026 = HistoricalShock(
+    event_date=date(2026, 5, 10),
+    event_type="rainstorm",
+    title="Bungudu windstorm — Bela village",
+    severity="high",
+    deaths=1,
+    houses_destroyed=200,
+    lgas=("Bungudu",),
+    note=(
+        "Storm began late Sunday evening and lasted over an hour; 200+ houses "
+        "destroyed in Bela village, hundreds displaced. Date is the report "
+        "date — the storm struck the preceding Sunday night."
+    ),
+    source_name="Daily Trust (May 2026)",
+    source_url="https://dailytrust.com/windstorm-kills-1-destroys-over-200-houses-in-zamfara/",
+)
+
 _SENEGAL_2022 = HistoricalShock(
     event_date=date(2022, 8, 6),
     event_type="flood",
@@ -343,13 +419,13 @@ _SENEGAL_2022 = HistoricalShock(
 # ABSENT on purpose (see module docstring) rather than filled with invented
 # rows; all 10 pilots currently have at least one sourced event.
 HISTORICAL_EVENTS: dict[str, tuple[HistoricalShock, ...]] = {
-    "kebbi": (_KEBBI_2024, _KEBBI_ARGUNGU_2024),
-    "niger": (_NIGER_MOKWA_2025, _NIGER_2024),
+    "kebbi": (_KEBBI_2024, _KEBBI_ARGUNGU_2024, _KEBBI_WINDSTORM_2026),
+    "niger": (_NIGER_MOKWA_2025, _NIGER_2024, _NIGER_WINDSTORM_2026),
     "benue": (_BENUE_2022,),
     "nasarawa": (_NASARAWA_2022,),
-    "kaduna": (_KADUNA_2024,),
+    "kaduna": (_KADUNA_2024, _KADUNA_RAINSTORM_2026),
     "fct": (_FCT_2024,),
-    "zamfara": (_ZAMFARA_2024,),
+    "zamfara": (_ZAMFARA_2024, _ZAMFARA_WINDSTORM_2026),
     "plateau": (_PLATEAU_2025, _PLATEAU_RIYOM_2026, _PLATEAU_BASSA_2026),
     "ghana": (_GHANA_AKOSOMBO_2023,),
     "senegal": (_SENEGAL_2022,),
