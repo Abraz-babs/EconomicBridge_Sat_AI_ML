@@ -59,10 +59,19 @@ log = logging.getLogger(__name__)
 
 RUN_SOURCE = "food_prices_v1"       # the ingestion_runs tag for the whole job
 
-# How many months back to (re)load. NBS publishes a month's watch weeks after
-# the month ends, and FEWS backfills, so a short trailing window keeps recent
-# months correct without re-reading years of history every run.
+# NBS: how many monthly workbooks to (re)fetch. It publishes weeks after the
+# month ends, so a short trailing window catches a late release. Each month is
+# a separate HTTP request, hence kept small.
 LOOKBACK_MONTHS = 3
+
+# FEWS: how far back to keep from the single country dump. Wider on purpose.
+# The dump is ONE request regardless of range, so a narrow window costs nothing
+# to widen — and a narrow one actively hid data we already had: FEWS stopped
+# collecting in Kebbi and Kaduna in Jan 2025, so a 3-month window showed those
+# states as empty when a real (if ending) series existed. A chart that visibly
+# stops in Jan 2025, dated, is far more useful than no chart, and the panel
+# states plainly that an empty chart means nobody is publishing.
+FEWS_LOOKBACK_MONTHS = 36
 
 
 @dataclass
@@ -175,7 +184,8 @@ async def ingest(today: date | None = None) -> IngestResult:
 
         # ── FEWS: one country dump, filtered to our window and states ──
         try:
-            fews_rows = await FewsPriceClient().fetch(since=months[0])
+            fews_since = _months_back(FEWS_LOOKBACK_MONTHS, today=today)[0]
+            fews_rows = await FewsPriceClient().fetch(since=fews_since)
         except FewsFetchError as exc:
             result.errors.append(f"fews: {exc}")
             fews_rows = []
