@@ -33,6 +33,16 @@ from schemas.envelope import ResponseMeta, SuccessResponse
 
 router = APIRouter(prefix="/cropguard/prices", tags=["cropguard"])
 
+# scripts/seed_crop_prices.py writes a synthetic 24-month series tagged
+# 'seed_v1'. It was the ONLY thing this endpoint served until the real feed
+# landed (2026-07-27), and afterwards the two sat side by side, visually
+# identical — a fabricated price next to a FEWS market price with nothing to
+# tell them apart. That is worse than either alone, so seed rows are not
+# served. Real sources: nbs_zone_v1 (NBS zone average), fews_market_v1
+# (FEWS NET market median). Consequence, accepted: a tenant with no real
+# source shows an empty chart rather than an invented one.
+SEED_SOURCE = "seed_v1"
+
 
 def _trace_id(request: Request) -> UUID:
     return getattr(request.state, "trace_id", uuid4())
@@ -84,11 +94,13 @@ async def get_price_series(
             SELECT crop, region, observed_at, price_ngn_per_kg, source
               FROM public.crop_prices
              WHERE crop = :crop AND region = :region
+               AND source <> :seed_source
              ORDER BY observed_at DESC
              LIMIT :limit
             """
         ),
-        {"crop": target_crop, "region": target_region, "limit": months},
+        {"crop": target_crop, "region": target_region, "limit": months,
+         "seed_source": SEED_SOURCE},
     )
     rows = list(result.mappings())
     # Oldest-first for charting.
@@ -154,11 +166,13 @@ async def get_correlation_matrix(
             SELECT crop, observed_at, price_ngn_per_kg
               FROM public.crop_prices
              WHERE region = :region
+               AND source <> :seed_source
                AND observed_at >= (CURRENT_DATE - make_interval(months => :months))
              ORDER BY observed_at ASC
             """
         ),
-        {"region": target_region, "months": months},
+        {"region": target_region, "months": months,
+         "seed_source": SEED_SOURCE},
     )
 
     # Group rows into per-crop monthly series, aligned on observation date.

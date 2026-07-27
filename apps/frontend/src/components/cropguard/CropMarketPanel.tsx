@@ -26,22 +26,6 @@ const CROPS: { id: string; label: string }[] = [
   { id: 'onion',        label: 'Onion' },
   { id: 'plantain',     label: 'Plantain' },
   { id: 'sweet_potato', label: 'Sweet potato' },
-  // ── Varieties the live feed actually publishes ──────────────────────────
-  // NBS and FEWS NET both price varieties separately (white vs yellow maize
-  // trade at different prices), so the feed keeps them distinct rather than
-  // averaging two commodities into one line. These ids must match the crop
-  // keys in ingestion sources/nbs_food_prices.py + sources/fews_prices.py,
-  // or a real series is written and never becomes selectable.
-  { id: 'maize_white',    label: 'Maize (white)' },
-  { id: 'maize_yellow',   label: 'Maize (yellow)' },
-  { id: 'rice_local',     label: 'Rice (local)' },
-  { id: 'rice_imported',  label: 'Rice (imported)' },
-  { id: 'sorghum_white',  label: 'Sorghum (white)' },
-  { id: 'sorghum_brown',  label: 'Sorghum (brown)' },
-  { id: 'beans_brown',    label: 'Beans (brown)' },
-  { id: 'beans_white',    label: 'Beans (white)' },
-  { id: 'gari_white',     label: 'Gari (white)' },
-  { id: 'gari_yellow',    label: 'Gari (yellow)' },
 ];
 
 const CROP_LABEL = Object.fromEntries(CROPS.map(c => [c.id, c.label]));

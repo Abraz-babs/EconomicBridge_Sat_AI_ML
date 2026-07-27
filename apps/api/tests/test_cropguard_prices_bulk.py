@@ -228,3 +228,28 @@ def test_bulk_price_row_error_schema_carries_raw_row():
     schema = spec["components"]["schemas"]["BulkPriceRowError"]
     props = schema["properties"]
     assert {"line_number", "raw_row", "error"} <= set(props.keys())
+
+
+# ─── seeded prices must not be served alongside real ones ─────────────────
+
+
+def test_price_queries_exclude_the_seed_series() -> None:
+    """2026-07-27: the real feed landed and its rows sat beside 24 fabricated
+    ones, visually identical — a FEWS market price next to an invented number
+    with nothing to distinguish them. Both queries must exclude seed_v1."""
+    import inspect
+
+    from routers import cropguard_prices
+
+    for fn in (cropguard_prices.get_price_series,
+               cropguard_prices.get_correlation_matrix):
+        src = inspect.getsource(fn)
+        assert "source <> :seed_source" in src, fn.__name__
+        assert "seed_source" in src.split("execute(")[-1], fn.__name__
+
+
+def test_seed_source_constant_matches_the_seed_script() -> None:
+    from routers.cropguard_prices import SEED_SOURCE
+    from scripts.seed_crop_prices import SEED_SOURCE as SCRIPT_SEED
+
+    assert SEED_SOURCE == SCRIPT_SEED == "seed_v1"

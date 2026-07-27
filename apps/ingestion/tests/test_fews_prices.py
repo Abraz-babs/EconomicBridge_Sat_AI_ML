@@ -123,8 +123,8 @@ def test_rows_are_grouped_per_crop_tenant_and_month() -> None:
     ])
     assert len(rows) == 4
     assert {(r.crop, r.tenant, r.observed_at.month) for r in rows} == {
-        ("maize_white", "kebbi", 6), ("millet", "kebbi", 6),
-        ("maize_white", "zamfara", 6), ("maize_white", "kebbi", 5),
+        ("maize", "kebbi", 6), ("millet", "kebbi", 6),
+        ("maize", "zamfara", 6), ("maize", "kebbi", 5),
     }
 
 
@@ -140,14 +140,14 @@ def test_bad_values_are_dropped_not_zeroed() -> None:
 
 def test_crop_keys_overlap_the_nbs_vocabulary() -> None:
     """Both sources must name the same crop identically or the merge silently
-    creates duplicate series for one commodity."""
+    creates duplicate series for one commodity. Base names only — "Maize", not
+    "Maize (white)"."""
     from sources.nbs_food_prices import UNIT_BASIS
 
     nbs_crops = {crop for crop, _ in UNIT_BASIS.values()}
     fews_crops = set(CROP_BY_PRODUCT.values())
     shared = nbs_crops & fews_crops
-    assert {"maize_white", "maize_yellow", "gari_white", "gari_yellow",
-            "beans_brown", "beans_white", "yam"} <= shared
+    assert {"maize", "rice", "cowpea", "cassava", "yam"} <= shared
 
 
 def test_every_mapped_tenant_is_a_real_pilot() -> None:
@@ -264,3 +264,22 @@ def test_nbs_zone_figure_is_fanned_out_to_every_tenant_in_that_zone() -> None:
     assert "ZONE_BY_TENANT" in src
     nw = [t for t, z in ZONE_BY_TENANT.items() if z == "NORTH WEST"]
     assert set(nw) == {"kebbi", "kaduna", "zamfara"}
+
+
+def test_no_two_products_map_to_the_same_crop() -> None:
+    """One reference variety per crop. If both white and yellow maize mapped to
+    "maize" we would write two different prices for the same crop/region/month
+    and no chart could say which one it was showing."""
+    crops = list(CROP_BY_PRODUCT.values())
+    assert len(crops) == len(set(crops)), "a crop has two source products"
+
+
+def test_crop_names_are_base_names_not_varieties() -> None:
+    """Operator decision 2026-07-27: keep "maize", not "maize_white"."""
+    from sources.nbs_food_prices import UNIT_BASIS
+
+    for crop in {*CROP_BY_PRODUCT.values(), *(c for c, _ in UNIT_BASIS.values())}:
+        assert not any(
+            crop.endswith(sfx)
+            for sfx in ("_white", "_yellow", "_brown", "_local", "_imported")
+        ), crop

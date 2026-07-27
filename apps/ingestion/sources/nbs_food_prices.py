@@ -70,7 +70,12 @@ ZONE_BY_TENANT: dict[str, str] = {
     "fct": "NORTH CENTRAL",
 }
 
-# NBS item label -> (canonical crop, kg multiplier applied to the quoted price).
+# NBS item label -> (crop, kg multiplier applied to the quoted price).
+#
+# ONE REFERENCE VARIETY PER CROP — see the same note in sources/fews_prices.py.
+# NBS lists white AND yellow maize, local AND imported rice, brown AND white
+# beans; taking both would write two different prices for one crop/region/month.
+# The dominant food variety wins and the rest are not ingested.
 #
 # multiplier semantics: price_per_kg = quoted_price * multiplier
 #   1.0  quoted per kg already ("sold loose" is NBS's per-kg convention)
@@ -80,30 +85,15 @@ ZONE_BY_TENANT: dict[str, str] = {
 # bottles ("specify bottle" — volume never stated) and per-item fish have no
 # defensible mass basis and are deliberately absent.
 UNIT_BASIS: dict[str, tuple[str, float]] = {
-    "beans brown,sold loose": ("beans_brown", 1.0),
-    "beans:white black eye. sold loose": ("beans_white", 1.0),
-    "gari white,sold loose": ("gari_white", 1.0),
-    "gari yellow,sold loose": ("gari_yellow", 1.0),
-    "maize grain white sold loose": ("maize_white", 1.0),
-    "maize grain yellow sold loose": ("maize_yellow", 1.0),
-    "rice agric sold loose": ("rice_agric", 1.0),
-    "rice local sold loose": ("rice_local", 1.0),
-    "rice,imported high quality sold loose": ("rice_imported", 1.0),
-    "rice medium grained": ("rice_medium", 1.0),
-    "broken rice (ofada)": ("rice_ofada", 1.0),
+    "maize grain white sold loose": ("maize", 1.0),
+    "rice local sold loose": ("rice", 1.0),
+    "beans brown,sold loose": ("cowpea", 1.0),
+    "gari white,sold loose": ("cassava", 1.0),
     "yam tuber": ("yam", 1.0),
-    "irish potato": ("potato_irish", 1.0),
-    "sweet potato": ("potato_sweet", 1.0),
+    "sweet potato": ("sweet_potato", 1.0),
     "onion bulb": ("onion", 1.0),
     "tomato": ("tomato", 1.0),
-    "plantain(ripe)": ("plantain_ripe", 1.0),
-    "plantain(unripe)": ("plantain_unripe", 1.0),
-    "beef bone in": ("beef_bone_in", 1.0),
-    "beef,boneless": ("beef_boneless", 1.0),
-    "frozen chicken": ("chicken_frozen", 1.0),
-    "bread sliced 500g": ("bread_sliced", 2.0),
-    "bread unsliced 500g": ("bread_unsliced", 2.0),
-    "wheat flour: prepacked (golden penny 2kg)": ("wheat_flour", 0.5),
+    "plantain(unripe)": ("plantain", 1.0),
 }
 
 

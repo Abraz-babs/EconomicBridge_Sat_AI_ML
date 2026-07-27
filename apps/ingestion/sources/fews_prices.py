@@ -51,23 +51,30 @@ SOURCE_TAG = "fews_market_v1"
 # Only these carry a mass basis; everything else is skipped.
 _WEIGHT_UNIT = re.compile(r"^(?:(\d+)_)?kg$", re.I)
 
-# FEWS product -> our canonical crop key. Deliberately aligned with the NBS
-# labels in sources/nbs_food_prices.py so both sources land on one vocabulary
-# and can be compared for the same crop/month.
+# FEWS product -> crop. ONE REFERENCE VARIETY PER CROP, on purpose.
+#
+# FEWS prices varieties separately (white vs yellow maize, local vs imported
+# rice). Mapping both to "maize" would put two different prices on the same
+# crop/region/month and there would be no way to say which one a chart is
+# showing. Averaging them is worse: it invents a figure for a commodity nobody
+# trades. So each crop takes its DOMINANT Nigerian food variety and the others
+# are simply not ingested:
+#   maize    <- white  (the food staple; yellow is largely feed)
+#   rice     <- milled local (imported 5% broken is a separate market)
+#   cowpea   <- brown  (the common market bean)
+#   sorghum  <- white
+#   cassava  <- gari white (gari is how cassava actually trades)
+# Keys match sources/nbs_food_prices.py so both sources share one vocabulary,
+# and both match the CROPS list in components/cropguard/CropMarketPanel.tsx.
 CROP_BY_PRODUCT: dict[str, str] = {
-    "Maize Grain (White)": "maize_white",
-    "Maize Grain (Yellow)": "maize_yellow",
-    "Rice (Milled)": "rice_local",
-    "Rice (5% Broken)": "rice_imported",
-    "Cowpeas (Brown)": "beans_brown",     # cowpea is the Nigerian "brown beans"
-    "Cowpeas (White)": "beans_white",
-    "Gari (White)": "gari_white",
-    "Gari (Yellow)": "gari_yellow",
-    "Sorghum (Brown)": "sorghum_brown",
-    "Sorghum (White)": "sorghum_white",
+    "Maize Grain (White)": "maize",
+    "Rice (Milled)": "rice",
+    "Cowpeas (Brown)": "cowpea",
+    "Sorghum (White)": "sorghum",
     "Millet (Pearl)": "millet",
     "Groundnuts (Shelled)": "groundnut",
     "Yams": "yam",
+    "Gari (White)": "cassava",
 }
 
 # Retail is the consumer-facing price and is what NBS publishes, so mixing

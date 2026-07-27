@@ -86,20 +86,22 @@ def test_loose_items_are_taken_as_per_kg() -> None:
     data = _xlsx([("Maize grain white sold loose", [900, 800, 700, 950, 1000, 1100])])
     rows = parse_workbook(data, OBS)
     nw = next(r for r in rows if r.zone == "NORTH WEST")
-    assert nw.crop == "maize_white"
+    assert nw.crop == "maize"                  # base name, not maize_white
     assert nw.price_ngn_per_kg == 700.0        # NBS "sold loose" is per kg
 
 
-def test_packaged_items_are_converted_by_their_stated_weight() -> None:
-    """500 g loaf doubles to a kg price; a 2 kg pack halves. The weight comes
-    from the label, never from an assumption."""
-    data = _xlsx([
-        ("Bread sliced 500g", [1000, 1000, 1500, 1000, 1000, 1000]),
-        ("Wheat flour: prepacked (golden penny 2kg)", [4000, 4000, 3000, 4000, 4000, 4000]),
-    ])
+def test_pack_weight_multiplier_mechanism_still_works(monkeypatch) -> None:
+    """No CURRENT item needs a multiplier — every mapped crop is sold loose —
+    but the mechanism must keep working for the next packaged staple, and it
+    must take the weight from the LABEL rather than an assumption. Patched in
+    rather than kept as a live mapping so the shipped vocabulary stays exactly
+    the operator's base-name list."""
+    import sources.nbs_food_prices as mod
+
+    monkeypatch.setitem(mod.UNIT_BASIS, "bread sliced 500g", ("bread", 2.0))
+    data = _xlsx([("Bread sliced 500g", [1000, 1000, 1500, 1000, 1000, 1000])])
     rows = {(r.crop, r.zone): r.price_ngn_per_kg for r in parse_workbook(data, OBS)}
-    assert rows[("bread_sliced", "NORTH WEST")] == 3000.0     # 1500 * 2
-    assert rows[("wheat_flour", "NORTH WEST")] == 1500.0      # 3000 * 0.5
+    assert rows[("bread", "NORTH WEST")] == 3000.0            # 1500 * 2
 
 
 def test_items_with_no_mass_basis_are_skipped_not_guessed() -> None:
@@ -112,7 +114,7 @@ def test_items_with_no_mass_basis_are_skipped_not_guessed() -> None:
         ("Maize grain white sold loose", [900, 800, 700, 950, 1000, 1100]),
     ])
     rows = parse_workbook(data, OBS)
-    assert {r.crop for r in rows} == {"maize_white"}
+    assert {r.crop for r in rows} == {"maize"}
 
 
 def test_unknown_item_is_skipped_without_failing_the_run() -> None:
