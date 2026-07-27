@@ -142,23 +142,34 @@ async def _insert_event(
     })
 
 
+NO_DATA_REASON = "no satellite data readable (CDSE quota or rate limit)"
+
+
 async def _record_run(
     session: AsyncSession, *, tenant: str, written: int,
-    started_at: datetime, trigger: str,
+    started_at: datetime, trigger: str, error: str | None = None,
 ) -> None:
-    """Stamp public.ingestion_runs so the dashboard can show 'last scan' and
-    prove the detector is live even when no shock is active."""
+    """Stamp public.ingestion_runs so the dashboard can show 'last scan'.
+
+    `error` marks the run FAILED, and that matters more than it looks: the
+    panel's last-scan query filters on status='succeeded', so a run that could
+    not read any satellite data must not advance the timestamp. Stamping such a
+    run 'succeeded' made the dashboard report "monitored, no signal" when the
+    truth was "could not look" — see run_shockguard_scan.
+    """
     await session.execute(text("""
         INSERT INTO public.ingestion_runs (
             id, source, tenant_id, trigger, started_at, finished_at,
-            status, records_ingested, dry_run
+            status, records_ingested, error_message, dry_run
         ) VALUES (
             :id, :source, :tenant, :trigger, :started_at, NOW(),
-            'succeeded', :written, FALSE
+            :status, :written, :error, FALSE
         )
     """), {
         "id": uuid4(), "source": SOURCE, "tenant": tenant, "trigger": trigger,
         "started_at": started_at, "written": written,
+        "status": "failed" if error else "succeeded",
+        "error": error[:500] if error else None,
     })
 
 
@@ -183,20 +194,26 @@ async def detect_for_tenant(session: AsyncSession, tenant: str) -> int:
 async def detect_per_lga_for_tenant(
     session: AsyncSession, client: SentinelStatisticalClient, tenant: str,
     *, full: bool = False, day: int | None = None,
-) -> int:
+) -> tuple[int, int]:
     """Per-LGA flood/drought scan: each LGA from its OWN Sentinel-1 SAR +
     Sentinel-2 NDVI series, rolling on the ~6-day revisit cadence. Only the
     scanned LGAs' events are refreshed (a 429/error keeps that LGA's prior
     events), so the statewide picture stays populated between revisits.
 
-    Returns the number of shock events written across the scanned LGAs.
+    Returns (events_written, lgas_evaluated). The second number is the honest
+    one. When CDSE is rate-limited or its monthly quota is spent the client
+    returns an EMPTY series rather than raising, so every LGA yields no signal
+    and `events` is 0 — identical to a genuine all-clear. Without the evaluated
+    count the caller cannot tell "checked, nothing there" from "could not check
+    at all", and the dashboard reports the second as the first.
     """
     await set_tenant_schema(session, tenant)
     batch = select_lgas(tenant, full=full, day=day)
     if not batch:
-        return await detect_for_tenant(session, tenant)  # ROI fallback
+        return await detect_for_tenant(session, tenant), 0  # ROI fallback
 
     events = 0
+    evaluated = 0
     for g in batch:
         # Fetch FIRST — only refresh this LGA on a successful read, so a rate
         # limit / error skips it without wiping its prior shock events.
@@ -206,6 +223,12 @@ async def detect_per_lga_for_tenant(
             log.warning("shockguard per-LGA CDSE error tenant=%s lga=%s: %s",
                         tenant, g.get("lga"), exc)
             continue
+        # An empty series means the read produced nothing usable — the quota
+        # breaker is open, or there was no usable pass in the window. That is
+        # NOT a quiet LGA, and must not be counted as one.
+        if not sar and not ndvi:
+            continue
+        evaluated += 1
         flood = compute_shock(sar, "flood", SAR_SCALE)
         drought = compute_shock(ndvi, "drought", NDVI_SCALE)
         await session.execute(text(
@@ -218,7 +241,7 @@ async def detect_per_lga_for_tenant(
                 scope_label="LGA-level",
             )
             events += 1
-    return events
+    return events, evaluated
 
 
 async def run_shockguard_scan(
@@ -242,17 +265,29 @@ async def run_shockguard_scan(
             started = datetime.now(timezone.utc)
             try:
                 if per_lga:
-                    count = await detect_per_lga_for_tenant(
+                    count, evaluated = await detect_per_lga_for_tenant(
                         session, client, t, full=full)
                 else:
-                    count = await detect_for_tenant(session, t)
+                    count, evaluated = await detect_for_tenant(session, t), 1
+
+                # "No signal" and "no data" are different answers. Reporting
+                # the second as the first is how a dead feed passes for a
+                # healthy one — precisely what hid the CDSE outage. A run that
+                # read nothing is recorded FAILED so it cannot advance the
+                # panel's last-scan time.
+                no_data = per_lga and evaluated == 0
                 await _record_run(
                     session, tenant=t, written=count,
                     started_at=started, trigger=trigger,
+                    error=NO_DATA_REASON if no_data else None,
                 )
                 await session.commit()
-                out[t] = "clear (no flood/drought signal)" if count == 0 \
-                    else f"{count} shock event(s)"
+                if no_data:
+                    out[t] = "NOT CHECKED (no satellite data available)"
+                elif count == 0:
+                    out[t] = f"clear ({evaluated} LGAs checked, no signal)"
+                else:
+                    out[t] = f"{count} shock event(s) from {evaluated} LGAs"
             except Exception as exc:  # noqa: BLE001 — isolate per tenant
                 out[t] = f"failed: {exc!s}"
                 log.exception("shockguard scan failed tenant=%s", t)

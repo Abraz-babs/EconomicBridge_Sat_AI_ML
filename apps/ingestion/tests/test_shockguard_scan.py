@@ -62,3 +62,48 @@ def test_bigger_drop_higher_confidence():
     mild_c = mild.confidence if mild else 0.0
     assert severe.confidence >= mild_c
     assert len(base) < MIN_POINTS + 3
+
+
+# ─── "no data" must never be reported as "no signal" ─────────────────────
+
+
+def test_scan_reports_not_checked_when_nothing_was_readable() -> None:
+    """2026-07-27: with the CDSE quota spent, the client returns EMPTY series
+    rather than raising, so every LGA produced no signal and the scan reported
+    'clear (no flood/drought signal)' for all 10 tenants — then stamped
+    ingestion_runs 'succeeded', so the dashboard read "monitored, no signal"
+    while it had in fact read nothing at all. That is how a dead feed passes
+    for a healthy one."""
+    import inspect
+
+    from tasks import shockguard_scan
+
+    src = inspect.getsource(shockguard_scan.run_shockguard_scan)
+    assert "NOT CHECKED" in src
+    assert "no_data" in src
+    # the misleading unconditional message must be gone
+    assert 'out[t] = "clear (no flood/drought signal)"' not in src
+
+
+def test_failed_run_cannot_advance_the_panels_last_scan() -> None:
+    """The panel's last-scan query filters status='succeeded'. A run that read
+    nothing must therefore record FAILED, or it silently refreshes the
+    'continuously monitored' line on data it never saw."""
+    import inspect
+
+    from tasks import shockguard_scan
+
+    src = inspect.getsource(shockguard_scan._record_run)
+    assert '"failed" if error else "succeeded"' in src
+    assert "error_message" in src
+
+
+def test_per_lga_scan_returns_evaluated_count() -> None:
+    """events==0 is ambiguous on its own; the evaluated count disambiguates."""
+    import inspect
+
+    from tasks import shockguard_scan
+
+    src = inspect.getsource(shockguard_scan.detect_per_lga_for_tenant)
+    assert "return events, evaluated" in src
+    assert "if not sar and not ndvi:" in src
