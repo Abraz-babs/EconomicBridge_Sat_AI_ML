@@ -67,4 +67,15 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD wget -qO- http://127.0.0.1:3000 >/dev/null 2>&1 || exit 1
 
-CMD ["node", "server.js"]
+# Force the bind address at exec time.
+#
+# `ENV HOSTNAME=0.0.0.0` above is NOT enough: the container runtime sets
+# HOSTNAME to the container's own hostname, which overrides the image ENV, and
+# Next.js standalone reads process.env.HOSTNAME to choose what to bind. The
+# server then listens ONLY on the task ENI address, so the ALB health check
+# (which targets that address) passes while the CONTAINER health check
+# (127.0.0.1) can never succeed — ECS marks every task UNHEALTHY, kills it,
+# starts another, and each deploy reports a FAILED rollout while traffic keeps
+# being served by a task that is about to be replaced. Setting it inline on the
+# exec line wins over the injected value.
+CMD ["sh", "-c", "HOSTNAME=0.0.0.0 exec node server.js"]
