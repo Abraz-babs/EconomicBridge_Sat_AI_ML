@@ -73,9 +73,14 @@ export default function CropMarketPanel() {
   return (
     <div className="cg-market">
       <div className="cg-section-header">
-        Market Price Intelligence — 14 staple crops
+        Market Price Intelligence — retail prices, NGN per kg
+        {/* Name only what we actually read. FAOSTAT and AMIS were never
+            wired; claiming them made the panel look better sourced than it
+            was. NBS is listed as historical because its Selected Food Prices
+            Watch has not been published since Oct 2024. */}
         <span className="ev-map-meta">
-          Sources: NBS Food Price Watch · FAOSTAT · AMIS
+          Sources: FEWS NET market prices (live) · NBS Food Price Watch
+          (to Oct 2024)
         </span>
       </div>
 
@@ -126,11 +131,22 @@ export default function CropMarketPanel() {
             <PriceLineChart points={series.points} isEcowas={isEcowas} />
           )}
           {series && series.points.length === 0 && (
+            /* Was: "run the seed script". That advice is now wrong — seeded
+               prices are deliberately not served, because a fabricated series
+               beside a real one is indistinguishable. State the actual reason
+               instead: nobody currently publishes this market. */
             <div className="fp-alert-empty">
-              No price data for {CROP_LABEL[selectedCrop]} in this region. Run{' '}
-              <code>python -m scripts.seed_crop_prices</code> from{' '}
-              <code>apps/api/</code> to populate seed data, or wait for the
-              NBS / FAOSTAT ingestion to land.
+              <strong>No current price series for {CROP_LABEL[selectedCrop]} here.</strong>
+              <br />
+              We show only prices a public source actually publishes for this
+              state. FEWS NET collects retail prices in Zamfara; it stopped
+              collecting in Kebbi and Kaduna in January 2025, and does not
+              cover Niger, Benue, Plateau, Nasarawa or the FCT. NBS&apos;s
+              Selected Food Prices Watch has not been published since October
+              2024.
+              <br />
+              An empty chart here means no one is publishing — not that
+              prices are unchanged.
             </div>
           )}
         </div>
@@ -150,8 +166,14 @@ export default function CropMarketPanel() {
           ) : corrQuery.isLoading ? (
             <div className="fp-alert-empty">Loading correlation matrix…</div>
           ) : corrQuery.isError ? (
-            <div className="fp-alert-error">
-              Could not load: {corrQuery.error?.message ?? 'unknown'}
+            /* "Need at least 2 crops with data in region='kebbi'; got 0" is a
+               true statement of a normal condition, but it reads as a fault.
+               Correlation needs two series; with no published prices there is
+               nothing to correlate, and that is not an error. */
+            <div className="fp-alert-empty">
+              Co-movement needs at least two priced crops in this state. With
+              no published price series here there is nothing to correlate —
+              try Zamfara, which FEWS NET currently covers.
             </div>
           ) : null}
         </div>
