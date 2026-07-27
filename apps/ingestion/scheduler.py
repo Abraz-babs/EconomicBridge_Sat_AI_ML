@@ -36,6 +36,7 @@ from tasks.encroachment_detector import run_encroachment_sweep
 from tasks.pass_imagery_sweep import run_pass_imagery_sweep
 from tasks.poverty_ingest import ingest_all as poverty_ingest_all
 from tasks.satellite_observations_ingest import ingest_all as satobs_ingest_all
+from tasks.food_prices_ingest import run_food_price_ingest
 from tasks.rainstorm_scan import run_rainfall_scan
 from tasks.shockguard_scan import run_shockguard_scan
 from tasks.skills_ingest import ingest_skills_for_tenant
@@ -53,6 +54,7 @@ JOB_ID_POVERTY_WEEKLY = "poverty_viirs_weekly_mon_0630utc"
 JOB_ID_ENCROACHMENT_DAILY = "encroachment_daily_0700utc"
 JOB_ID_SHOCKGUARD_DAILY = "shockguard_scan_daily_0730utc"
 JOB_ID_RAINFALL_DAILY = "imerg_rainfall_daily_0800utc"
+JOB_ID_FOOD_PRICES_MONTHLY = "food_prices_monthly_5th_0930utc"
 JOB_ID_MOBILITY_MONTHLY = "mobility_worldbank_monthly_1st_08utc"
 JOB_ID_AID_MONTHLY = "aid_hapi_monthly_1st_09utc"
 JOB_ID_SKILLS_MONTHLY = "skills_giga_monthly_1st_10utc"
@@ -127,6 +129,21 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         max_instances=1,
         misfire_grace_time=21600,
+    )
+
+    scheduler.add_job(
+        run_food_price_ingest,
+        # Food prices: NBS "Selected Food Prices Watch" (zone-level, every
+        # pilot) + FEWS NET market prices (state-level where collected).
+        # Monthly on the 5th because NBS publishes a month's watch weeks after
+        # that month ends; a 3-month trailing window re-reads recent months so
+        # a late publication is picked up without re-reading years of history.
+        trigger=CronTrigger(day=5, hour=9, minute=30, timezone="UTC"),
+        id=JOB_ID_FOOD_PRICES_MONTHLY,
+        name="Food prices (NBS zone + FEWS NET market, monthly)",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=86400,
     )
 
     scheduler.add_job(
