@@ -234,3 +234,33 @@ def test_food_price_job_registered_monthly() -> None:
     assert "JOB_ID_FOOD_PRICES_MONTHLY" in src
     assert JOB_ID_FOOD_PRICES_MONTHLY == "food_prices_monthly_5th_0930utc"
     assert "day=5" in src            # monthly, not daily
+
+
+def test_region_is_the_tenant_id_so_the_panel_can_query_it() -> None:
+    """routers/cropguard_prices.py resolves `region` from X-Tenant-Id, so a row
+    written with the FEWS spelling ("Zamfara") or the NBS zone ("NORTH WEST")
+    lands in the table and can NEVER be queried by the panel. Writing 26 real
+    prices that nobody could see is exactly how this failed the first time."""
+    import inspect
+
+    from tasks import food_prices_ingest
+
+    src = inspect.getsource(food_prices_ingest.ingest)
+    assert '"region": mp.tenant' in src        # FEWS -> tenant id
+    assert '"region": tenant' in src           # NBS zone fanned out per tenant
+    assert '"region": mp.admin_1' not in src
+    assert '"region": zp.zone' not in src
+
+
+def test_nbs_zone_figure_is_fanned_out_to_every_tenant_in_that_zone() -> None:
+    """A North West figure must reach kebbi, kaduna AND zamfara — but stay
+    tagged nbs_zone_v1 so it is never mistaken for a state-specific price."""
+    import inspect
+
+    from sources.nbs_food_prices import ZONE_BY_TENANT
+    from tasks import food_prices_ingest
+
+    src = inspect.getsource(food_prices_ingest.ingest)
+    assert "ZONE_BY_TENANT" in src
+    nw = [t for t, z in ZONE_BY_TENANT.items() if z == "NORTH WEST"]
+    assert set(nw) == {"kebbi", "kaduna", "zamfara"}

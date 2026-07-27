@@ -20,12 +20,16 @@ would quietly change meaning depending on which source happened to have data
 that month. So BOTH are written as separate rows, distinguished by `source`
 and by `region`:
 
-    region "NORTH WEST"  + source nbs_zone_v1     -> a zone average
-    region "Kebbi"       + source fews_market_v1  -> a state figure
+    region "kebbi" + source nbs_zone_v1     -> the NORTH WEST zone average
+    region "kebbi" + source fews_market_v1  -> a Kebbi market figure
 
-The consumer decides which to show and can say which it is. A zone average
-must never be labelled a state price — that is the same overstatement as
-pinning a statewide flood to one LGA.
+`region` is the TENANT ID, because routers/cropguard_prices.py resolves the
+region from X-Tenant-Id — writing "Zamfara" or "NORTH WEST" there puts rows in
+the table that the panel can never query. The honesty therefore lives in
+`source`, not in `region`: an nbs_zone_v1 row against kebbi IS the North West
+average and must be labelled as such wherever it is shown. A zone average must
+never be presented as a state price — the same overstatement as pinning a
+statewide flood to one LGA.
 
 IDEMPOTENT: each run deletes the (source, observed_at) slices it is about to
 write, so re-running a month corrects it rather than duplicating it.
@@ -45,6 +49,7 @@ from sources.fews_prices import SOURCE_TAG as FEWS_SOURCE
 from sources.fews_prices import FewsFetchError, FewsPriceClient
 from sources.nbs_food_prices import SOURCE_TAG as NBS_SOURCE
 from sources.nbs_food_prices import (
+    ZONE_BY_TENANT,
     NbsFetchError,
     NbsFoodPriceClient,
     NbsSchemaError,
@@ -156,13 +161,17 @@ async def ingest(today: date | None = None) -> IngestResult:
             await _replace_slice(
                 session, source=NBS_SOURCE, observed_at=zone_prices[0].observed_at,
             )
+            by_zone = {}
             for zp in zone_prices:
-                await session.execute(_INSERT, {
-                    "crop": zp.crop, "region": zp.zone,
-                    "observed_at": zp.observed_at,
-                    "price": zp.price_ngn_per_kg, "source": NBS_SOURCE,
-                })
-                result.nbs_rows += 1
+                by_zone.setdefault(zp.zone, []).append(zp)
+            for tenant, zone in ZONE_BY_TENANT.items():
+                for zp in by_zone.get(zone, []):
+                    await session.execute(_INSERT, {
+                        "crop": zp.crop, "region": tenant,
+                        "observed_at": zp.observed_at,
+                        "price": zp.price_ngn_per_kg, "source": NBS_SOURCE,
+                    })
+                    result.nbs_rows += 1
 
         # ── FEWS: one country dump, filtered to our window and states ──
         try:
@@ -176,7 +185,7 @@ async def ingest(today: date | None = None) -> IngestResult:
             )
         for mp in fews_rows:
             await session.execute(_INSERT, {
-                "crop": mp.crop, "region": mp.admin_1,
+                "crop": mp.crop, "region": mp.tenant,
                 "observed_at": mp.observed_at,
                 "price": mp.price_ngn_per_kg, "source": FEWS_SOURCE,
             })
