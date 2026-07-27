@@ -16,6 +16,27 @@ export type Severity = 'low' | 'medium' | 'high' | 'critical';
 export type ConfidenceBand = 'HIGH' | 'MEDIUM' | 'LOW';
 
 
+/** Per-detector health, so a live feed cannot mask a dead one. */
+interface FeedStatusWire {
+  source: string;
+  label: string;
+  last_success_at?: string | null;
+  last_run_at?: string | null;
+  last_status?: string | null;
+  last_error?: string | null;
+  active_events?: number;
+}
+
+export interface FeedStatus {
+  source: string;
+  label: string;
+  lastSuccessAt: string | null;
+  lastRunAt: string | null;
+  lastStatus: string | null;
+  lastError: string | null;
+  activeEvents: number;
+}
+
 export interface FloodSeriesPoint {
   observed_at: string;
   backscatter_db: number;
@@ -98,12 +119,14 @@ interface ShockEventListData {
   // shock is active (0 = scanned, all clear).
   last_scan_at?: string | null;
   active_shock_count?: number;
+  feeds?: FeedStatusWire[];
 }
 
 export interface ShockEventsResult {
   events: ShockEventRow[];
   lastScanAt: string | null;
   activeShockCount: number;
+  feeds: FeedStatus[];
 }
 
 
@@ -159,6 +182,15 @@ export function useShockEvents(
         events: envelope.data.events,
         lastScanAt: envelope.data.last_scan_at ?? null,
         activeShockCount: envelope.data.active_shock_count ?? 0,
+        feeds: (envelope.data.feeds ?? []).map((f) => ({
+          source: f.source,
+          label: f.label,
+          lastSuccessAt: f.last_success_at ?? null,
+          lastRunAt: f.last_run_at ?? null,
+          lastStatus: f.last_status ?? null,
+          lastError: f.last_error ?? null,
+          activeEvents: f.active_events ?? 0,
+        })),
       };
     },
   });

@@ -139,6 +139,27 @@ class ShockEventRow(BaseModel):
     created_at: datetime
 
 
+class FeedStatus(BaseModel):
+    """Health of ONE detector, reported separately on purpose.
+
+    The panel used to show a single "last scan" taken as the max across all
+    detectors. That let a healthy feed mask a silent one: while the SAR scan
+    was failing every run, the rainfall scan's success kept the line reading
+    "continuously monitored". Per-feed status makes a dead detector visible
+    even when its neighbour is fine.
+    """
+
+    source: str
+    label: str
+    # Last run that actually read data. Drives "monitored as of ...".
+    last_success_at: datetime | None = None
+    # Last run of any outcome — a feed failing daily still has a recent one.
+    last_run_at: datetime | None = None
+    last_status: str | None = None          # 'succeeded' | 'failed'
+    last_error: str | None = None
+    active_events: int = 0
+
+
 class ShockEventListData(BaseModel):
     events: list[ShockEventRow] = Field(default_factory=list)
     # Monitoring status — proves the detector is live even when (correctly)
@@ -147,3 +168,7 @@ class ShockEventListData(BaseModel):
     # currently flagging (0 = scanned, all clear).
     last_scan_at: datetime | None = None
     active_shock_count: int = 0
+    # Per-detector health. Prefer this over last_scan_at in the UI: the
+    # aggregate above cannot express "rainfall is current but SAR has been
+    # blind for a week", which is the state we were actually in.
+    feeds: list[FeedStatus] = Field(default_factory=list)

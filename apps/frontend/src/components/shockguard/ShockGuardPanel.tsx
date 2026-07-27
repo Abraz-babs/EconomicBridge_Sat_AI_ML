@@ -38,6 +38,16 @@ function fmtAge(iso: string): string {
   return `${Math.round(hr / 24)} d ago`;
 }
 
+/** A feed that has not completed a read in this long is not "monitoring".
+ *  36h spans a missed daily run plus slack. Module-level (like fmtAge) so the
+ *  clock read stays out of render — react-hooks/purity. */
+const STALE_AFTER_MS = 36 * 3600_000;
+
+function isStale(lastSuccessAt: string | null): boolean {
+  if (!lastSuccessAt) return true;
+  return Date.now() - new Date(lastSuccessAt).getTime() > STALE_AFTER_MS;
+}
+
 function bandClass(b: 'HIGH' | 'MEDIUM' | 'LOW'): string {
   return `cg-band cg-band-${b.toLowerCase()}`;
 }
@@ -125,8 +135,7 @@ export default function ShockGuardPanel() {
 
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
   const events = eventsQuery.data?.events ?? [];
-  const lastScanAt = eventsQuery.data?.lastScanAt ?? null;
-  const activeShockCount = eventsQuery.data?.activeShockCount ?? 0;
+  const feeds = eventsQuery.data?.feeds ?? [];
 
   return (
     <div>
@@ -173,34 +182,60 @@ export default function ShockGuardPanel() {
         </button>
       </div>
 
-      {/* MONITORING STATUS — proves the daily scan is live even when (correctly)
-          no flood/drought is active, so an episodic feed never reads as stale. */}
-      {lastScanAt && (
-        <div
-          style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
-            margin: '4px 0 12px', padding: '7px 12px', borderRadius: '6px',
-            fontSize: '12.5px',
-            background: activeShockCount > 0 ? 'rgba(234,179,8,0.10)' : 'rgba(34,197,94,0.10)',
-            border: `1px solid ${activeShockCount > 0 ? 'rgba(234,179,8,0.35)' : 'rgba(34,197,94,0.30)'}`,
-            color: 'var(--text-secondary, #94a3b8)',
-          }}
-        >
-          <span
-            aria-hidden
-            style={{
-              width: '8px', height: '8px', borderRadius: '50%',
-              background: activeShockCount > 0 ? '#eab308' : '#22c55e',
-              boxShadow: `0 0 6px ${activeShockCount > 0 ? '#eab308' : '#22c55e'}`,
-              flexShrink: 0,
-            }}
-          />
-          <span>
-            Continuously monitored · last scan <strong>{fmtAge(lastScanAt)}</strong> ·{' '}
-            {activeShockCount > 0
-              ? `${activeShockCount} active shock${activeShockCount > 1 ? 's' : ''}`
-              : 'no active flood, drought or extreme-rainfall signal'}
-          </span>
+      {/* MONITORING STATUS — one row PER DETECTOR.
+          A single aggregated "last scan" let a healthy feed mask a silent
+          one: the SAR scan failed every run for weeks while this line kept
+          reading "continuously monitored" off the rainfall scan. Each feed
+          now states its own last success, and says so plainly when it could
+          not read anything. */}
+      {feeds.length > 0 && (
+        <div style={{ display: 'grid', gap: '6px', margin: '4px 0 12px' }}>
+          {feeds.map((f) => {
+            const stale = isStale(f.lastSuccessAt);
+            const failing = f.lastStatus === 'failed';
+            // Amber = ran but could not read; grey = never succeeded / stale;
+            // green = current. Never green on an unread feed.
+            const tone = failing || stale ? (failing ? '#eab308' : '#94a3b8') : '#22c55e';
+            return (
+              <div
+                key={f.source}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '7px 12px', borderRadius: '6px', fontSize: '12.5px',
+                  background: `${tone}1A`,
+                  border: `1px solid ${tone}59`,
+                  color: 'var(--text-secondary, #94a3b8)',
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: '8px', height: '8px', borderRadius: '50%',
+                    background: tone, boxShadow: `0 0 6px ${tone}`,
+                    flexShrink: 0,
+                  }}
+                />
+                <span>
+                  <strong>{f.label}</strong>{' · '}
+                  {f.lastSuccessAt
+                    ? <>last read <strong>{fmtAge(f.lastSuccessAt)}</strong></>
+                    : <>never completed a read</>}
+                  {failing && f.lastError && (
+                    <> · <span style={{ color: '#eab308' }}>
+                      not checked: {f.lastError}
+                    </span></>
+                  )}
+                  {!failing && f.lastSuccessAt && (
+                    <>{' · '}
+                      {f.activeEvents > 0
+                        ? `${f.activeEvents} active`
+                        : 'no signal'}
+                    </>
+                  )}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 

@@ -24,6 +24,7 @@ from db.engine import get_session
 from schemas.envelope import ResponseMeta, SuccessResponse
 from schemas.shockguard import (
     DroughtSeriesPoint,
+    FeedStatus,
     FloodSeriesPoint,
     LonLat,
     ShockEventListData,
@@ -49,6 +50,70 @@ router = APIRouter(prefix="/shockguard", tags=["shockguard"])
 #   shockguard_scan_v1  — Sentinel-1 SAR drop + Sentinel-2 NDVI decline (07:30)
 #   rainstorm_scan_v1   — GPM IMERG exceptional rainfall, flood precursor (08:00)
 LIVE_SCAN_SOURCES: tuple[str, ...] = ("shockguard_scan_v1", "rainstorm_scan_v1")
+
+
+FEED_LABELS: dict[str, str] = {
+    "shockguard_scan_v1": "Sentinel-1 SAR / Sentinel-2 NDVI",
+    "rainstorm_scan_v1": "GPM IMERG rainfall",
+}
+
+
+async def _feed_statuses(
+    session: AsyncSession, tenant_id: str,
+) -> list["FeedStatus"]:
+    """Health of each detector, reported separately.
+
+    A single aggregated "last scan" hides a dead feed behind a live one — the
+    SAR scan failed every run for weeks while the panel kept reading
+    "continuously monitored" off the rainfall scan. Both the last SUCCESS and
+    the last run of any outcome are returned, because "ran 5 minutes ago and
+    failed" and "last succeeded 8 days ago" are both things an operator needs.
+    """
+    runs = (await session.execute(
+        text(
+            "SELECT DISTINCT ON (source) source, finished_at, status, "
+            "       error_message "
+            "  FROM public.ingestion_runs "
+            " WHERE source IN :sources AND tenant_id = :t "
+            " ORDER BY source, finished_at DESC"
+        ).bindparams(sa_bindparam("sources", expanding=True)),
+        {"sources": list(LIVE_SCAN_SOURCES), "t": tenant_id},
+    )).mappings().all()
+    last_ok = (await session.execute(
+        text(
+            "SELECT source, MAX(finished_at) AS ok_at "
+            "  FROM public.ingestion_runs "
+            " WHERE source IN :sources AND tenant_id = :t "
+            "   AND status = 'succeeded' "
+            " GROUP BY source"
+        ).bindparams(sa_bindparam("sources", expanding=True)),
+        {"sources": list(LIVE_SCAN_SOURCES), "t": tenant_id},
+    )).mappings().all()
+    counts = (await session.execute(
+        text(
+            "SELECT source, count(*) AS n FROM shock_events "
+            " WHERE source IN :sources GROUP BY source"
+        ).bindparams(sa_bindparam("sources", expanding=True)),
+        {"sources": list(LIVE_SCAN_SOURCES)},
+    )).mappings().all()
+
+    by_run = {r["source"]: r for r in runs}
+    by_ok = {r["source"]: r["ok_at"] for r in last_ok}
+    by_count = {r["source"]: int(r["n"]) for r in counts}
+
+    out: list[FeedStatus] = []
+    for source in LIVE_SCAN_SOURCES:
+        run = by_run.get(source)
+        out.append(FeedStatus(
+            source=source,
+            label=FEED_LABELS.get(source, source),
+            last_success_at=by_ok.get(source),
+            last_run_at=run["finished_at"] if run else None,
+            last_status=run["status"] if run else None,
+            last_error=run["error_message"] if run else None,
+            active_events=by_count.get(source, 0),
+        ))
+    return out
 
 
 def _trace_id(request: Request) -> UUID:
@@ -331,11 +396,14 @@ async def list_events(
         {"sources": list(LIVE_SCAN_SOURCES)},
     )).scalar() or 0)
 
+    feeds = await _feed_statuses(session, tenant_id)
+
     return SuccessResponse(
         data=ShockEventListData(
             events=events,
             last_scan_at=last_scan_at,
             active_shock_count=active_shock_count,
+            feeds=feeds,
         ),
         meta=ResponseMeta(
             tenant_id=None, trace_id=_trace_id(request),
