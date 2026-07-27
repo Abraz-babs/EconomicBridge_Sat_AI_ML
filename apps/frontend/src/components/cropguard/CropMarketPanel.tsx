@@ -298,20 +298,27 @@ function CorrelationHeatmap({
   const n = data.crops.length;
   if (n === 0) return null;
 
-  const cell = 22;
+  // CONSTANT viewBox, ADAPTIVE cell size.
+  //
+  // The grid used to be a fixed 22px cell with a content-sized viewBox, so the
+  // viewBox shrank as crops dropped and width:100% then upscaled it harder —
+  // going from 14 seeded crops to 8 real ones ballooned the cells and pushed
+  // the rotated labels out of the card. Capping the width fixed the overflow
+  // but left the matrix small and adrift in the box.
+  //
+  // Holding the grid span constant and dividing it by the crop count keeps the
+  // rendered proportions identical at ANY n: 14 crops give ~21px cells (what
+  // the seeded matrix looked like), 8 crops give ~37px cells, and either way
+  // the SVG fills the card the same way.
   const labelW = 80;
   const labelH = 80;
-  // Right pad for the -55deg column labels: they rotate up-and-right, so the
-  // last one runs past the grid edge and was being clipped.
+  const grid = 300;
+  const cell = grid / n;
+  // The -55deg column labels rotate up-and-right, so the last one overruns the
+  // grid edge; pad the viewBox rather than let it clip.
   const labelOverhangX = 34;
-  const w = labelW + n * cell + labelOverhangX;
-  const h = labelH + n * cell + 8;
-  // The viewBox is sized to CONTENT, so with width:100% a matrix of few crops
-  // upscales hard to fill the card — dropping from 14 seeded crops to 8 real
-  // ones took the scale from ~2.1x to ~3.2x, ballooning the cells and pushing
-  // the rotated labels out of the box. Cap the rendered width so the matrix
-  // stays proportionate at any crop count.
-  const maxRenderW = 460;
+  const w = labelW + grid + labelOverhangX;
+  const h = labelH + grid + 8;
 
   function colour(r: number): string {
     // r in [-1, 1]: red (neg) → white (0) → green (pos)
@@ -328,7 +335,6 @@ function CorrelationHeatmap({
     <svg
       viewBox={`0 0 ${w} ${h}`}
       width="100%"
-      style={{ maxWidth: `${maxRenderW}px`, display: 'block', margin: '0 auto' }}
       preserveAspectRatio="xMidYMid meet"
       role="img"
       aria-label="Crop price correlation matrix"
@@ -370,8 +376,8 @@ function CorrelationHeatmap({
                 <rect
                   x={labelW + j * cell}
                   y={labelH + i * cell}
-                  width={cell - 1.5}
-                  height={cell - 1.5}
+                  width={Math.max(cell - 1.5, cell * 0.85)}
+                  height={Math.max(cell - 1.5, cell * 0.85)}
                   fill={colour(r)}
                   stroke={
                     c === highlight || c2 === highlight
