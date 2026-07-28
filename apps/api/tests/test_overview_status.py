@@ -80,6 +80,17 @@ def test_unmeasured_lgas_are_excluded_not_counted_unhealthy():
     assert "ndvi IS NOT NULL" in src
 
 
+def test_index_scores_against_the_lga_aggregate_band_not_the_field_band():
+    """The 'healthy' band (~0.60 NDVI) describes a dense FIELD canopy. These
+    rows are whole-LGA means mixing cropland, bush, settlement and bare ground,
+    which almost never reach it — scoring against it printed "Kaduna 0%
+    healthy" in peak wet season off ordinary readings (0.18-0.51, median
+    0.46)."""
+    from routers import overview
+
+    assert overview._LGA_VEGETATED_NDVI == 0.40
+
+
 def test_a_region_below_the_sample_floor_is_omitted_entirely():
     """0% from one reading is arithmetic, not a finding — and it renders
     identically to a real collapse."""
@@ -99,4 +110,4 @@ def test_rows_declare_their_sample_size():
     from routers import overview
 
     src = inspect.getsource(overview.crop_health)
-    assert "LGAs measured" in src
+    assert "LGAs green" in src

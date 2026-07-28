@@ -28,9 +28,9 @@ export default function CropHealthIndex() {
   return (
     <div className="panel">
       <div className="panel-header">
-        <span className="panel-title">Crop Health Index</span>
+        <span className="panel-title">Vegetation Cover Index</span>
         <span className="panel-meta">
-          {isError ? 'API unreachable' : 'Sentinel-2 NDVI · per LGA'}
+          {isError ? 'API unreachable' : 'Sentinel-2 NDVI · share of LGAs green'}
         </span>
       </div>
       <div>

@@ -483,7 +483,14 @@ async def _write_crop_health(
     effort: a missing crop_health table (migration not yet applied) or any error
     never breaks the Farmland alert write."""
     ndvi_val = round(ndvi_series[-1], 3) if ndvi_series else None
-    health, verdict = classify_health(ndvi_val, "cropland")
+    # Crop-AGNOSTIC band, deliberately. Passing "cropland" here looked
+    # descriptive but selected the crop-aware path, and since "cropland" is not
+    # a known crop it fell through to DEFAULT_PEAK = 0.70 — judging a whole
+    # LGA's mixed-landcover average (fields, bush, settlements, bare ground,
+    # water) as though it were one peak-season field. That downgraded every
+    # LGA by roughly a band. We do not know this LGA's crop, which is exactly
+    # the case the crop-agnostic absolute-NDVI band exists for.
+    health, verdict = classify_health(ndvi_val, "")
     try:
         async with session.begin_nested():
             await session.execute(

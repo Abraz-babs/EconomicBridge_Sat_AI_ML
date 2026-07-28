@@ -46,6 +46,36 @@ SAR_SCALE = 2.5       # SAR backscatter z-magnitude -> 0..1 saturation
 NDVI_SCALE = 2.0
 THRESHOLD = 0.55      # confidence at/above this raises an event (serious feed)
 
+# ─── Two gates, both required ─────────────────────────────────────────────
+# A z-score alone was the whole test, and with only three baseline points it
+# is a fragile one. The old degeneracy guard was `pstdev(base) or 1e-6`, which
+# caught an EXACT zero and nothing else — so three near-identical readings
+# gave a std of ~0.002 and an ordinary wobble divided out to a colossal z.
+# Walking this detector over the REAL banked history in
+# public.lga_signal_history produced z of -151 and -210, every one of them
+# reported "critical, confidence 1.0". That is not a detection, it is a
+# division by almost nothing.
+#
+# So a drop must now be significant BOTH relative to the baseline (the z-score
+# and THRESHOLD below) AND in physical units. This mirrors the two-gate design
+# already validated on real data in processors/rainstorm_signal.py, for the
+# same reason: one gate alone is gameable by noise.
+
+# Absolute drop a signal must show before its size is even considered. These
+# are physics, not tuning knobs — do not lower them to make the feed livelier.
+#   flood   : open water is 5-15 dB below dry land on Sentinel-1 VV; saturated
+#             soil and partial inundation land around 2-4 dB. Below ~1.5 dB we
+#             are looking at speckle and incidence-angle differences.
+#   drought : a real vegetation decline moves NDVI by >= 0.10; 0.08 is the
+#             conservative edge of that, and well outside the ~0.02
+#             measurement uncertainty.
+MIN_ABSOLUTE_DROP = {"flood": 1.5, "drought": 0.08}
+
+# Degeneracy floor only — this exists so nothing divides by ~0, NOT as a
+# sensitivity control. A genuinely quiet LGA can have a 0.08 dB baseline over
+# three passes and still be flooding a week later.
+MIN_BASELINE_STD = {"flood": 0.05, "drought": 0.005}
+
 
 @dataclass
 class ShockSignal:
@@ -84,7 +114,20 @@ def compute_shock(vals: list[float], event_type: str, scale: float) -> ShockSign
     if len(vals) < MIN_POINTS:
         return None
     base, recent = vals[:-RECENT_N], vals[-RECENT_N:]
-    std = pstdev(base) or 1e-6
+
+    # Gate 1 — physical size. A drop must be big enough to mean something in
+    # the instrument's own units before we ask how unusual it is.
+    absolute_drop = mean(base) - mean(recent)
+    if absolute_drop < MIN_ABSOLUTE_DROP.get(event_type, 0.0):
+        return None
+
+    # Gate 2 — unusual for this place. Refuse to divide by a baseline with no
+    # dispersion: we cannot call a reading unusual for somewhere that shows no
+    # variation to be unusual against.
+    std = pstdev(base)
+    if std < MIN_BASELINE_STD.get(event_type, 0.0):
+        return None
+
     z = (mean(recent) - mean(base)) / std        # negative = drop
     drop = max(0.0, -z)
     c = math.tanh(drop / scale)

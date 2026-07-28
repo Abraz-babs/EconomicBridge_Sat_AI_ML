@@ -193,6 +193,21 @@ def _tone_for_pct(pct: int) -> str:
 # state's food security, and that is exactly how it renders.
 _MIN_LGA_READINGS = 3
 
+# NDVI at or above which an LGA counts as carrying active vegetation.
+#
+# Deliberately NOT the "healthy" band. That bar is ~0.60, which describes a
+# dense field canopy — a FIELD-scale category. These rows are whole-LGA means
+# mixing cropland, bush, settlement, bare ground and water, and such a mean
+# almost never reaches 0.60 even in a good season. Scoring against it printed
+# "Kaduna 0% healthy" in peak wet season off perfectly ordinary readings
+# (that state's LGA means run 0.18-0.51, median 0.46).
+#
+# 0.40 is the existing crop-agnostic "moderate" boundary — "a growing crop,
+# partial canopy, or mixed ground cover" — which is what a green LGA aggregate
+# actually looks like. Computed from `ndvi` rather than the stored `health`
+# string so the widget does not depend on when a row was last classified.
+_LGA_VEGETATED_NDVI = 0.40
+
 
 @router.get(
     "/crop_health",
@@ -203,7 +218,8 @@ async def crop_health(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessResponse[CropHealthData]:
-    """% of a region's LGAs whose CURRENT Sentinel-2 NDVI reads healthy.
+    """% of a region's LGAs currently carrying active vegetation, by Sentinel-2
+    NDVI (>= _LGA_VEGETATED_NDVI).
 
     Reads `crop_health` — the per-LGA satellite layer — NOT `crop_predictions`,
     which is the leaf-photo diagnosis table. That was the bug: the whole photo
@@ -228,21 +244,22 @@ async def crop_health(
                 text(
                     """
                     SELECT COUNT(*) AS total,
-                           COUNT(*) FILTER (WHERE health = 'healthy') AS healthy
+                           COUNT(*) FILTER (WHERE ndvi >= :bar) AS vegetated
                       FROM crop_health
                      WHERE ndvi IS NOT NULL
                     """
-                )
+                ),
+                {"bar": _LGA_VEGETATED_NDVI},
             )
         ).one_or_none()
         region = _region(t)
         out = []
         if row is not None and int(row[0]) >= _MIN_LGA_READINGS:
-            total, healthy = int(row[0]), int(row[1])
-            pct = round(100 * healthy / total)
+            total, vegetated = int(row[0]), int(row[1])
+            pct = round(100 * vegetated / total)
             out.append(
                 CropHealthRow(
-                    label=f"{region} — {total} LGAs measured",
+                    label=f"{region} — {vegetated}/{total} LGAs green",
                     pct=pct,
                     tone=_tone_for_pct(pct),
                 )

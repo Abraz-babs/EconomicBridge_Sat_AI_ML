@@ -107,3 +107,72 @@ def test_per_lga_scan_returns_evaluated_count() -> None:
     src = inspect.getsource(shockguard_scan.detect_per_lga_for_tenant)
     assert "return events, evaluated" in src
     assert "if not sar and not ndvi:" in src
+
+
+# ─── a flat baseline cannot support a z-score ─────────────────────────────
+# Found 2026-07-28 by walking the detector over public.lga_signal_history
+# (31,367 rows of REAL banked NDVI + SAR, zero CDSE cost). The guard was
+# `pstdev(base) or 1e-6`, which caught only an EXACT zero — so three
+# near-identical readings divided an ordinary wobble by ~0.002 and produced
+# z of -151 and -210, every one reported "critical, confidence 1.0".
+
+
+def test_a_flat_sar_baseline_returns_none_not_a_critical_flood():
+    """The exact failure: a baseline with no dispersion, then a small dip.
+    Old code: z ~ -200, confidence 1.0, severity critical. Correct: None."""
+    from tasks.shockguard_scan import compute_shock
+
+    flat = [-12.000, -12.001, -12.000]        # std ~ 0.0005 dB
+    dipped = [-14.4, -14.4, -14.4]            # a real 2.4 dB drop
+    assert compute_shock(flat + dipped, "flood", 2.5) is None
+
+
+def test_a_flat_ndvi_baseline_returns_none_not_a_critical_drought():
+    from tasks.shockguard_scan import compute_shock
+
+    assert compute_shock(
+        [0.500, 0.5001, 0.500, 0.38, 0.38, 0.38], "drought", 2.0
+    ) is None
+
+
+def test_a_sub_noise_drop_does_not_fire_however_unusual_it_looks():
+    """Gate 1 on its own. A normal baseline plus a 0.4 dB dip is speckle, but
+    against a tight baseline it scores many sigmas — which is precisely how a
+    z-score-only detector manufactures a critical flood out of nothing."""
+    from tasks.shockguard_scan import compute_shock
+
+    base = [-12.0, -12.06, -11.94, -12.02, -11.98, -12.0]
+    assert compute_shock(base + [-12.4, -12.4, -12.4], "flood", 2.5) is None
+
+
+def test_a_real_flood_signature_still_fires():
+    """The gates must not silence genuine detections. Normal scene-to-scene
+    variability plus a multi-dB drop is what open water looks like on
+    Sentinel-1, and it must survive."""
+    from tasks.shockguard_scan import compute_shock
+
+    base = [-11.2, -12.4, -11.8, -12.9, -11.5, -12.1]   # real variability
+    flooded = [-18.5, -19.1, -18.8]                     # ~6 dB drop
+    sig = compute_shock(base + flooded, "flood", 2.5)
+    assert sig is not None
+    assert sig.z < 0 and sig.severity in ("high", "critical")
+
+
+def test_gates_are_physics_not_tuning_knobs():
+    """Documented as instrument floors. Lowering them to make the feed
+    livelier is exactly the mistake these gates exist to prevent."""
+    from tasks.shockguard_scan import MIN_ABSOLUTE_DROP, MIN_BASELINE_STD
+
+    assert MIN_ABSOLUTE_DROP["flood"] >= 1.0        # dB, Sentinel-1 VV
+    assert MIN_ABSOLUTE_DROP["drought"] >= 0.05     # NDVI units
+    assert MIN_BASELINE_STD["flood"] > 0
+    assert MIN_BASELINE_STD["drought"] > 0
+
+
+def test_no_divide_by_epsilon_path_remains():
+    import inspect
+
+    from tasks import shockguard_scan
+
+    src = inspect.getsource(shockguard_scan.compute_shock)
+    assert "or 1e-6" not in src, "the epsilon fallback manufactured the -210 sigma"
