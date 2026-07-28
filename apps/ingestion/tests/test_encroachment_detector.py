@@ -176,3 +176,52 @@ def test_roi_fallback_is_not_mistaken_for_a_no_data_run() -> None:
     src = inspect.getsource(ed.detect_per_lga_for_tenant)
     assert "return await detect_for_tenant(session, tenant), None" in src
     assert (None == 0) is False                     # noqa: E711 — the premise
+
+
+# ─── a degenerate baseline is not evidence ────────────────────────────────
+# Same defect as shockguard_scan's compute_shock, found the same way on
+# 2026-07-28. `pstdev(x) or 1e-6` caught only an EXACT zero, so three
+# near-identical readings divided an ordinary wobble by ~0.002 and saturated
+# that component to 1.0. Because `primary` is the MAX component, a lone
+# flat-baseline signal scored 0.6 — twice ALERT_THRESHOLD. A quiet LGA plus
+# speckle raised an encroachment watch on the flagship module.
+
+
+def test_flat_sar_baseline_alone_does_not_raise_a_watch():
+    ndvi = [0.50, 0.51, 0.49, 0.50, 0.52, 0.50, 0.50, 0.51, 0.49]
+    sar = [-12.000, -12.001, -12.000, -12.0005, -12.001, -12.000,
+           -12.30, -12.30, -12.30]
+    sig = compute_encroachment(ndvi, sar, fire_count=0)
+    assert sig is not None
+    assert sig.sar_z == 0.0                     # unjudgeable -> contributes nothing
+    assert sig.score < ALERT_THRESHOLD
+
+
+def test_flat_ndvi_baseline_contributes_nothing_rather_than_everything():
+    ndvi = [0.500, 0.5001, 0.500, 0.5002, 0.500, 0.5001, 0.48, 0.48, 0.48]
+    sar = [-12.0, -12.4, -11.8, -12.2, -11.9, -12.1, -12.0, -12.1, -11.9]
+    sig = compute_encroachment(ndvi, sar, fire_count=0)
+    assert sig is not None
+    assert sig.ndvi_z == 0.0
+
+
+def test_a_real_multi_signal_event_still_alerts():
+    """The floors must not suppress genuine detections — the other components
+    still count, so corroborated events are untouched."""
+    ndvi = [0.62, 0.60, 0.63, 0.61, 0.59, 0.62, 0.30, 0.28, 0.31]
+    sar = [-11.2, -12.4, -11.8, -12.9, -11.5, -12.1, -8.0, -8.2, -7.9]
+    sig = compute_encroachment(ndvi, sar, fire_count=6)
+    assert sig is not None
+    assert sig.score >= ALERT_THRESHOLD
+
+
+def test_no_divide_by_epsilon_remains_in_the_fusion():
+    """Code lines only — the comment above the fix deliberately quotes the old
+    pattern as a warning, so a whole-source check would match its own note."""
+    import inspect
+
+    from tasks import encroachment_detector
+
+    src = inspect.getsource(encroachment_detector.compute_encroachment)
+    code = [ln for ln in src.splitlines() if not ln.strip().startswith("#")]
+    assert not any("or 1e-6" in ln for ln in code)

@@ -47,6 +47,10 @@ TREND_POINTS = 8
 # stress), NOT a disease diagnosis on its own.
 MIN_STRESS_POINTS = 4
 STRESS_RECENT_N = 2
+# Degeneracy floor for the stress z-score baseline — Sentinel-2 NDVI
+# measurement noise, not a sensitivity knob. Matches MIN_BASELINE_STD in
+# tasks/shockguard_scan.py.
+MIN_BASELINE_NDVI_STD = 0.005
 
 # Indicative PEAK-season healthy NDVI per crop (real value depends on growth
 # stage). Used only to phrase a crop-aware verdict — NDVI itself is the
@@ -159,7 +163,17 @@ def assess_stress(ndvi_series: list[float]) -> dict:
     recent = ndvi_series[-STRESS_RECENT_N:]
     baseline = ndvi_series[:-STRESS_RECENT_N]
     b_mean = mean(baseline)
-    b_std = pstdev(baseline) or 1e-6
+    b_std = pstdev(baseline)
+    if b_std < MIN_BASELINE_NDVI_STD:
+        # `pstdev(x) or 1e-6` caught only an EXACT zero, so a near-flat
+        # baseline divided a trivial dip by ~0.002 and returned z <= -2 —
+        # "Significant vegetation decline, investigate for disease" sent to a
+        # field officer over nothing. A field with no variation to be unusual
+        # against cannot support the claim.
+        return {"level": "unknown", "z": None,
+                "message": "This plot's clear passes are almost identical, so "
+                           "there is no variation to judge a change against — "
+                           "no stress call either way."}
     z = (mean(recent) - b_mean) / b_std
     if z <= -2.0:
         return {"level": "high", "z": round(z, 2),

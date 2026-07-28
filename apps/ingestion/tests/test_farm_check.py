@@ -140,3 +140,22 @@ def test_general_does_not_change_named_crop_verdicts():
     # keeps the default-peak path, not the general bands.
     assert classify_health(0.70, "maize")[0] == "healthy"
     assert classify_health(0.66, "cropland")[0] in ("healthy", "moderate")
+
+
+def test_stress_warning_refuses_a_flat_baseline():
+    """`pstdev(x) or 1e-6` turned a trivial dip on an almost-identical series
+    into z <= -2, i.e. "Significant vegetation decline — investigate for
+    disease" sent to a field officer over nothing."""
+    from sources.farm_check import assess_stress
+
+    out = assess_stress([0.500, 0.5001, 0.500, 0.4995, 0.4990])
+    assert out["level"] == "unknown"
+    assert out["z"] is None
+
+
+def test_stress_warning_still_fires_on_a_real_decline():
+    from sources.farm_check import assess_stress
+
+    out = assess_stress([0.62, 0.60, 0.63, 0.61, 0.30, 0.28])
+    assert out["level"] in ("moderate", "high")
+    assert out["z"] is not None and out["z"] < 0

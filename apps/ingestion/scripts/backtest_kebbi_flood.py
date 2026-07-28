@@ -24,7 +24,6 @@ import math
 import pathlib
 import sys
 from datetime import datetime, timezone
-from statistics import mean, pstdev
 
 ING = pathlib.Path(__file__).resolve().parents[1]  # apps/ingestion
 sys.path.insert(0, str(ING))
@@ -35,26 +34,27 @@ from sources.sentinel_statistical import (  # noqa: E402
     SentinelStatisticalClient,
 )
 
-# ─── Flood detector — verbatim mirror of tasks/shockguard_scan.compute_shock ──
-RECENT_N, MIN_POINTS, SAR_SCALE, THRESHOLD = 3, 6, 2.5, 0.55
-
-
-def _severity(c: float) -> str:
-    return "critical" if c >= 0.82 else "high" if c >= 0.68 else "medium"
+# ─── Flood detector — the LIVE one, imported, never re-typed ─────────────────
+# This used to be a hand-copied duplicate of compute_shock, introduced with the
+# comment "verbatim mirror". It stopped being verbatim the moment the live
+# detector gained its two gates (2026-07-28), and it had inherited the same
+# `pstdev(base) or 1e-6` defect that manufactured critical detections out of a
+# flat baseline — which in a PROOF-OF-DETECTION asset would have been a proof
+# of nothing. Importing it is the only way the claim above stays true.
+from tasks.shockguard_scan import (  # noqa: E402
+    SAR_SCALE,
+    THRESHOLD,
+    compute_shock,
+)
 
 
 def compute_flood(vals: list[float]) -> dict | None:
-    """A DROP in SAR backscatter = open water = flood (mirrors the live scan)."""
-    if len(vals) < MIN_POINTS:
+    """A DROP in SAR backscatter = open water = flood. Delegates to the live
+    detector so this backtest can never drift from what production runs."""
+    sig = compute_shock(vals, "flood", SAR_SCALE)
+    if sig is None:
         return None
-    base, recent = vals[:-RECENT_N], vals[-RECENT_N:]
-    std = pstdev(base) or 1e-6
-    z = (mean(recent) - mean(base)) / std       # negative = drop
-    drop = max(0.0, -z)
-    c = math.tanh(drop / SAR_SCALE)
-    if c < THRESHOLD:
-        return None
-    return {"z": round(z, 3), "confidence": round(c, 4), "severity": _severity(c)}
+    return {"z": sig.z, "confidence": sig.confidence, "severity": sig.severity}
 
 
 def bbox_around(lat: float, lon: float, half_m: float = 1500.0):
@@ -130,7 +130,9 @@ async def main() -> None:
     OUT.write_text(json.dumps({
         "event": "Kebbi State flood, September 2024",
         "window": [WIN_START.date().isoformat(), WIN_END.date().isoformat()],
-        "method": "Sentinel-1 SAR VV(dB) backscatter-drop z-score (compute_shock, SAR_SCALE=2.5, threshold=0.55)",
+        "method": ("Sentinel-1 SAR VV(dB) backscatter drop, scored by the live "
+                   f"ShockGuard compute_shock (SAR_SCALE={SAR_SCALE}, "
+                   f"threshold={THRESHOLD}) — imported, not reimplemented"),
         "known_flooded": sorted(known),
         "detected": sorted(flagged),
         "rows": rows,

@@ -92,6 +92,12 @@ REVISIT_DAYS = max(1, int(os.environ.get("ENCROACHMENT_REVISIT_DAYS", "12")))
 # fail the same way, so an operator comparing them should read one sentence.
 NO_DATA_REASON = "no satellite data readable (CDSE quota or rate limit)"
 
+# Degeneracy floors for the z-score baselines — instrument noise, not
+# sensitivity knobs. Below these a series is too flat for "unusual" to mean
+# anything. Matches MIN_BASELINE_STD in tasks/shockguard_scan.py.
+MIN_BASELINE_NDVI_STD = 0.005
+MIN_BASELINE_SAR_STD = 0.05
+
 # VIIRS Black Marble "new light in dark farmland" — a YEAR-ROUND human-activity
 # signal (NASA, daily). A light appearing where it was dark (baseline below
 # NIGHTLIGHT_DARK) flags new settlement / camp / mining activity even when NDVI
@@ -210,10 +216,21 @@ def compute_encroachment(
 
     nb, nr = split(ndvi_vals)
     sb, sr = split(sar_vals)
-    n_std = pstdev(nb) or 1e-6
-    s_std = pstdev(sb) or 1e-6
-    ndvi_z = (mean(nr) - mean(nb)) / n_std      # signed
-    sar_z = abs(mean(sr) - mean(sb)) / s_std    # magnitude
+    # A degenerate baseline cannot support a z-score. `pstdev(x) or 1e-6`
+    # caught only an EXACT zero, so three near-identical readings divided an
+    # ordinary wobble by ~0.002 and saturated that component to 1.0 — and
+    # because `primary` is the max component, a LONE flat-baseline signal
+    # scored 0.6, twice the ALERT_THRESHOLD. A quiet LGA plus speckle raised
+    # an encroachment watch. Same defect found in shockguard_scan's
+    # compute_shock; see MIN_BASELINE_STD there for the measurement.
+    #
+    # An unjudgeable component contributes 0.0 — absence of evidence, not
+    # evidence. The other signals still count, so a genuine multi-signal
+    # event is never suppressed by this.
+    n_std = pstdev(nb)
+    s_std = pstdev(sb)
+    ndvi_z = (mean(nr) - mean(nb)) / n_std if n_std >= MIN_BASELINE_NDVI_STD else 0.0
+    sar_z = abs(mean(sr) - mean(sb)) / s_std if s_std >= MIN_BASELINE_SAR_STD else 0.0
 
     # Encroachment is vegetation LOSS — only a NDVI DROP counts. Vegetation
     # gain (wet-season greening) is NOT a disturbance signal and is ignored,
