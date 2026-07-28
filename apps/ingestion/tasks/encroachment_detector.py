@@ -88,6 +88,10 @@ LGA_SAR_WINDOW_DAYS = 120
 # fetch. Only dial ENCROACHMENT_REVISIT_DAYS down with confirmed PU headroom.
 REVISIT_DAYS = max(1, int(os.environ.get("ENCROACHMENT_REVISIT_DAYS", "12")))
 
+# Same wording as tasks/shockguard_scan.py: the two sweeps share a budget and
+# fail the same way, so an operator comparing them should read one sentence.
+NO_DATA_REASON = "no satellite data readable (CDSE quota or rate limit)"
+
 # VIIRS Black Marble "new light in dark farmland" — a YEAR-ROUND human-activity
 # signal (NASA, daily). A light appearing where it was dark (baseline below
 # NIGHTLIGHT_DARK) flags new settlement / camp / mining activity even when NDVI
@@ -505,7 +509,7 @@ async def _write_crop_health(
 async def detect_per_lga_for_tenant(
     session: AsyncSession, client: SentinelStatisticalClient,
     tenant: str, *, full: bool = False, day: int | None = None,
-) -> str:
+) -> tuple[str, int | None]:
     """Evaluate the due LGAs (rolling) or every LGA (full) from each one's OWN
     satellite series, refreshing each scanned LGA's auto-watch independently.
 
@@ -513,12 +517,17 @@ async def detect_per_lga_for_tenant(
     re-insert if it still clears threshold — so un-scanned LGAs keep their
     current watch and the statewide map stays fully populated between revisits.
     Officer-actioned rows (acknowledged/resolved) are always preserved.
+
+    Returns (summary, lgas_actually_read). The second element is None when this
+    fell back to the ROI path, and 0 when LGAs were due but nothing was
+    readable — which the caller records as a FAILED run rather than a quiet
+    "0 alerts", the same distinction shockguard_scan draws.
     """
     await set_tenant_schema(session, tenant)
     batch = select_lgas(tenant, full=full, day=day)
     if not batch:
         # No centroids for this tenant — fall back to the ROI signal.
-        return await detect_for_tenant(session, tenant)
+        return await detect_for_tenant(session, tenant), None
 
     # Year-round VIIRS new-light component for the whole batch in one go
     # (tile-cached, NASA — off the CDSE budget). {} if unavailable → 0 per LGA.
@@ -534,6 +543,22 @@ async def detect_per_lga_for_tenant(
         except CopernicusError as exc:
             log.warning("encroachment per-LGA CDSE error tenant=%s lga=%s: %s",
                         tenant, g.get("lga"), exc)
+            continue
+        if not ndvi and not sar:
+            # AN EMPTY READ IS NOT A READING. The monthly-quota breaker in
+            # sources/sentinel_statistical.py returns [] rather than raising,
+            # so an exhausted quota slipped past the `except` above and looked
+            # exactly like a successful scan of a quiet LGA. It then counted
+            # toward `evaluated` and — the damaging part — _write_crop_health
+            # replaced this LGA's real NDVI with NULL, every day, for as long
+            # as the quota stayed out. By 2026-07-28 that had nulled 306 of
+            # 447 crop_health rows and left FCT with none at all.
+            #
+            # Skipping is what the comment above always claimed we did:
+            # refresh an LGA only on a genuine read, and otherwise leave what
+            # it already knows alone.
+            log.debug("encroachment: no CDSE data for tenant=%s lga=%s — "
+                      "keeping its prior reading", tenant, g.get("lga"))
             continue
         evaluated += 1
         # Every scanned LGA gets a current crop-health reading (CropGuard
@@ -562,7 +587,17 @@ async def detect_per_lga_for_tenant(
         )
         alerts += 1
     mode = "full" if full else "rolling"
-    return f"{alerts} alert(s) / {evaluated} scanned ({mode}, {len(batch)} LGAs due)"
+    if evaluated == 0:
+        # LGAs were due and none could be read. Saying "0 alert(s) / 0 scanned"
+        # is true but reads as calm; say plainly that we did not look.
+        return (
+            f"NOT CHECKED ({NO_DATA_REASON}) — {len(batch)} LGAs due, {mode}",
+            0,
+        )
+    return (
+        f"{alerts} alert(s) / {evaluated} scanned ({mode}, {len(batch)} LGAs due)",
+        evaluated,
+    )
 
 
 def _first_int(s: str) -> int:
@@ -623,14 +658,19 @@ async def run_encroachment_sweep(
         started = datetime.now(timezone.utc)
         async with factory() as session:
             try:
+                evaluated: int | None = None
                 if per_lga:
-                    out[t] = await detect_per_lga_for_tenant(
+                    out[t], evaluated = await detect_per_lga_for_tenant(
                         session, client, t, full=full, day=day)
                 else:
                     out[t] = await detect_for_tenant(session, t)
                 await _record_run(
                     session, tenant=t, summary=out[t],
                     started_at=started, trigger=trigger,
+                    # evaluated == 0 means LGAs were due and none was readable.
+                    # None means the ROI fallback ran, where the count does not
+                    # apply — so `is not None` matters, `== 0` alone would flag it.
+                    error=(NO_DATA_REASON if evaluated == 0 else None),
                 )
                 await session.commit()
             except Exception as exc:  # noqa: BLE001 — isolate per tenant

@@ -116,3 +116,63 @@ def test_components_present():
     sig = compute_encroachment(ndvi, sar, 1)
     assert set(sig.components) >= {"ndvi_loss", "sar_change", "fire"}
     assert len(ndvi) >= MIN_POINTS
+
+
+# ─── an empty CDSE read is not a reading ──────────────────────────────────
+# Regression tests for live data destruction found on 2026-07-28. The monthly
+# -quota breaker in sources/sentinel_statistical.py returns [] rather than
+# raising, so once the CDSE quota blew (~2026-07-12) an exhausted quota slipped
+# past the CopernicusError handler and looked exactly like a successful scan of
+# a quiet LGA. Each such "scan" then had _write_crop_health replace that LGA's
+# real NDVI with NULL. By the time it was caught, 306 of 447 crop_health rows
+# were nulled and FCT had none left at all.
+
+
+def test_empty_series_short_circuits_before_any_write() -> None:
+    """The guard must sit between the fetch and BOTH writes — the crop_health
+    upsert and the alert_events delete. If it moved below either, an empty read
+    would still destroy that LGA's state."""
+    import inspect
+
+    from tasks import encroachment_detector
+
+    src = inspect.getsource(encroachment_detector.detect_per_lga_for_tenant)
+    fetch = src.index("_fetch_lga_series(client")
+    guard = src.index("if not ndvi and not sar:")
+    health = src.index("_write_crop_health(")
+    delete = src.index("DELETE FROM alert_events")
+    assert fetch < guard < health, "guard must precede the crop_health write"
+    assert guard < delete, "guard must precede the alert_events delete"
+    assert "continue" in src[guard:health]
+
+
+def test_a_no_data_sweep_reports_not_checked_not_zero_alerts() -> None:
+    """"0 alert(s) / 0 scanned" is true but reads as calm. The sweep must say it
+    did not look, and the run must be recorded FAILED so the panel shows the
+    miss — the same distinction shockguard_scan already draws."""
+    import inspect
+
+    from tasks import encroachment_detector as ed
+    from tasks.shockguard_scan import NO_DATA_REASON as SHOCK_REASON
+
+    assert ed.NO_DATA_REASON == SHOCK_REASON        # one sentence, both sweeps
+
+    src = inspect.getsource(ed.detect_per_lga_for_tenant)
+    assert "if evaluated == 0:" in src
+    assert "NOT CHECKED" in src
+
+    caller = inspect.getsource(ed.run_encroachment_sweep)
+    assert "NO_DATA_REASON if evaluated == 0 else None" in caller
+
+
+def test_roi_fallback_is_not_mistaken_for_a_no_data_run() -> None:
+    """The ROI path returns None, not 0, for the read count. `evaluated == 0`
+    must therefore leave it alone — flagging it would mark every credential-less
+    environment as a failed sweep."""
+    import inspect
+
+    from tasks import encroachment_detector as ed
+
+    src = inspect.getsource(ed.detect_per_lga_for_tenant)
+    assert "return await detect_for_tenant(session, tenant), None" in src
+    assert (None == 0) is False                     # noqa: E711 — the premise
