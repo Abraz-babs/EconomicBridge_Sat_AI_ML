@@ -396,3 +396,224 @@ def test_insert_leaves_unquantified_measures_null_not_zero() -> None:
 
     sql = inspect.getsource(rainstorm_scan._insert)
     assert "NULL, NULL, NULL" in sql
+
+
+# ─── transient GES DISC failures ──────────────────────────────────────────
+# Regression tests for a real loss. On 2026-07-27 the 08:00 sweep lost 34
+# consecutive days (2026-06-18 to 2026-07-21) to `IMERG 503` and kept 55 of 90.
+# The same dates read 200 the next morning, so the data was always there: GES
+# DISC was refusing that range temporarily, almost certainly the V07B->V07C
+# reprocessing window. Two defects turned a temporary refusal into a permanent
+# hole, and a third let the sweep use the holed baseline as if it were whole.
+
+
+@pytest.fixture
+def no_sleep(monkeypatch):
+    """Run the backoff without actually waiting it out."""
+    import sources.gpm_imerg as mod
+
+    async def _instant(_seconds):
+        return None
+
+    monkeypatch.setattr(mod.asyncio, "sleep", _instant)
+
+
+@pytest.mark.asyncio
+async def test_transient_503_is_retried_then_succeeds(token, no_sleep) -> None:
+    """There was no retry at all: one 503 dropped the day for the whole run."""
+    calls = {"n": 0}
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(503, content=b"temporarily unavailable")
+        return httpx.Response(200, content=b"precipitation[0][1885][994], 12.5\n")
+
+    client = GpmImergClient(http=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    row = await client.daily_rain(8.691, 9.576, date(2026, 6, 20))
+    assert row is not None and row.max_mm == 12.5
+    assert calls["n"] == 2                       # retried exactly once
+
+
+@pytest.mark.asyncio
+async def test_503_on_one_minor_falls_back_to_the_next(token, no_sleep) -> None:
+    """The minor-version fallback only ran on 404, so a 503 on V07C never tried
+    V07B — and a reprocessing window is precisely when the letter is in flux and
+    the older file is still readable."""
+    def handler(req: httpx.Request) -> httpx.Response:
+        if "V07C" in str(req.url):
+            return httpx.Response(503, content=b"being reprocessed")
+        if "V07B" in str(req.url):
+            return httpx.Response(200, content=b"precipitation[0][1885][994], 7.5\n")
+        return httpx.Response(404, content=b"not found")
+
+    client = GpmImergClient(http=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    row = await client.daily_rain(8.691, 9.576, date(2026, 6, 20))
+    assert row is not None and row.max_mm == 7.5
+
+
+@pytest.mark.asyncio
+async def test_refused_day_raises_while_unpublished_day_returns_none(
+    token, no_sleep,
+) -> None:
+    """"Not published yet" and "we could not read it" must not collapse into the
+    same silent gap: the first is a dry hole in the calendar, the second is a
+    hole in what we know. 404 everywhere -> None; 503 everywhere -> raise."""
+    from sources.gpm_imerg import ImergError
+
+    missing = GpmImergClient(http=httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda r: httpx.Response(404, content=b"nope"))
+    ))
+    assert await missing.daily_rain(8.691, 9.576, date(2026, 6, 20)) is None
+
+    refused = GpmImergClient(http=httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda r: httpx.Response(503, content=b"busy"))
+    ))
+    with pytest.raises(ImergError, match="503"):
+        await refused.daily_rain(8.691, 9.576, date(2026, 6, 20))
+
+
+def test_retry_backoff_honours_retry_after_then_falls_back_to_exponential() -> None:
+    from sources.gpm_imerg import _MAX_BACKOFF_SECONDS, _retry_after_seconds
+
+    assert _retry_after_seconds("5", 0) == 5.0
+    assert _retry_after_seconds("9999", 0) == _MAX_BACKOFF_SECONDS   # capped
+    assert _retry_after_seconds(None, 3) == 8.0                      # 2**3
+    assert _retry_after_seconds("not-a-number", 1) == 2.0            # ignored
+    assert _retry_after_seconds(None, 20) == _MAX_BACKOFF_SECONDS    # capped
+
+
+# ─── a partial window must not be used as if it were whole ────────────────
+
+
+def _window(days_present: list[int], *, requested: int = 90,
+            end: date = date(2026, 7, 26)):
+    """A RegionWindow holding grids at the given day-offsets before `end`."""
+    from datetime import timedelta
+
+    from tasks.rainstorm_scan import RegionWindow
+
+    grids = [
+        RegionGrid(day=end - timedelta(days=off), lat0=994, rows={1886: [1.0]})
+        for off in sorted(days_present, reverse=True)
+    ]
+    return RegionWindow(
+        region="nigeria", grids=grids, requested_days=requested, end=end,
+    )
+
+
+def test_the_2026_07_27_window_would_now_be_refused() -> None:
+    """The exact shape of the incident: 90 days requested, 06-18..07-21 refused,
+    55 kept. That baseline has a month torn out of PEAK WET SEASON — it removes
+    the wettest days, drags the p99 threshold down, and manufactures advisories.
+    It must be refused rather than answered from."""
+    from datetime import timedelta
+
+    end = date(2026, 7, 26)
+    lost = {
+        (end - d).days
+        for d in (
+            date(2026, 6, 18) + timedelta(days=i)
+            for i in range((date(2026, 7, 21) - date(2026, 6, 18)).days + 1)
+        )
+    }
+    present = [off for off in range(90) if off not in lost]
+    assert len(present) == 56                    # what the run actually kept
+
+    reason = _window(present).unusable_reason()
+    assert reason is not None
+    assert "56/90" in reason
+
+
+def test_a_complete_window_is_usable() -> None:
+    assert _window(list(range(90))).unusable_reason() is None
+
+
+def test_a_window_whose_newest_day_is_stale_is_refused() -> None:
+    """Coverage alone is not enough. A deep baseline that stops a week ago still
+    cannot support "rainfall is exceptional" — the claim is about now."""
+    present = list(range(7, 90))                 # newest day is 7 days behind
+    window = _window(present, requested=83)      # full coverage of what it asked
+    assert window.coverage == 1.0
+    reason = window.unusable_reason()
+    assert reason is not None and "behind" in reason
+
+
+def test_an_empty_window_is_refused_with_a_reason_not_a_silent_zero() -> None:
+    reason = _window([]).unusable_reason()
+    assert reason == "no IMERG days retrieved"
+
+
+def test_region_window_is_returned_oldest_first() -> None:
+    """compute_rainstorm reads the LAST element as 'now'. If the window came
+    back newest-first the scan would judge the oldest day in the record and
+    stamp it as today."""
+    w = _window([0, 5, 30])
+    assert [g.day for g in w.grids] == sorted(g.day for g in w.grids)
+    assert w.newest == date(2026, 7, 26)
+
+
+@pytest.mark.asyncio
+async def test_fetch_abandons_a_region_that_keeps_refusing() -> None:
+    """Each day now retries with backoff across three minor versions, so an
+    archive-wide outage would spend ~45 s per day x 90 days x 3 regions proving
+    what the first ten days already showed. Bail out and let the coverage guard
+    refuse the window."""
+    from tasks.rainstorm_scan import MAX_CONSECUTIVE_FAILURES, fetch_region_window
+
+    asked: list[date] = []
+
+    class _Broken:
+        async def region_grid(self, *, lon0, lon1, lat0, lat1, day):
+            asked.append(day)
+            raise RuntimeError("IMERG 503")
+
+    w = await fetch_region_window(
+        _Broken(), "nigeria", end=date(2026, 7, 26), days=90,
+    )
+    assert len(asked) == MAX_CONSECUTIVE_FAILURES     # not all 90
+    assert w.unusable_reason() == "no IMERG days retrieved"
+
+
+@pytest.mark.asyncio
+async def test_a_run_of_failures_that_recovers_does_not_abandon_the_region() -> None:
+    """The counter must reset on success, or a feed that loses a handful of
+    scattered days would abandon a window it could have filled."""
+    from tasks.rainstorm_scan import fetch_region_window
+
+    seen: list[date] = []
+
+    class _Flaky:
+        async def region_grid(self, *, lon0, lon1, lat0, lat1, day):
+            seen.append(day)
+            if day.day % 4:                       # fails 1 day in 4, scattered
+                return RegionGrid(day=day, lat0=lat0, rows={1886: [1.0]})
+            raise RuntimeError("IMERG 503")
+
+    w = await fetch_region_window(
+        _Flaky(), "nigeria", end=date(2026, 7, 26), days=30,
+    )
+    assert len(seen) == 30                        # walked the whole window
+    assert len(w.grids) > 20
+
+
+@pytest.mark.asyncio
+async def test_fetch_walks_newest_day_first() -> None:
+    """Fetch order is invisible on a healthy run and decides everything on a
+    broken one: it fixes which days survive when the archive starts refusing
+    part-way through. Baseline depth degrades gracefully; a missing today does
+    not."""
+    from tasks.rainstorm_scan import fetch_region_window
+
+    asked: list[date] = []
+
+    class _Client:
+        async def region_grid(self, *, lon0, lon1, lat0, lat1, day):
+            asked.append(day)
+            return None
+
+    await fetch_region_window(
+        _Client(), "nigeria", end=date(2026, 7, 26), days=5,
+    )
+    assert asked == sorted(asked, reverse=True)
+    assert asked[0] == date(2026, 7, 26)

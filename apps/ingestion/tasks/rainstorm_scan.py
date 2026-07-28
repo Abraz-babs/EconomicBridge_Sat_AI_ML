@@ -1,6 +1,8 @@
 """Scheduled per-LGA exceptional-rainfall scan (flood-risk advisory).
 
-NOT WIRED INTO THE SCHEDULER, deliberately — see the two blockers at the end.
+Runs daily at 08:00 UTC — see scheduler.py. (This docstring used to say it was
+deliberately unwired; that stopped being true when the feed went live and the
+line was left behind. Wiring is in scheduler.py, not here.)
 
 Originally built as rainstorm early warning. Validation on real IMERG data
 (2026-07-26) proved daily rainfall cannot see wind-damage storms: Riyom sat at
@@ -30,11 +32,16 @@ Design notes
   being swallowed per-LGA — 447 identical 401s in the log helps nobody, and a
   silent no-op would look exactly like "no storms", which is the one thing a
   warning system must never fake.
+* **A partial window is refused, not used.** MIN_COVERAGE / MAX_OBSERVED_AGE_DAYS
+  below. The same principle: a baseline with a month torn out of it cannot say
+  what is exceptional, so the run is recorded failed rather than answering
+  anyway.
 """
 from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -81,6 +88,69 @@ TENANT_REGION: dict[str, str] = {
 }
 # IMERG Late publishes ~1 day behind; asking for today returns nothing.
 LATENCY_DAYS = 1
+
+# ─── How much of the window has to arrive before we may judge a day ────────
+# Learned the hard way on 2026-07-27: a GES DISC reprocessing window refused 34
+# consecutive days (2026-06-18 to 2026-07-21) and the sweep carried on with the
+# remaining 55 as though they were the whole record. A contiguous hole is the
+# worst kind — it lands in peak wet season, removes the wettest days from the
+# distribution, drags the p99 threshold down and manufactures advisories.
+#
+# 0.75 of 90 days is 68, comfortably clear of the 20 wet days a percentile
+# needs while still rejecting a window with a month torn out of it.
+MIN_COVERAGE = 0.75
+
+# How far behind `end` the newest retrieved day may be. An advisory asserts
+# something about NOW; if the most recent day we hold is a week old, the claim
+# is not one we can support no matter how deep the baseline is.
+MAX_OBSERVED_AGE_DAYS = 3
+
+# Give up on a region after this many consecutive days refuse us. Each day now
+# retries with backoff across three minor versions, so an archive-wide outage
+# would otherwise spend ~45 s per day x 90 days x 3 regions before concluding
+# what the first ten days already showed. Only genuine failures count — a day
+# that simply is not published yet returns None and is not a failure.
+MAX_CONSECUTIVE_FAILURES = 10
+
+
+@dataclass(frozen=True)
+class RegionWindow:
+    """One region's fetched baseline, plus whether it may be used at all."""
+
+    region: str
+    grids: list[RegionGrid]           # oldest first
+    requested_days: int
+    end: date
+
+    @property
+    def coverage(self) -> float:
+        if self.requested_days <= 0:
+            return 0.0
+        return len(self.grids) / self.requested_days
+
+    @property
+    def newest(self) -> date | None:
+        return self.grids[-1].day if self.grids else None
+
+    def unusable_reason(self) -> str | None:
+        """Why this window must not produce advisories, or None if it may."""
+        if not self.grids:
+            return "no IMERG days retrieved"
+        if self.coverage < MIN_COVERAGE:
+            return (
+                f"only {len(self.grids)}/{self.requested_days} IMERG days "
+                f"retrieved ({self.coverage:.0%}) — too little of the record "
+                "to say what is exceptional here"
+            )
+        newest = self.newest
+        assert newest is not None            # grids non-empty, checked above
+        behind = (self.end - newest).days
+        if behind > MAX_OBSERVED_AGE_DAYS:
+            return (
+                f"newest IMERG day is {newest}, {behind} days behind {self.end}"
+                " — an advisory from it would not be about now"
+            )
+        return None
 
 
 def _zone_label(lga: str, sig: RainstormSignal) -> str:
@@ -151,11 +221,21 @@ async def _record_run(
 
 async def fetch_region_window(
     client: GpmImergClient, region: str, *, end: date, days: int,
-) -> list[RegionGrid]:
-    """Every available day of one region's grid, oldest first."""
+) -> RegionWindow:
+    """Every available day of one region's grid.
+
+    Fetched NEWEST FIRST, returned oldest first (which is the order
+    compute_rainstorm expects). The fetch order is invisible on a healthy run
+    and decides everything on a broken one: it fixes which days survive when
+    the archive starts refusing us part-way through. Spending the healthy part
+    of a run on 90-day-old history and leaving today to whatever is left is
+    exactly backwards for a warning feed — baseline depth degrades gracefully,
+    a missing today does not.
+    """
     lon0, lon1, lat0, lat1 = REGIONS[region]
     grids: list[RegionGrid] = []
-    for offset in range(days - 1, -1, -1):
+    consecutive_failures = 0
+    for offset in range(days):
         day = end - timedelta(days=offset)
         try:
             grid = await client.region_grid(
@@ -165,17 +245,30 @@ async def fetch_region_window(
             raise
         except Exception as exc:            # noqa: BLE001 — one bad day
             log.warning("imerg region %s %s skipped: %s", region, day, exc)
+            consecutive_failures += 1
+            if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                log.error(
+                    "imerg region %s: %d consecutive failures ending %s — "
+                    "abandoning the window; the coverage guard will refuse it",
+                    region, consecutive_failures, day,
+                )
+                break
             continue
+        consecutive_failures = 0
         if grid is not None:
             grids.append(grid)
-    return grids
+    grids.sort(key=lambda g: g.day)
+    return RegionWindow(
+        region=region, grids=grids, requested_days=days, end=end,
+    )
 
 
 async def scan_tenant(
-    session: AsyncSession, client: GpmImergClient, tenant: str, *,
-    grids: list[RegionGrid], trigger: str = "scheduled",
+    session: AsyncSession, tenant: str, *,
+    window: RegionWindow, trigger: str = "scheduled",
 ) -> int:
-    """Scan every LGA of one tenant against pre-fetched region grids."""
+    """Scan every LGA of one tenant against a pre-fetched region window."""
+    grids = window.grids
     started_at = datetime.now(timezone.utc)
     await set_tenant_schema(session, tenant)
 
@@ -223,24 +316,48 @@ async def run(
         return {}
 
     end = (today or date.today()) - timedelta(days=LATENCY_DAYS)
-    region_grids: dict[str, list[RegionGrid]] = {}
+    windows: dict[str, RegionWindow] = {}
     for region in REGIONS:
-        region_grids[region] = await fetch_region_window(
+        window = await fetch_region_window(
             client, region, end=end, days=BASELINE_DAYS,
         )
-        log.info("imerg region %s: %d days", region, len(region_grids[region]))
+        windows[region] = window
+        log.info(
+            "imerg region %s: %d/%d days (%.0f%%), newest %s",
+            region, len(window.grids), window.requested_days,
+            100 * window.coverage, window.newest,
+        )
 
     results: dict[str, int] = {}
     factory = get_session_factory()
     async with factory() as session:
         for tenant in sorted(PILOT_TENANT_IDS):
-            grids = region_grids.get(TENANT_REGION.get(tenant, ""), [])
-            if not grids:
+            window = windows.get(TENANT_REGION.get(tenant, ""))
+            reason = (
+                window.unusable_reason() if window else "no region mapped"
+            )
+            if reason:
+                # Record the run as FAILED rather than writing zero advisories.
+                # A quiet zero is indistinguishable from "no exceptional
+                # rainfall anywhere", which is the one thing a warning feed
+                # must never fake — the same distinction shockguard_scan draws
+                # between "not checked" and "no signal".
+                #
+                # Prior advisories are deliberately left in place: they were
+                # legitimately computed, and wiping the map because the archive
+                # hiccuped would be its own kind of lie. The feed status is
+                # what carries the truth that today's run did not complete.
+                log.warning("rainfall scan %s: %s", tenant, reason)
+                await _record_run(
+                    session, tenant=tenant, written=0,
+                    started_at=datetime.now(timezone.utc),
+                    trigger=trigger, error=reason,
+                )
                 results[tenant] = 0
                 continue
             try:
                 results[tenant] = await scan_tenant(
-                    session, client, tenant, grids=grids, trigger=trigger,
+                    session, tenant, window=window, trigger=trigger,
                 )
             except ImergAuthError as exc:
                 # Credentials are global, not per-tenant: continuing would emit

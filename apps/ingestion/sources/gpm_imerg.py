@@ -41,6 +41,7 @@ distinctly so the failure is never misread as an expiry.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -71,6 +72,35 @@ _FILL_BELOW = -9000.0          # sentinel is -9999.9; anything near it is no-dat
 _WINDOW = 1
 
 _TIMEOUT = httpx.Timeout(90.0, connect=20.0)
+
+# Transient-failure handling, added 2026-07-28 after a real loss.
+#
+# On 2026-07-27 the 08:00 sweep lost 34 consecutive days (2026-06-18 to
+# 2026-07-21) to `IMERG 503`, keeping 55 of the 90-day window. The same dates
+# read back 200 the next morning, so the granules were fine — GES DISC was
+# refusing them temporarily, almost certainly the V07B->V07C reprocessing
+# window for that date range.
+#
+# Two things made a temporary refusal permanent for the run:
+#   * there was no retry at all, so a single 503 dropped the day; and
+#   * the minor-version fallback below only ran on 404, so a 503 on V07C never
+#     fell back to a V07B that may well have been readable — and a
+#     reprocessing window is exactly when the minor letter is in flux.
+_RETRYABLE_STATUS = (429, 500, 502, 503, 504)
+_MAX_RETRIES = 4
+_MAX_BACKOFF_SECONDS = 20.0
+
+
+def _retry_after_seconds(header: str | None, attempt: int) -> float:
+    """Seconds to wait before retrying: honour Retry-After when GES DISC sends
+    one, else exponential backoff (capped). Same shape as the CDSE backoff in
+    sources/sentinel_statistical.py so both archives behave alike."""
+    if header:
+        try:
+            return min(float(header), _MAX_BACKOFF_SECONDS)
+        except ValueError:
+            pass
+    return min(2.0 ** attempt, _MAX_BACKOFF_SECONDS)
 
 
 class ImergAuthError(RuntimeError):
@@ -252,16 +282,73 @@ class GpmImergClient:
         # follow_redirects is required: GES DISC bounces through URS.
         return httpx.AsyncClient(timeout=_TIMEOUT, follow_redirects=True)
 
-    def _url(self, day: date, minor: str, lon_i: int, lat_i: int) -> str:
-        lo_lon, hi_lon = _window(lon_i, _LON_CELLS)
-        lo_lat, hi_lat = _window(lat_i, _LAT_CELLS)
-        granule = _GRANULE.format(ymd=day.strftime("%Y%m%d"), minor=minor)
-        ce = (
-            f"precipitation[0][{lo_lon}:{hi_lon}][{lo_lat}:{hi_lat}]"
+    @staticmethod
+    def _auth_error(status: int) -> ImergAuthError:
+        return ImergAuthError(
+            "GES DISC rejected the Earthdata token "
+            f"({status}). If the same token works against "
+            "LAADS, this is APPLICATION AUTHORISATION, not expiry: "
+            "approve 'NASA GESDISC DATA ARCHIVE' at "
+            "urs.earthdata.nasa.gov > Applications > Authorized Apps."
         )
-        return (
-            f"{_OPENDAP_ROOT}/{day:%Y}/{day:%m}/{granule}.ascii?{ce}"
-        )
+
+    async def _get(self, client: httpx.AsyncClient, url: str) -> httpx.Response:
+        """GET with backoff on transient failures.
+
+        Returns the last response and lets the caller judge its status; only
+        the retrying is handled here.
+        """
+        resp = await client.get(url, headers=self._headers())
+        for attempt in range(_MAX_RETRIES):
+            if resp.status_code not in _RETRYABLE_STATUS:
+                return resp
+            delay = _retry_after_seconds(resp.headers.get("Retry-After"), attempt)
+            log.info(
+                "imerg: %s on %s — retry %d/%d in %.1fs",
+                resp.status_code, url.rsplit("/", 1)[-1][:56],
+                attempt + 1, _MAX_RETRIES, delay,
+            )
+            await asyncio.sleep(delay)
+            resp = await client.get(url, headers=self._headers())
+        return resp
+
+    async def _fetch_ascii(
+        self, client: httpx.AsyncClient, day: date, constraint: str,
+    ) -> str | None:
+        """The `.ascii` payload for one day, trying each minor version.
+
+        Returns None only when the granule genuinely is not published — a 404
+        on every minor letter, which is normal for the last ~24 h. If the
+        archive refused us instead (a 5xx that outlived its retries), this
+        RAISES: "not published yet" and "we could not read it" must never
+        collapse into the same silent gap, because the first is a dry hole in
+        the calendar and the second is a hole in what we know.
+        """
+        refused: int | None = None
+        for minor in _MINOR_VERSIONS:
+            granule = _GRANULE.format(ymd=day.strftime("%Y%m%d"), minor=minor)
+            url = f"{_OPENDAP_ROOT}/{day:%Y}/{day:%m}/{granule}.ascii?{constraint}"
+            resp = await self._get(client, url)
+            if resp.status_code == 200:
+                return resp.text
+            if resp.status_code in (401, 403):
+                raise self._auth_error(resp.status_code)
+            if resp.status_code == 404:
+                continue                    # this letter doesn't exist; next
+            if resp.status_code in _RETRYABLE_STATUS:
+                # Still refusing after backoff. Fall through to the next minor
+                # letter rather than abandoning the day: during a reprocessing
+                # window the new file 503s while the old one still reads.
+                refused = resp.status_code
+                continue
+            raise ImergError(f"IMERG {resp.status_code}: {resp.text[:200]}")
+
+        if refused is not None:
+            raise ImergError(
+                f"IMERG {refused}: no minor version of {day} readable after "
+                f"{_MAX_RETRIES} retries each"
+            )
+        return None
 
     async def daily_rain(self, lon: float, lat: float, day: date) -> DailyRain | None:
         """Rainfall over the window around (lon, lat) for `day`.
@@ -280,25 +367,13 @@ class GpmImergClient:
         if key in self._cache:
             return self._cache[key]
 
-        body: str | None = None
+        lo_lon, hi_lon = _window(lon_i, _LON_CELLS)
+        lo_lat, hi_lat = _window(lat_i, _LAT_CELLS)
         async with self._ctx() as client:
-            for minor in _MINOR_VERSIONS:
-                url = self._url(day, minor, lon_i, lat_i)
-                resp = await client.get(url, headers=self._headers())
-                if resp.status_code == 200:
-                    body = resp.text
-                    break
-                if resp.status_code in (401, 403):
-                    raise ImergAuthError(
-                        "GES DISC rejected the Earthdata token "
-                        f"({resp.status_code}). If the same token works against "
-                        "LAADS, this is APPLICATION AUTHORISATION, not expiry: "
-                        "approve 'NASA GESDISC DATA ARCHIVE' at "
-                        "urs.earthdata.nasa.gov > Applications > Authorized Apps."
-                    )
-                if resp.status_code == 404:
-                    continue      # try the next minor-version letter
-                raise ImergError(f"IMERG {resp.status_code}: {resp.text[:200]}")
+            body = await self._fetch_ascii(
+                client, day,
+                f"precipitation[0][{lo_lon}:{hi_lon}][{lo_lat}:{hi_lat}]",
+            )
 
         if body is None:
             log.info("imerg: no granule published for %s", day)
@@ -353,29 +428,10 @@ class GpmImergClient:
         """
         if not self.configured:
             return None
-        body: str | None = None
         async with self._ctx() as client:
-            for minor in _MINOR_VERSIONS:
-                granule = _GRANULE.format(ymd=day.strftime("%Y%m%d"), minor=minor)
-                url = (
-                    f"{_OPENDAP_ROOT}/{day:%Y}/{day:%m}/{granule}.ascii"
-                    f"?precipitation[0][{lon0}:{lon1}][{lat0}:{lat1}]"
-                )
-                resp = await client.get(url, headers=self._headers())
-                if resp.status_code == 200:
-                    body = resp.text
-                    break
-                if resp.status_code in (401, 403):
-                    raise ImergAuthError(
-                        "GES DISC rejected the Earthdata token "
-                        f"({resp.status_code}). If the same token works against "
-                        "LAADS, this is APPLICATION AUTHORISATION, not expiry: "
-                        "approve 'NASA GESDISC DATA ARCHIVE' at "
-                        "urs.earthdata.nasa.gov > Applications > Authorized Apps."
-                    )
-                if resp.status_code == 404:
-                    continue
-                raise ImergError(f"IMERG {resp.status_code}: {resp.text[:200]}")
+            body = await self._fetch_ascii(
+                client, day, f"precipitation[0][{lon0}:{lon1}][{lat0}:{lat1}]",
+            )
 
         if body is None:
             log.info("imerg: no granule published for %s", day)
