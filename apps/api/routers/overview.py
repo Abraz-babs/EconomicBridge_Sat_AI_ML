@@ -188,51 +188,61 @@ def _tone_for_pct(pct: int) -> str:
     return "neg"
 
 
+# An index needs a sample. Below this many real LGA readings a percentage is
+# arithmetic, not information — 0% from one reading is not a finding about a
+# state's food security, and that is exactly how it renders.
+_MIN_LGA_READINGS = 3
+
+
 @router.get(
     "/crop_health",
     response_model=SuccessResponse[CropHealthData],
-    summary="Live cross-tenant crop-health index (mixed regions)",
+    summary="Live cross-tenant crop-health index (per-LGA Sentinel-2 NDVI)",
 )
 async def crop_health(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SuccessResponse[CropHealthData]:
-    """% of crop detections classified healthy, per crop × region, mixed
-    across NG states + Ghana + Senegal. Includes BOTH real ResNet inference
-    rows and the modelled baseline (0.0.0-seed): a real-only filter left the
-    widget showing a single tenant (or nothing) until uploads accumulate.
-    Real detections dominate naturally as they land; the dashboard subtitle
-    declares the blend."""
+    """% of a region's LGAs whose CURRENT Sentinel-2 NDVI reads healthy.
+
+    Reads `crop_health` — the per-LGA satellite layer — NOT `crop_predictions`,
+    which is the leaf-photo diagnosis table. That was the bug: the whole photo
+    table held 59 rows across ten tenants, 50 of them seeded, and this widget
+    took the top two crops per tenant from it. "Maize — Kebbi 0% healthy" was
+    computed from two fabricated rows and rendered as a red bar on the public
+    Overview — a fabricated food-security claim about a real state.
+
+    So: satellite rows only, seeds structurally absent from this table, rows
+    with no NDVI excluded (an unmeasured LGA is not an unhealthy one), and a
+    region is omitted entirely below _MIN_LGA_READINGS rather than shown as a
+    confident percentage of nothing.
+    """
     shift = datetime.now(timezone.utc).timetuple().tm_yday
     by_tenant: dict[str, list[CropHealthRow]] = {}
     for t in sorted(PILOT_TENANT_IDS):
         await session.execute(
             text(f"SET search_path TO {tenant_schema_name(t)}, public")
         )
-        rows = (
+        row = (
             await session.execute(
                 text(
                     """
-                    SELECT split_part(predicted_class, '_', 1) AS crop,
-                           COUNT(*) AS total,
-                           SUM(CASE WHEN predicted_class LIKE '%healthy'
-                                    THEN 1 ELSE 0 END) AS healthy
-                      FROM crop_predictions
-                     GROUP BY 1
-                     HAVING COUNT(*) > 0
-                     ORDER BY total DESC
-                     LIMIT 2
+                    SELECT COUNT(*) AS total,
+                           COUNT(*) FILTER (WHERE health = 'healthy') AS healthy
+                      FROM crop_health
+                     WHERE ndvi IS NOT NULL
                     """
                 )
             )
-        ).all()
+        ).one_or_none()
         region = _region(t)
         out = []
-        for crop, total, healthy in rows:
-            pct = round(100 * int(healthy) / max(int(total), 1))
+        if row is not None and int(row[0]) >= _MIN_LGA_READINGS:
+            total, healthy = int(row[0]), int(row[1])
+            pct = round(100 * healthy / total)
             out.append(
                 CropHealthRow(
-                    label=f"{str(crop).title()} — {region}",
+                    label=f"{region} — {total} LGAs measured",
                     pct=pct,
                     tone=_tone_for_pct(pct),
                 )

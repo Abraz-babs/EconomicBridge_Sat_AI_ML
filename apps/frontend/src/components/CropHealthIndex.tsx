@@ -11,9 +11,15 @@ const TONE_COLOR: Record<string, string> = {
 };
 
 /**
- * Live crop-health index — % of detections classified healthy per crop ×
- * region, from the trained ResNet, MIXED across Nigerian states + Ghana +
- * Senegal (never off-plan countries). Rotates through the pool over time.
+ * Live crop-health index — % of each region's LGAs whose current Sentinel-2
+ * NDVI reads healthy, mixed across Nigerian states + Ghana + Senegal (never
+ * off-plan countries). Rotates through the pool over time.
+ *
+ * Reads the per-LGA SATELLITE layer, not the leaf-photo diagnosis table. The
+ * old subtitle said "ResNet-50 + modelled", which was accurate about the
+ * mechanism and misleading about the evidence: it was 59 photo rows, 50 of
+ * them seeded. The row label now carries its own sample size, so a reader can
+ * see what each percentage rests on.
  */
 export default function CropHealthIndex() {
   const { data, isLoading, isError } = useCropHealth();
@@ -24,13 +30,15 @@ export default function CropHealthIndex() {
       <div className="panel-header">
         <span className="panel-title">Crop Health Index</span>
         <span className="panel-meta">
-          {isError ? 'API unreachable' : 'ResNet-50 + modelled · mixed regions'}
+          {isError ? 'API unreachable' : 'Sentinel-2 NDVI · per LGA'}
         </span>
       </div>
       <div>
         {isLoading && <div className="feed-item feed-item--empty">Loading…</div>}
         {!isLoading && rows.length === 0 && (
-          <div className="feed-item feed-item--empty">No crop detections yet.</div>
+          <div className="feed-item feed-item--empty">
+            No region has enough current LGA readings to index yet.
+          </div>
         )}
         {rows.map((c) => (
           <div key={c.label} className="crop-row">
