@@ -80,10 +80,16 @@ resource "aws_scheduler_schedule" "reports" {
       launch_type         = "FARGATE"
       task_count          = 1
 
+      # Budget mode (no NAT): run in public subnets with a public IP, exactly
+      # as ecs.tf:215 does for the services. Hardcoding private+false here is
+      # what silently broke the reports job — with no NAT gateway the task
+      # cannot reach Secrets Manager or ECR, so it dies at
+      # ResourceInitializationError before the container ever starts, writes no
+      # logs, and looks from the console like a schedule that simply never ran.
       network_configuration {
-        subnets          = aws_subnet.private[*].id
+        subnets          = var.use_nat_gateway ? aws_subnet.private[*].id : aws_subnet.public[*].id
         security_groups  = [aws_security_group.ecs_tasks.id]
-        assign_public_ip = false
+        assign_public_ip = var.use_nat_gateway ? false : true
       }
     }
 
@@ -140,10 +146,16 @@ resource "aws_scheduler_schedule" "feed_health" {
       launch_type         = "FARGATE"
       task_count          = 1
 
+      # Budget mode (no NAT): run in public subnets with a public IP, exactly
+      # as ecs.tf:215 does for the services. Hardcoding private+false here is
+      # what silently broke the reports job — with no NAT gateway the task
+      # cannot reach Secrets Manager or ECR, so it dies at
+      # ResourceInitializationError before the container ever starts, writes no
+      # logs, and looks from the console like a schedule that simply never ran.
       network_configuration {
-        subnets          = aws_subnet.private[*].id
+        subnets          = var.use_nat_gateway ? aws_subnet.private[*].id : aws_subnet.public[*].id
         security_groups  = [aws_security_group.ecs_tasks.id]
-        assign_public_ip = false
+        assign_public_ip = var.use_nat_gateway ? false : true
       }
     }
 
