@@ -88,12 +88,25 @@ STOCK_PROBES: tuple[StockProbe, ...] = (
         real_predicate="ndvi IS NOT NULL",
         note="per-LGA Sentinel-2 NDVI — the exact stock the 2026-07 incident ate",
     ),
-    StockProbe(
-        key="shock_events_live",
-        table="shock_events",
-        real_predicate="source IN ('shockguard_scan_v1', 'rainstorm_scan_v1')",
-        note="live detector events (excludes the cited historical register)",
-    ),
+    # NO PROBE ON shock_events. Removed 2026-07-29 after it produced this
+    # watchdog's first alert, and that alert was wrong:
+    #
+    #   [CRITICAL] senegal/shock_events_live  real rows fell 2 -> 0
+    #
+    # Senegal's two rows were gone because that morning's rainfall scan RAN
+    # SUCCESSFULLY and correctly found no exceptional rainfall there — while
+    # kaduna gained 3, nasarawa 2 and plateau 5 in the same run. Both live
+    # detectors replace their rows every run (`_replace_prior`), so their count
+    # tracks CURRENT WEATHER, not accumulated knowledge. It is supposed to rise
+    # and fall, and zero is a normal, correct, frequent answer.
+    #
+    # A stock probe on a self-replacing feed is therefore guaranteed to cry wolf
+    # on the first quiet day — and a watchdog people learn to ignore is worse
+    # than no watchdog, which is the one thing this module cannot afford.
+    #
+    # Health of these feeds is already covered, correctly, by the staleness
+    # check: "rainstorm_scan_v1: last success 1h ago". If a detector dies, that
+    # is what notices. Row count adds no signal a human should be woken for.
     StockProbe(
         key="crop_prices_real",
         table="crop_prices",

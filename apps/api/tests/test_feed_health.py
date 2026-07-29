@@ -53,12 +53,24 @@ def test_crop_health_probe_counts_only_real_readings() -> None:
     assert "ndvi IS NOT NULL" in probe.real_predicate
 
 
-def test_shock_probe_excludes_the_cited_historical_register() -> None:
-    """historical_v1 rows are hand-curated and static, so counting them would
-    mask a live detector going quiet."""
-    probe = next(p for p in STOCK_PROBES if p.key == "shock_events_live")
-    assert "historical" not in probe.real_predicate
-    assert "shockguard_scan_v1" in probe.real_predicate
+def test_no_stock_probe_watches_a_self_replacing_feed() -> None:
+    """The watchdog's FIRST live alert, 2026-07-29, was wrong:
+
+        [CRITICAL] senegal/shock_events_live  real rows fell 2 -> 0
+
+    Senegal's rows were gone because that run of the rainfall scan succeeded
+    and correctly found no exceptional rainfall there, while kaduna gained 3
+    and plateau 5 in the same sweep. Both live detectors call _replace_prior
+    every run, so their row count tracks current weather, not accumulated
+    knowledge — it is MEANT to fall, and zero is a normal answer.
+
+    Stock probes assume a floor that only rises. Pointing one at a
+    self-replacing table guarantees a false alarm on the first quiet day, and
+    an alert people learn to ignore is worse than no alert at all."""
+    tables = {p.table for p in STOCK_PROBES}
+    assert "shock_events" not in tables, (
+        "shock_events is replaced every run; its health is the staleness check"
+    )
 
 
 def test_price_probe_excludes_seeds() -> None:
