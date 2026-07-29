@@ -113,3 +113,44 @@ def test_email_explains_why_the_watchdog_exists() -> None:
     """Whoever reads this at 3am may not know the history."""
     _, body = format_email(_report([Finding("warning", "x", "y")]))
     assert "sixteen days" in body
+
+
+# ─── the watchdog's own first mistake, made permanent as a test ───────────
+# On its first production run FEED_MAX_AGE_HOURS said `firms_ingest_v1` and the
+# report opened with "has NEVER recorded a successful run" — about a feed on
+# 450 runs, 448 successful. The task writes `MODIS_NRT`. A budget keyed on a
+# string nobody writes watches nothing, silently, for as long as the typo lives.
+
+
+def test_firms_budget_uses_the_string_the_task_actually_writes() -> None:
+    assert "MODIS_NRT" in FEED_MAX_AGE_HOURS
+    assert "firms_ingest_v1" not in FEED_MAX_AGE_HOURS
+
+
+def test_an_unwatched_source_is_itself_a_finding() -> None:
+    """The inverse blind spot. A feed writing runs with no budget must announce
+    itself, so the next rename cannot quietly go unmonitored."""
+    from services.feed_health import _check_unmonitored
+
+    r = _report()
+    _check_unmonitored(r, {"encroachment_detector_v1", "some_new_feed_v9"})
+    assert [f.subject for f in r.findings] == ["some_new_feed_v9"]
+    assert r.findings[0].severity == "warning"      # a gap, not a breakage
+
+
+def test_known_sources_do_not_trigger_the_unwatched_check() -> None:
+    from services.feed_health import _check_unmonitored
+
+    r = _report()
+    _check_unmonitored(r, set(FEED_MAX_AGE_HOURS))
+    assert r.findings == []
+
+
+def test_shared_tables_are_probed_once_not_once_per_tenant() -> None:
+    """crop_prices lives in public. Probing it per tenant printed the same 456
+    ten times — ten identical lines read as ten checks and are one, and they
+    bury the findings that matter."""
+    probe = next(p for p in STOCK_PROBES if p.key == "crop_prices_real")
+    assert probe.scope == "global"
+    per_tenant = [p.key for p in STOCK_PROBES if p.scope == "tenant"]
+    assert "crop_health_real_ndvi" in per_tenant     # genuinely per-tenant

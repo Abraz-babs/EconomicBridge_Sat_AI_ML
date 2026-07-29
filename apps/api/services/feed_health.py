@@ -48,11 +48,19 @@ logger = logging.getLogger(__name__)
 # Feeds that stamp public.ingestion_runs, and how long each may go without a
 # SUCCESS before we call it stale. Generous multiples of the real cadence — a
 # daily feed missing one run is weather, missing three days is a fault.
+#
+# THESE KEYS MUST BE THE STRINGS THE TASKS ACTUALLY WRITE, not the module names.
+# On its very first production run this list said `firms_ingest_v1` and the
+# watchdog reported "has NEVER recorded a successful run" — for a feed sitting
+# on 450 runs, 448 successful. The task writes `MODIS_NRT`. A watchdog whose
+# opening move is a false alarm gets muted, and a muted watchdog is the same as
+# no watchdog, so `_check_unmonitored` below now makes that mistake
+# self-reporting rather than trusting anyone to keep this list honest.
 FEED_MAX_AGE_HOURS: dict[str, int] = {
     "encroachment_detector_v1": 72,     # daily 07:00
     "shockguard_scan_v1": 72,           # daily 07:30
     "rainstorm_scan_v1": 72,            # daily 08:00
-    "firms_ingest_v1": 72,              # daily 06:00
+    "MODIS_NRT": 72,                    # daily 06:00 — NASA FIRMS fire ingest
     "conflict_pipeline_v1": 72,         # daily 06:30
     "food_prices_v1": 24 * 45,          # monthly on the 5th
 }
@@ -60,12 +68,17 @@ FEED_MAX_AGE_HOURS: dict[str, int] = {
 # Tables whose REAL row count must not fall. `real_predicate` is the SQL that
 # distinguishes a genuine reading from a placeholder — the whole point is to
 # count what we actually know, so a table refilled with NULLs still trips.
+#
+# `scope` matters: crop_prices lives in PUBLIC, not per-tenant, so probing it
+# once per tenant reported the same 456 ten times. Ten identical lines are not
+# ten checks, they are padding that buries the real ones.
 @dataclass(frozen=True)
 class StockProbe:
     key: str
     table: str
     real_predicate: str
     note: str
+    scope: str = "tenant"          # 'tenant' | 'global'
 
 
 STOCK_PROBES: tuple[StockProbe, ...] = (
@@ -86,8 +99,12 @@ STOCK_PROBES: tuple[StockProbe, ...] = (
         table="crop_prices",
         real_predicate="COALESCE(source, '') <> 'seed_v1'",
         note="ingested market prices, seeds excluded",
+        scope="global",
     ),
 )
+
+# Tenant id used for global-scope marks, so they cannot collide with a real one.
+GLOBAL_SCOPE = "_global"
 
 # A stock may dip slightly for legitimate reasons (an LGA genuinely clearing its
 # watch, a month rolling out of a window). Only a fall beyond this fraction is
@@ -153,12 +170,38 @@ async def _check_staleness(
                 f"{source}: last success {age_h:.0f}h ago"
             )
 
+    _check_unmonitored(report, set(seen))
+
+
+def _check_unmonitored(report: HealthReport, live_sources: set[str]) -> None:
+    """Report feeds that write runs but that nothing above is watching.
+
+    The inverse blind spot, and the one that let the FIRMS mistake happen: a
+    budget keyed on a source string nobody writes watches nothing, silently and
+    for as long as the typo survives. Anything stamping ingestion_runs without
+    an entry in FEED_MAX_AGE_HOURS is therefore itself a finding — either the
+    budget needs the name, or the source is stray and should stop writing.
+
+    A warning rather than critical: an unwatched feed is a gap in our knowledge,
+    not evidence that anything is broken.
+    """
+    unknown = sorted(live_sources - set(FEED_MAX_AGE_HOURS))
+    for source in unknown:
+        report.findings.append(Finding(
+            "warning", source,
+            "writes to ingestion_runs but has no staleness budget — nothing is "
+            "watching it. Add it to FEED_MAX_AGE_HOURS or stop it writing.",
+        ))
+
 
 async def _check_stock(
     session: AsyncSession, report: HealthReport, tenant: str, now: datetime,
+    *, scope: str = "tenant",
 ) -> None:
     """Compare each probe's real-row count against its last recorded mark."""
     for probe in STOCK_PROBES:
+        if probe.scope != scope:
+            continue
         try:
             current = (await session.execute(text(
                 f"SELECT count(*) FROM {probe.table} WHERE {probe.real_predicate}"
@@ -214,8 +257,12 @@ async def run_health_check(
         await session.execute(
             text(f"SET search_path TO {tenant_schema_name(tenant)}, public")
         )
-        await _check_stock(session, report, tenant, now)
+        await _check_stock(session, report, tenant, now, scope="tenant")
+
+    # Shared tables get exactly one probe. Running them per tenant reported the
+    # same number ten times, which reads as ten checks and is one.
     await session.execute(text("SET search_path TO public"))
+    await _check_stock(session, report, GLOBAL_SCOPE, now, scope="global")
 
     return report
 
