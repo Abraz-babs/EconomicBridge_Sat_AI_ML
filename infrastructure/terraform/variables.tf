@@ -249,3 +249,15 @@ variable "alarm_email" {
   type        = string
   default     = ""
 }
+
+variable "enable_feed_health_watchdog" {
+  description = "Provision the daily EventBridge schedule that runs scripts.check_feed_health on the api task and emails the super-admin on findings. Depends on the reports_scheduler IAM role, so enable_scheduled_reports must also be true."
+  type        = bool
+  default     = true
+}
+
+variable "feed_health_schedule" {
+  description = "EventBridge Scheduler expression for the feed-health watchdog. Daily is right: it compares each feed against a multi-day staleness budget and emails only on findings."
+  type        = string
+  default     = "cron(30 9 * * ? *)"
+}

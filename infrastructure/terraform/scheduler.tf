@@ -102,3 +102,64 @@ resource "aws_scheduler_schedule" "reports" {
     }
   }
 }
+
+# ─── Feed-health watchdog ──────────────────────────────────────────────────
+#
+# Runs `python -m scripts.check_feed_health` daily on the api task. It emails
+# ONLY on findings, so anything arriving in the inbox means something needs a
+# look, and silence is a real signal rather than an absent one.
+#
+# It exists because in July 2026 the encroachment sweep ran daily for about
+# sixteen days, recorded `succeeded` every time, and deleted 306 of 447 real
+# crop_health NDVI readings while doing it. Nothing was red, because nothing
+# was watching. See apps/api/services/feed_health.py.
+#
+# The api task definition is the target because it is the one carrying
+# RESEND_API_KEY; the ingestion service holds the scheduler for the feeds
+# themselves but has no mail credentials.
+#
+# Reuses the reports role rather than minting a second identical one — same
+# principal, same cluster, same task family, same PassRole set.
+
+resource "aws_scheduler_schedule" "feed_health" {
+  count                        = var.enable_feed_health_watchdog ? 1 : 0
+  name                         = "${local.name_prefix}-feed-health"
+  schedule_expression          = var.feed_health_schedule
+  schedule_expression_timezone = "UTC"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_ecs_cluster.main.arn
+    role_arn = aws_iam_role.reports_scheduler[0].arn
+
+    ecs_parameters {
+      task_definition_arn = aws_ecs_task_definition.service["api"].arn
+      launch_type         = "FARGATE"
+      task_count          = 1
+
+      network_configuration {
+        subnets          = aws_subnet.private[*].id
+        security_groups  = [aws_security_group.ecs_tasks.id]
+        assign_public_ip = false
+      }
+    }
+
+    input = jsonencode({
+      containerOverrides = [
+        {
+          name    = "api"
+          command = ["python", "-m", "scripts.check_feed_health"]
+        }
+      ]
+    })
+
+    # No retry: a re-run would just re-send the same digest. The next day's
+    # run is the retry, and a watchdog that double-mails trains you to ignore it.
+    retry_policy {
+      maximum_retry_attempts = 0
+    }
+  }
+}
