@@ -62,8 +62,11 @@ resource "aws_db_parameter_group" "postgres16" {
 
   # Force TLS — non-SSL clients are rejected at the wire level.
   parameter {
-    name  = "rds.force_ssl"
-    value = "1"
+    name = "rds.force_ssl"
+    # Matches the live group. The provider default of "immediate" would rewrite
+    # a parameter that is already in force, for no behavioural change.
+    apply_method = "pending-reboot"
+    value        = "1"
   }
 
   tags = {

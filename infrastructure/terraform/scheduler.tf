@@ -64,6 +64,7 @@ resource "aws_iam_role_policy" "reports_scheduler" {
 resource "aws_scheduler_schedule" "reports" {
   count                        = var.enable_scheduled_reports ? 1 : 0
   name                         = "${local.name_prefix}-scheduled-reports"
+  description                  = "Scheduled report emailer. Networking repaired 2026-07-29: was on private subnets with no NAT, so every run died at ResourceInitializationError and it had never once executed."
   schedule_expression          = var.scheduled_reports_schedule
   schedule_expression_timezone = "UTC"
 
@@ -107,6 +108,13 @@ resource "aws_scheduler_schedule" "reports" {
       maximum_retry_attempts = 1
     }
   }
+
+  # The deploy workflow owns the revision. Without this, every CI deploy leaves
+  # a spurious diff here and an unrelated apply would pin the schedule back to
+  # a stale task definition.
+  lifecycle {
+    ignore_changes = [target[0].ecs_parameters[0].task_definition_arn]
+  }
 }
 
 # ─── Feed-health watchdog ──────────────────────────────────────────────────
@@ -130,6 +138,7 @@ resource "aws_scheduler_schedule" "reports" {
 resource "aws_scheduler_schedule" "feed_health" {
   count                        = var.enable_feed_health_watchdog ? 1 : 0
   name                         = "${local.name_prefix}-feed-health"
+  description                  = "Daily feed-health watchdog. Emails super-admin ONLY on findings. Created via CLI 2026-07-29 because terraform apply carries unrelated drift."
   schedule_expression          = var.feed_health_schedule
   schedule_expression_timezone = "UTC"
 
@@ -173,5 +182,10 @@ resource "aws_scheduler_schedule" "feed_health" {
     retry_policy {
       maximum_retry_attempts = 0
     }
+  }
+
+  # See the note on the reports schedule: CI owns the revision, not Terraform.
+  lifecycle {
+    ignore_changes = [target[0].ecs_parameters[0].task_definition_arn]
   }
 }

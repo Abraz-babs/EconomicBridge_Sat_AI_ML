@@ -32,6 +32,12 @@ ecs_max_count           = 4
 ecs_target_cpu_percent  = 70
 
 # TLS — set to your ACM cert ARN. Leave empty to start with HTTP only.
+# READ THE VARIABLE COMMENT IN variables.tf BEFORE SETTING THIS.
+# Empty is correct only for a NEW environment with no certificate. Against an
+# ALB that is already terminating TLS, empty REMOVES the 80->443 redirect and
+# moves routing onto port 80 — that is how HTTPS on economicbridge.org came to
+# be one `terraform apply` away from being switched off.
+# The live staging value is in the (gitignored) terraform.tfvars.
 acm_certificate_arn = ""
 
 # Lock down ALB access if you're not ready for public yet.

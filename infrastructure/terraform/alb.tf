@@ -93,6 +93,11 @@ resource "aws_lb_listener" "http" {
     dynamic "redirect" {
       for_each = var.acm_certificate_arn != "" ? [1] : []
       content {
+        # host is pinned deliberately: this is the old-link reroute. A request
+        # to the raw ALB DNS name lands on the real domain instead of staying
+        # on an ALB hostname nobody should be sharing. Terraform's default of
+        # "#{host}" (keep whatever was asked for) would silently undo that.
+        host        = var.primary_domain
         port        = "443"
         protocol    = "HTTPS"
         status_code = "HTTP_301"

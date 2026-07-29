@@ -107,9 +107,18 @@ variable "rds_multi_az" {
 }
 
 variable "rds_backup_retention_days" {
-  description = "Days to retain automated backups. 7 for staging, 30 for production."
+  description = "Days to retain automated backups. 7 for staging, 30 for production. NEVER lower this to satisfy a plan diff — check what the instance is actually set to first; an apply silently shortens the recovery window."
   type        = number
   default     = 7
+
+  validation {
+    # 1 was pinned here for months by a free-tier restriction that no longer
+    # applies. The account plan was upgraded and RDS moved to 7, but the input
+    # stayed at 1, so every plan quietly proposed cutting a week of backups to
+    # a day. Anything below 7 now has to be typed deliberately.
+    condition     = var.rds_backup_retention_days >= 7
+    error_message = "Backup retention below 7 days shortens the recovery window. If a plan restriction genuinely forces it, remove this validation in the same commit that explains why."
+  }
 }
 
 variable "rds_deletion_protection" {
@@ -167,7 +176,19 @@ variable "ecs_target_cpu_percent" {
 # ─── ALB / TLS ────────────────────────────────────────────────────────
 
 variable "acm_certificate_arn" {
-  description = "ARN of the ACM cert for HTTPS. Leave empty to provision an HTTP-only ALB (staging-only fallback)."
+  # DANGER, and not hypothetical — this exact value was left empty for weeks
+  # after economicbridge.org went live on HTTPS.
+  #
+  # alb.tf keys THREE things off this one string: whether port 80 redirects to
+  # 443 or serves traffic directly, whether the 443 listener exists at all, and
+  # which listener the path rules attach to. Empty against an environment that
+  # is already serving HTTPS therefore does not mean "leave TLS alone" — it
+  # means "tear the redirect down and move the routing to port 80".
+  #
+  # Empty is correct ONLY for a brand-new environment with no certificate yet.
+  # If the ALB is already terminating TLS, set this before running plan, and
+  # read the plan for aws_lb_listener.http before applying it.
+  description = "ARN of the ACM cert for HTTPS. Empty provisions an HTTP-only ALB — safe on a NEW environment, DESTRUCTIVE on one already serving HTTPS (it removes the 80->443 redirect)."
   type        = string
   default     = ""
 }
@@ -260,4 +281,10 @@ variable "feed_health_schedule" {
   description = "EventBridge Scheduler expression for the feed-health watchdog. Daily is right: it compares each feed against a multi-day staleness budget and emails only on findings."
   type        = string
   default     = "cron(30 9 * * ? *)"
+}
+
+variable "primary_domain" {
+  description = "Public hostname clients use. The port-80 listener redirects to it by name (the old-link reroute), so a request to the raw ALB DNS lands on the real domain."
+  type        = string
+  default     = "economicbridge.org"
 }

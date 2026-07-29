@@ -16,9 +16,13 @@
 resource "aws_ecs_cluster" "main" {
   name = "${local.name_prefix}-cluster"
 
+  # Disabled deliberately — this is the budget-mode account and Insights bills
+  # per service (~$2/mo each). It is OFF in the live cluster; the code said
+  # "enabled", so an apply would have quietly switched on a paid feature.
+  # Turn it on when the runway supports it, not by accident.
   setting {
     name  = "containerInsights"
-    value = "enabled" # Prometheus-style metrics, ~$2/mo/service
+    value = "disabled"
   }
 
   tags = {
@@ -232,9 +236,13 @@ resource "aws_ecs_service" "service" {
     rollback = true # auto-rollback if the new task can't start
   }
 
-  # Ignore desired_count after creation — autoscaling owns it.
+  # desired_count: autoscaling owns it.
+  # task_definition: the DEPLOY WORKFLOW owns it. Terraform's view of the
+  # revision goes stale the moment CI ships, so without this an apply rolls the
+  # service back to whatever revision Terraform last knew — silently undeploying
+  # current code. The api service was sitting on :7 against a stale plan.
   lifecycle {
-    ignore_changes = [desired_count]
+    ignore_changes = [desired_count, task_definition]
   }
 
   depends_on = [

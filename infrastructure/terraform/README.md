@@ -299,3 +299,25 @@ and the ALB has `enable_deletion_protection`. Both are intentional.
   just emit `alb_dns_name` for the operator to point a CNAME at.
 - **No tenant onboarding automation**. New tenants are added via the
   `scripts/generate_tenant.py` flow which talks to the live API.
+
+## Before you run `terraform apply` here
+
+`terraform.tfvars` is gitignored, so a fresh clone starts from
+`terraform.tfvars.example` — which is a NEW-environment template, not a copy of
+what staging is running. Applying it against live staging is destructive.
+
+**Always `terraform plan` and read every resource line before applying.** On
+2026-07-29 a plan against live staging came back `5 to add, 8 to change`, of
+which exactly one change was intended. The rest would have removed the
+HTTP→HTTPS redirect on economicbridge.org, cut RDS backup retention from 7 days
+to 1, enabled a paid CloudWatch feature, and rolled the api service back to a
+stale task definition. None of that was visible without reading the plan.
+
+Two rules that follow from it:
+
+1. **Additive infrastructure goes in via the AWS CLI** (`aws scheduler
+   create-schedule`, etc.) and is then `terraform import`ed. Adding one resource
+   is never worth carrying an unreviewed apply.
+2. **Terraform does not own deployed image revisions.** The ECS services and
+   both EventBridge schedules `ignore_changes` on `task_definition` — CI owns
+   that, and Terraform's copy is stale the moment CI ships.
