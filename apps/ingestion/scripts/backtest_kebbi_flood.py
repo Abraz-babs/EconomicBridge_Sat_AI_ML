@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import math
 import pathlib
+import tempfile
 import sys
 from datetime import datetime, timezone
 
@@ -80,7 +82,18 @@ KNOWN_FLOODED = {
 }
 
 CENTROIDS = json.loads((ING / "data" / "lga_centroids.json").read_text(encoding="utf-8"))
-OUT = pathlib.Path(__file__).resolve().parents[3] / "scratchpad" / "kebbi_flood_backtest.json"
+# Output path. `parents[3]` assumed the dev checkout layout and raised
+# IndexError under /app in the container — which is the one place this can
+# reach CDSE from, so the proof asset could only run where it was written.
+# Env-overridable, with a fallback that exists everywhere.
+OUT = pathlib.Path(
+    os.environ.get("BACKTEST_OUT")
+    or (
+        _p.parents[3] / "scratchpad" / "kebbi_flood_backtest.json"
+        if len((_p := pathlib.Path(__file__).resolve()).parents) > 3
+        else pathlib.Path(tempfile.gettempdir()) / "kebbi_flood_backtest.json"
+    )
+)
 
 
 async def main() -> None:
