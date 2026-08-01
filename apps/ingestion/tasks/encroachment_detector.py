@@ -498,8 +498,24 @@ async def _write_crop_health(
     CropGuard shows every LGA (not only photo-uploaded points). Derived for free
     from the NDVI this sweep already fetched. Isolated in a savepoint + best-
     effort: a missing crop_health table (migration not yet applied) or any error
-    never breaks the Farmland alert write."""
-    ndvi_val = round(ndvi_series[-1], 3) if ndvi_series else None
+    never breaks the Farmland alert write.
+
+    NO READING, NO WRITE. The row is replaced (DELETE + INSERT), so writing with
+    an empty series would destroy a real NDVI and leave NULL in its place. That
+    is the July 2026 incident in miniature: the caller's guard only skips when
+    BOTH signals are empty, and under heavy cloud — i.e. most of the wet season —
+    Sentinel-1 SAR returns fine while Sentinel-2 optical returns nothing. That
+    combination sails past the caller and lands here with ndvi_series == [].
+
+    An LGA we could not read this pass keeps the last reading we genuinely took,
+    carrying its own ndvi_date so the age is visible. Absence of a measurement
+    must never overwrite a measurement.
+    """
+    if not ndvi_series:
+        log.debug("crop_health: no optical reading for tenant=%s lga=%s — "
+                  "keeping the previous value", tenant, lga)
+        return
+    ndvi_val = round(ndvi_series[-1], 3)
     # Crop-AGNOSTIC band, deliberately. Passing "cropland" here looked
     # descriptive but selected the crop-aware path, and since "cropland" is not
     # a known crop it fell through to DEFAULT_PEAK = 0.70 — judging a whole

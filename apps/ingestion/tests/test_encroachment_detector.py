@@ -225,3 +225,50 @@ def test_no_divide_by_epsilon_remains_in_the_fusion():
     src = inspect.getsource(encroachment_detector.compute_encroachment)
     code = [ln for ln in src.splitlines() if not ln.strip().startswith("#")]
     assert not any("or 1e-6" in ln for ln in code)
+
+
+# ─── absence of a measurement must not overwrite a measurement ────────────
+# The July incident's last surviving corner. The caller skips an LGA only when
+# BOTH signals are empty — but under heavy cloud (i.e. most of the wet season)
+# Sentinel-1 SAR returns fine while Sentinel-2 optical returns nothing. That
+# pair sails past the caller and reaches _write_crop_health with an empty NDVI
+# series, which then DELETE+INSERTs the LGA's real reading away as NULL.
+
+
+def test_an_empty_ndvi_series_writes_nothing_at_all():
+    """crop_health is replaced, not merged, so a write with no reading is a
+    delete. The function must return before touching the table."""
+    import inspect
+
+    from tasks import encroachment_detector
+
+    src = inspect.getsource(encroachment_detector._write_crop_health)
+    guard = src.index("if not ndvi_series:")
+    delete = src.index("DELETE FROM crop_health")
+    assert guard < delete, "the no-reading guard must precede the delete"
+    assert "return" in src[guard:delete]
+
+
+def test_the_guard_cannot_be_satisfied_by_the_callers_check_alone():
+    """The caller's `not ndvi and not sar` is an AND — it lets the
+    cloud case (sar yes, ndvi no) through. Pinning both guards so neither is
+    removed on the assumption the other covers it."""
+    import inspect
+
+    from tasks import encroachment_detector
+
+    caller = inspect.getsource(encroachment_detector.detect_per_lga_for_tenant)
+    assert "if not ndvi and not sar:" in caller          # caller: both empty
+    writer = inspect.getsource(encroachment_detector._write_crop_health)
+    assert "if not ndvi_series:" in writer               # writer: optical empty
+
+
+def test_ndvi_value_is_only_computed_when_a_reading_exists():
+    """`ndvi_series[-1] if ndvi_series else None` was what let None through to
+    classify_health and into the column. There should no longer be a None path."""
+    import inspect
+
+    from tasks import encroachment_detector
+
+    src = inspect.getsource(encroachment_detector._write_crop_health)
+    assert "if ndvi_series else None" not in src
