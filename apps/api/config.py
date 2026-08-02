@@ -103,6 +103,15 @@ class Settings(BaseSettings):
     # Where the public Bizra Farms contact form delivers inquiries.
     contact_recipient_email: str = "info@economicbridge.org"
 
+    # Where operational alerts go (feed-health watchdog and anything like it).
+    #
+    # DELIBERATELY SEPARATE from super_admin_email. That one is the operator's
+    # LOGIN identity — seed_super_admin.py creates the account from it — so
+    # repointing alerts by editing it would silently change who can sign in.
+    # An ops mailbox and a login are different things and should stay that way:
+    # the recipient can move to a team address without touching authentication.
+    ops_alert_email: str = "bizra@economicbridge.org"
+
     # Super-admin bootstrap — read ONLY by scripts/seed_super_admin.py to create
     # the platform operator account. Never referenced at request time.
     super_admin_email: str = "admin@economicbridge.app"

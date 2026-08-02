@@ -166,3 +166,36 @@ def test_shared_tables_are_probed_once_not_once_per_tenant() -> None:
     assert probe.scope == "global"
     per_tenant = [p.key for p in STOCK_PROBES if p.scope == "tenant"]
     assert "crop_health_real_ndvi" in per_tenant     # genuinely per-tenant
+
+
+# ─── the watchdog writes to an ops mailbox, not a login ───────────────────
+# It was emailing a personal gmail because it reused super_admin_email — which
+# is the operator's LOGIN identity (seed_super_admin.py builds the account from
+# it). Repointing alerts by editing that would have silently changed who can
+# sign in to the platform.
+
+
+def test_alerts_go_to_the_ops_address_not_the_login_identity() -> None:
+    import inspect
+
+    from config import get_settings
+    from scripts import check_feed_health
+
+    src = inspect.getsource(check_feed_health.main)
+    assert "ops_alert_email" in src
+    # super_admin_email may appear only as the explicit fallback
+    assert "s.super_admin_email" in src
+
+    s = get_settings()
+    assert s.ops_alert_email, "ops address must have a default"
+    assert "@" in s.ops_alert_email
+
+
+def test_the_default_ops_address_is_the_company_domain() -> None:
+    """A personal mailbox is not an operational contact — it does not survive
+    the person, and it cannot be handed to a colleague."""
+    from config import Settings
+
+    default = Settings.model_fields["ops_alert_email"].default
+    assert default.endswith("@economicbridge.org"), default
+    assert "gmail" not in default.lower()

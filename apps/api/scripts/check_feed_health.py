@@ -63,7 +63,11 @@ async def main(argv: list[str] | None = None) -> int:
         return 1 if report.findings else 0
 
     if report.findings or args.always:
-        to = get_settings().super_admin_email
+        # ops_alert_email, NOT super_admin_email — the latter is the operator's
+        # login identity and repointing alerts through it would change who can
+        # sign in. Falls back only if the ops address is explicitly blanked.
+        s = get_settings()
+        to = s.ops_alert_email.strip() or s.super_admin_email
         subject, body = format_email(report)
         sent = send_alert_email(to=to, subject=subject, body=body)
         log.info("watchdog email to %s: %s", to,
