@@ -213,3 +213,44 @@ def test_class_list_includes_healthy_variant_per_crop():
         "cassava_healthy", "maize_healthy", "rice_healthy",
         "tomato_healthy", "plantain_healthy",
     }
+
+
+# ─── the measured field-photo failure, pinned ─────────────────────────────
+# Tested 2026-08-02 with public reference imagery, no training data reused:
+# 12/12 correct on PlantVillage-style images; 0/3 on real field photographs of
+# maize, one of which returned cassava_healthy at 0.770 — above the old 0.6 UI
+# warning threshold, so the screen showed a confident wrong answer.
+#
+# Cause is dataset composition: maize/tomato are laboratory imagery
+# (PlantVillage), cassava/rice/plantain are field-collected (Kaggle), so the
+# crops are separable by photographic style and the network took that shortcut.
+
+
+def test_every_prediction_carries_its_validated_domain():
+    """The limitation must live in the DATA, not only in UI copy. A future
+    screen, export or API consumer that never reads the panel still gets it."""
+    from models.crop_classifier import VALIDATED_DOMAIN
+    import inspect
+    from models import crop_classifier
+
+    src = inspect.getsource(crop_classifier.CropClassifier.predict)
+    assert '"validated_domain": VALIDATED_DOMAIN' in src
+    assert "laboratory" in VALIDATED_DOMAIN.lower()
+    assert "cassava" in VALIDATED_DOMAIN.lower()
+
+
+def test_class_order_is_the_trained_order_not_alphabetical():
+    """Empirically recovered 2026-08-02 from labelled PlantVillage images:
+    maize_healthy -> 3, maize_northern_blight -> 5, tomato_healthy -> 8,
+    tomato_late_blight -> 9. Those match CROP_CLASSES positions. ImageFolder's
+    alphabetical order would put northern blight at 4 and tomato_healthy at 10,
+    so CROP_CLASSES is the trained order and must not be 'fixed' to sorted()."""
+    from models.crop_classifier import CROP_CLASSES
+
+    assert CROP_CLASSES.index("maize_healthy") == 3
+    assert CROP_CLASSES.index("maize_northern_blight") == 5
+    assert CROP_CLASSES.index("tomato_healthy") == 8
+    assert CROP_CLASSES.index("tomato_late_blight") == 9
+    assert list(CROP_CLASSES) != sorted(CROP_CLASSES), (
+        "CROP_CLASSES is deliberately NOT alphabetical — it is the trained order"
+    )

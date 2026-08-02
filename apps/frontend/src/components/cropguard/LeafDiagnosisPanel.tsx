@@ -76,6 +76,24 @@ export default function LeafDiagnosisPanel() {
         field-/landscape-level monitoring, use the satellite <em>Farm Check</em> above.
       </div>
 
+      {/*
+        The advice above was always here; what was missing is what happens when
+        it is not followed. Measured 2026-08-02: 12/12 correct on laboratory
+        imagery, 0/3 on real field photographs of maize — one of which returned
+        cassava at 0.77, comfortably above the old 0.6 warning threshold, so the
+        screen showed a confident wrong answer with nothing to flag it.
+        Stated here until the model is retrained on field imagery.
+      */}
+      <div className="fp-alert-empty" style={{ marginBottom: '12px' }}>
+        <strong>Known limitation — read before acting on a result.</strong>
+        <br />
+        This model is validated on <strong>laboratory leaf imagery</strong>: one
+        detached leaf filling the frame, plain background. On photographs taken in
+        a real field it is unreliable and tends to answer <em>cassava</em> whatever
+        the crop. A result from a field photo is not a diagnosis. Retraining on
+        field-collected imagery is in progress.
+      </div>
+
       {/* Record tag — state (the panel's tenant selector) + LGA + crop. */}
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end', margin: '4px 0 10px' }}>
         <label style={{ fontSize: '12px' }}>
@@ -151,10 +169,19 @@ export default function LeafDiagnosisPanel() {
               {r.top_k.slice(1).map((t) => `${fmtClass(t.class_name)} ${(t.probability * 100).toFixed(0)}%`).join(' · ')}
             </div>
           )}
-          {r.confidence < 0.6 && (
+          {/*
+            Threshold raised 0.6 -> 0.90. A real maize photo returned cassava at
+            0.77 on 2026-08-02 — under the old bar that printed as a confident
+            answer with no warning at all. Until the model is retrained on field
+            imagery, only the HIGH band (>= 0.90, and that band is calibrated on
+            laboratory images) should read as unqualified.
+          */}
+          {r.confidence < 0.9 && (
             <div className="ev-map-meta" style={{ marginTop: '8px', color: '#b45309' }}>
-              ⚠ Low confidence — if this looks wrong, retake as a tighter close-up
-              of one affected leaf (a field/landscape photo can&apos;t be diagnosed per-leaf).
+              ⚠ Not confident enough to rely on. If this looks wrong it probably is —
+              retake as a tight close-up of one affected leaf against a plain
+              background. A field or landscape photo cannot be diagnosed per-leaf,
+              and this model will still return a crop name for one.
             </div>
           )}
           <div className="ev-map-meta" style={{ marginTop: '8px' }}>

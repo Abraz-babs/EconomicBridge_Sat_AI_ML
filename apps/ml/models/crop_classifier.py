@@ -51,6 +51,29 @@ CROP_CLASSES: tuple[str, ...] = (
 
 ExecutionMode = Literal["trained", "untuned", "stub"]
 
+# MEASURED LIMITATION — read before quoting this model's accuracy anywhere.
+#
+# Tested 2026-08-02 against public reference imagery, no training data reused:
+#   * PlantVillage-style images (one detached leaf, plain background):
+#     12 of 12 correct, confidence 0.85-0.999.
+#   * Real field photographs of maize (Wikimedia): 0 of 3 correct. All three
+#     put a cassava class in the top-3; one returned cassava_healthy at 0.770.
+#
+# The cause is dataset composition rather than code. Maize and tomato come from
+# PlantVillage, which is laboratory imagery; cassava, rice and plantain come
+# from field-collected Kaggle sets. The crops are therefore separable by
+# PHOTOGRAPHIC STYLE before a single leaf is examined, and the network learned
+# that shortcut — anything that looks like a real field photo drifts to cassava.
+#
+# So the validation accuracy is honest about its dataset and says nothing about
+# field performance. Do not present a field-photo diagnosis as operational until
+# the model is retrained on field-collected imagery for EVERY class.
+VALIDATED_DOMAIN = (
+    "Validated on laboratory leaf imagery (single leaf, plain background) only. "
+    "Unreliable on real field photographs, where it tends toward cassava — "
+    "measured 2026-08-02. Retraining on field imagery is required before field use."
+)
+
 
 # ─── Dataclasses ──────────────────────────────────────────────────────────
 
@@ -144,6 +167,10 @@ class CropClassifier:
                     "predicted_class": top1.class_name,
                     "image_source": image.image_source,
                     "execution_mode": self._mode,
+                    # Travels with every stored prediction so the limitation is
+                    # in the DATA, not only in UI copy that a future screen may
+                    # not carry. See VALIDATED_DOMAIN.
+                    "validated_domain": VALIDATED_DOMAIN,
                     "top_k": [
                         {"class_name": e.class_name, "probability": e.probability}
                         for e in topk_entries
