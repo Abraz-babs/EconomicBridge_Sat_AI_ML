@@ -272,3 +272,66 @@ def test_ndvi_value_is_only_computed_when_a_reading_exists():
 
     src = inspect.getsource(encroachment_detector._write_crop_health)
     assert "if ndvi_series else None" not in src
+
+
+# ─── cloud is not drought ─────────────────────────────────────────────────
+# Found 2026-08-03 verifying four "critical drought" calls in Ghana. Two rested
+# on NDVI readings of -0.0219 and -0.0255. Negative NDVI means red exceeded
+# near-infrared — vegetation cannot do that. It is residual cloud the SCL mask
+# missed, or open water. Averaged into the recent window it is indistinguishable
+# from a vegetation collapse, and the detector sees only `mean`.
+
+
+class _Pt:
+    """Minimal StatPoint stand-in."""
+
+    def __init__(self, mean, sample_count=1000, no_data_count=0):
+        self.mean = mean
+        self.sample_count = sample_count
+        self.no_data_count = no_data_count
+
+    @property
+    def valid_count(self):
+        return max(0, self.sample_count - self.no_data_count)
+
+    @property
+    def valid_fraction(self):
+        return self.valid_count / self.sample_count if self.sample_count else 0.0
+
+
+def test_negative_ndvi_is_rejected_as_cloud_or_water():
+    """The exact values behind the Ellembelle and Hohoe calls."""
+    from tasks.encroachment_detector import _usable_ndvi
+
+    assert _usable_ndvi(_Pt(-0.0219)) is False
+    assert _usable_ndvi(_Pt(-0.0255)) is False
+    assert _usable_ndvi(_Pt(0.0)) is False
+
+
+def test_genuinely_bare_soil_is_still_a_real_reading():
+    """The guard must not swallow the poor readings the module exists to find.
+    Bare soil sits around 0.10-0.15 and is a legitimate, alarming measurement."""
+    from tasks.encroachment_detector import _usable_ndvi
+
+    assert _usable_ndvi(_Pt(0.12)) is True
+    assert _usable_ndvi(_Pt(0.08)) is True
+
+
+def test_a_mean_over_a_sliver_of_the_box_is_not_comparable():
+    """sampleCount is the box size and stays constant, so it never revealed
+    masking. valid_fraction does."""
+    from tasks.encroachment_detector import _usable_ndvi
+
+    mostly_clouded = _Pt(0.55, sample_count=1000, no_data_count=950)
+    assert mostly_clouded.valid_fraction == 0.05
+    assert _usable_ndvi(mostly_clouded) is False
+    assert _usable_ndvi(_Pt(0.55, sample_count=1000, no_data_count=300)) is True
+
+
+def test_missing_nodata_field_does_not_discard_everything():
+    """If the API omits noDataCount we must degrade to 'assume valid', not
+    silently drop every interval and report a dead feed."""
+    from tasks.encroachment_detector import _usable_ndvi
+
+    assert _Pt(0.6, sample_count=1000, no_data_count=0).valid_fraction == 1.0
+    assert _usable_ndvi(_Pt(0.6)) is True

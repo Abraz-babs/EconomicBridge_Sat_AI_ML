@@ -208,7 +208,25 @@ class StatPoint:
     min_value: float | None
     max_value: float | None
     std_dev: float | None
-    sample_count: int               # how many valid pixels contributed
+    # sampleCount is the SIZE OF THE BOX, not the number of pixels that
+    # survived masking — it is constant across intervals, which is exactly why
+    # a cloud-ruined reading looked as well-supported as a clear one. The valid
+    # count is sampleCount - noDataCount.
+    sample_count: int               # pixels in the aggregation box
+    no_data_count: int = 0          # of those, masked out (cloud/shadow/no-data)
+
+    @property
+    def valid_count(self) -> int:
+        """Pixels that actually contributed to `mean`."""
+        return max(0, self.sample_count - self.no_data_count)
+
+    @property
+    def valid_fraction(self) -> float:
+        """0..1 share of the box that survived masking. A mean computed from a
+        sliver of the box is not comparable with one from the whole of it."""
+        if self.sample_count <= 0:
+            return 0.0
+        return self.valid_count / self.sample_count
 
 
 # ─── Client ───────────────────────────────────────────────────────────────
@@ -459,6 +477,7 @@ def _make_point(
         max_value=_maybe_float(stats.get("max")),
         std_dev=_maybe_float(stats.get("stDev")),
         sample_count=int(stats.get("sampleCount") or 0),
+        no_data_count=int(stats.get("noDataCount") or 0),
     )
 
 

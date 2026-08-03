@@ -421,6 +421,46 @@ def select_lgas(
 _SERIES_CACHE: dict[tuple[float, float, int], tuple[list[float], list[float], date | None]] = {}
 
 
+# Minimum NDVI for a reading to be VEGETATION at all. Below this the pixel is
+# water, cloud or bare rock — not a stressed crop.
+#
+# Found 2026-08-03 while checking four "critical drought" calls in Ghana. Two of
+# them were driven by readings of -0.0219 and -0.0255. Negative NDVI means red
+# exceeded near-infrared, which vegetation cannot do; it is residual cloud that
+# the SCL mask missed, or open water. Averaged into the recent window it looked
+# exactly like a vegetation collapse, and the detector had no way to know the
+# difference because it consumes `mean` alone.
+#
+# 0.05 is deliberately permissive — genuinely bare soil sits around 0.1-0.15 and
+# must still be visible as a real (very poor) reading. This only removes values
+# that are not a land surface at all.
+MIN_VEGETATION_NDVI = 0.05
+
+# Share of the aggregation box that must survive cloud masking before its mean
+# is comparable with the rest of the series. A mean over a sliver of the box is
+# measuring a different place from one over the whole of it.
+MIN_VALID_PIXEL_FRACTION = 0.20
+
+
+def _usable_ndvi(point) -> bool:
+    """True when this NDVI interval is a real vegetation measurement.
+
+    Two ways an interval lies: it is not vegetation (cloud/water — see
+    MIN_VEGETATION_NDVI), or too little of the box survived masking for the mean
+    to be comparable (MIN_VALID_PIXEL_FRACTION). Either way the honest move is
+    to drop the interval rather than average it in — a gap in the series is
+    "unknown", which the detectors already handle, whereas a bad value is a
+    confident wrong answer.
+    """
+    if point.mean is None:
+        return False
+    if point.mean < MIN_VEGETATION_NDVI:
+        return False
+    # valid_fraction is 1.0 when the API omits noDataCount, so this cannot
+    # silently discard everything on a response shape we have not seen.
+    return point.valid_fraction >= MIN_VALID_PIXEL_FRACTION
+
+
 async def _fetch_lga_series(
     client: SentinelStatisticalClient, lon: float, lat: float,
 ) -> tuple[list[float], list[float], date | None]:
@@ -445,9 +485,13 @@ async def _fetch_lga_series(
         dataset="sentinel-1-grd", evalscript=EVALSCRIPT_S1_VV_DB,
         resolution_deg=FARM_RESOLUTION_DEG,
     )
-    ndvi = [p.mean for p in ndvi_points if p.mean is not None]
+    ndvi = [p.mean for p in ndvi_points if _usable_ndvi(p)]
     sar = [p.mean for p in sar_points if p.mean is not None]
-    dates = [p.interval_from.date() for p in (ndvi_points + sar_points) if p.mean is not None]
+    dates = [
+        p.interval_from.date()
+        for p in ([p for p in ndvi_points if _usable_ndvi(p)]
+                  + [p for p in sar_points if p.mean is not None])
+    ]
     result = (ndvi, sar, (max(dates) if dates else None))
     for stale in [k for k in _SERIES_CACHE if k[2] != day]:
         _SERIES_CACHE.pop(stale, None)
