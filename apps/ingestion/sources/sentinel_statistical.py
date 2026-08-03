@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -65,6 +66,28 @@ def _retry_after_seconds(header: str | None, attempt: int) -> float:
 # -global; a pod restart re-learns it from the next real 403.
 _QUOTA_EXHAUSTED_CODE = "ACCESS_INSUFFICIENT_PROCESSING_UNITS"
 _quota_blocked_until: datetime | None = None
+
+# Timestamps of billable Statistical calls made by THIS process. Bounded so a
+# long-lived scheduler cannot grow it without limit; only the count and the
+# recent shape are ever wanted.
+_MAX_TRACKED_CALLS = 5000
+_billable_calls: deque[datetime] = deque(maxlen=_MAX_TRACKED_CALLS)
+
+
+def billable_call_count() -> int:
+    """Billable Statistical calls since this process started.
+
+    The CDSE dashboard reports account-wide spend a day late and with no
+    attribution. This is the local counter that makes a sweep's own cost
+    checkable at the end of the run that incurred it.
+    """
+    return len(_billable_calls)
+
+
+def calls_since(moment: datetime) -> int:
+    """Billable calls made at or after `moment` — lets a task report the cost
+    of its own sweep rather than the process total."""
+    return sum(1 for t in _billable_calls if t >= moment)
 
 
 def _first_of_next_month(now: datetime) -> datetime:
@@ -246,6 +269,23 @@ class SentinelStatisticalClient:
                 _quota_blocked_until,
             )
             return []
+
+        # Billing breadcrumb. Measured 2026-08-03: the account burns ~872 PU and
+        # ~200 requests/day, but the scheduled sweeps should only need ~86 — a
+        # 2.4x gap that survived every hypothesis reasoned at it (task restarts
+        # losing the shared cache: no restart; dashboard Farm Check / imagery
+        # traffic: no such hits in the logs). One line per billable call, with
+        # the centre of the box, makes the next day's spend attributable by
+        # timestamp instead of arguable: calls clustered at 07:00 are the
+        # encroachment sweep, a second cluster at 07:30 means ShockGuard is
+        # missing _SERIES_CACHE, and anything outside those windows is on-demand.
+        _billable_calls.append(now)
+        log.info(
+            "cdse.statistical CALL dataset=%s centre=%.4f,%.4f res=%.4f "
+            "window=%s..%s (call #%d this process)",
+            dataset, (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2,
+            resolution_deg, start.date(), end.date(), len(_billable_calls),
+        )
 
         token = await self._copernicus.access_token()
         body = _build_request_body(

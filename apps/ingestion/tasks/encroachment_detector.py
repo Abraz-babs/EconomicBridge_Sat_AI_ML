@@ -693,6 +693,7 @@ async def run_encroachment_sweep(
              "per-LGA" if per_lga else "ROI-fallback",
              "full" if full else "rolling", REVISIT_DAYS)
     out: dict[str, str] = {}
+    sweep_started = datetime.now(timezone.utc)
     trigger = "manual" if tenants is not None or full else "scheduled"
     for t in target:
         started = datetime.now(timezone.utc)
@@ -727,5 +728,8 @@ async def run_encroachment_sweep(
                     await session.commit()
                 except Exception:  # noqa: BLE001 — never mask the original
                     log.exception("could not record failed run tenant=%s", t)
+    from sources.sentinel_statistical import calls_since
     log.info("encroachment sweep: %s", out)
+    log.info("encroachment sweep CDSE cost: %d billable Statistical calls "
+             "(expected ~2 per LGA actually read)", calls_since(sweep_started))
     return out

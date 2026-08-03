@@ -302,6 +302,7 @@ async def run_shockguard_scan(
     factory = get_session_factory()
     client = SentinelStatisticalClient(CopernicusClient())
     per_lga = client.configured
+    scan_started = datetime.now(timezone.utc)
     out: dict[str, str] = {}
     for t in target:
         async with factory() as session:
@@ -334,6 +335,16 @@ async def run_shockguard_scan(
             except Exception as exc:  # noqa: BLE001 — isolate per tenant
                 out[t] = f"failed: {exc!s}"
                 log.exception("shockguard scan failed tenant=%s", t)
+    from sources.sentinel_statistical import calls_since
+    cost = calls_since(scan_started)
     log.info("shockguard scan (mode=%s): %s",
              "per-LGA" if per_lga else "ROI", out)
+    # THE number this instrumentation exists for. ShockGuard runs 30 min after
+    # encroachment over the SAME rolling LGA slice, so _SERIES_CACHE should make
+    # it nearly free. A cost near zero means the cache is working; a cost close
+    # to encroachment's means it is not, and that alone would account for the
+    # unexplained doubling of the daily CDSE spend.
+    log.info("shockguard scan CDSE cost: %d billable Statistical calls "
+             "(cache working => near 0; near encroachment's => cache MISSING)",
+             cost)
     return out
