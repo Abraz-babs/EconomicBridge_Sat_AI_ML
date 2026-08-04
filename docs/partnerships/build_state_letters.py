@@ -123,9 +123,12 @@ def build(cfg: dict) -> Path:
             "level picture of what is happening on the ground across its territory.",
             body),
         Paragraph(
-            "EconomicBridge is live on secure cloud infrastructure and draws on real "
-            "data from the European Copernicus (Sentinel-1 and Sentinel-2) "
-            "satellites, NASA, the World Bank and UNICEF. We are pleased to offer "
+            "EconomicBridge is live in production at <b>economicbridge.org</b> and "
+            "draws on real data from the European Copernicus (Sentinel-1 and "
+            "Sentinel-2) satellites, NASA, the World Bank and UNICEF. The platform "
+            "may be opened and inspected directly; the overview requires no login. "
+            "It is the subject of Nigerian patent application "
+            "NG/PT/NC/O/2026/23780. We are pleased to offer "
             f"this access to {cfg['region']} free of charge for an initial pilot "
             f"period, covering all {cfg['lgas']} {cfg['term']}, so that "
             f"{principal_admin} can evaluate its value firsthand. Beyond the pilot, "
@@ -133,11 +136,21 @@ def build(cfg: dict) -> Path:
             "mutual agreement.", body),
         Paragraph(f"<b>What the platform offers {cfg['region']}:</b>", body),
         Paragraph(
-            "• <b>Agriculture:</b> AI diagnosis of crop disease from a single leaf "
-            "photo, satellite monitoring of crop health, and 24 to 72 hour early "
-            "warning of farmland conflict and encroachment.<br/>"
-            "• <b>Disaster preparedness:</b> flood and drought detection from "
-            "satellite radar that sees through cloud cover, for early warning.<br/>"
+            "• <b>Farmland protection:</b> daily monitoring of every "
+            f"{cfg['term'].lower().rstrip('s')} for land disturbance and "
+            "encroachment, fusing Sentinel-1 radar surface change, Sentinel-2 "
+            "vegetation loss, NASA fire detections and night light activity. A "
+            "single signal raises a watch; corroborating signals raise an "
+            "alert.<br/>"
+            "• <b>Crop health:</b> current vegetation condition for every "
+            f"{cfg['term'].lower().rstrip('s')} from Sentinel-2, refreshed on the "
+            "satellite's revisit cycle, so decline is visible without a field "
+            "visit.<br/>"
+            "• <b>Rainfall early warning:</b> daily NASA rainfall monitoring "
+            f"against each {cfg['term'].lower().rstrip('s')}'s own historical "
+            "distribution, flagging exceptional rainfall as a flood precursor. "
+            "Thresholds are local, because a rainfall figure that is ordinary in "
+            "one part of the country is extreme in another.<br/>"
             "• <b>Poverty and population mapping:</b> settlement level population "
             "and poverty intensity from night light satellite data, so the "
             f"{cfg['short']} can direct budget and intervention where the need is "
@@ -145,9 +158,17 @@ def build(cfg: dict) -> Path:
             "• <b>Education:</b> school access and connectivity mapping to target "
             "educational investment.<br/>"
             f"• <b>Economy:</b> income and cost of living tracking across the "
-            f"{cfg['short']}.<br/>"
-            "• <b>Aid coordination:</b> a shared view of which agencies operate "
-            "where, to reduce duplication and close gaps in coverage.", body),
+            f"{cfg['short']}.", body),
+        Paragraph(
+            "<b>What is still in development.</b> We would rather state this "
+            "plainly at the outset than have it discovered later. Two capabilities "
+            "are built but not yet validated to our own standard: detection of "
+            "flooding from radar imagery, which we are currently testing against "
+            "historical flood records before we will rely on it; and diagnosis of "
+            "crop disease from a leaf photograph, which performs well on "
+            "laboratory imagery but not yet on photographs taken in the field. "
+            "Neither is presented as operational, and we will report on both as "
+            "they progress.", body),
         Paragraph(
             f"{cfg['region']}'s data would be visible only to your nominated team, "
             "fully isolated and secure, and aligned with the Nigeria Data "
@@ -173,9 +194,10 @@ def build(cfg: dict) -> Path:
         Spacer(1, 14),
         HRFlowable(width="100%", thickness=0.6, color=BROWN, spaceAfter=4),
         Paragraph(
-            "Bizra Farms Integrated Nigeria Limited &nbsp;|&nbsp; "
-            "No. 32A ITM, Sabara Road, Gesse Phase 1, Birnin Kebbi, Kebbi State "
-            "&nbsp;|&nbsp; bizrafarms@gmail.com &nbsp;|&nbsp; +234 703 791 9465",
+            "Bizra Farms Integrated Nigeria Limited (RC 1929412) &nbsp;|&nbsp; "
+            "No. 32A ITM, Sabara Road, Gesse Phase 1, Birnin Kebbi, Kebbi State"
+            "<br/>bizra@economicbridge.org &nbsp;|&nbsp; economicbridge.org "
+            "&nbsp;|&nbsp; +234 703 791 9465",
             small),
     ]
 
