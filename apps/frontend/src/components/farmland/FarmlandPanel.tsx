@@ -279,10 +279,30 @@ function isSeedAlert(model_name: string | null): boolean {
   return model_name === null || model_name === 'seed';
 }
 
-function provenanceLabel(model_name: string | null): { text: string; cls: string } {
-  return isSeedAlert(model_name)
-    ? { text: 'SEED', cls: 'fp-prov fp-prov--seed' }
-    : { text: 'LIVE', cls: 'fp-prov fp-prov--live' };
+// A watch stops being "live" at the same age ShockGuard uses for its severity
+// chips (_ACTIVE_MAX_AGE_DAYS in routers/overview.py). Kept identical on
+// purpose: one platform should not have two definitions of current.
+const ACTIVE_MAX_AGE_DAYS = 14;
+
+function ageDays(createdAt: string | null | undefined): number {
+  if (!createdAt) return Number.POSITIVE_INFINITY;
+  const t = Date.parse(createdAt);
+  if (Number.isNaN(t)) return Number.POSITIVE_INFINITY;
+  return (Date.now() - t) / 86_400_000;
+}
+
+function provenanceLabel(
+  model_name: string | null,
+  createdAt?: string | null,
+): { text: string; cls: string } {
+  if (isSeedAlert(model_name)) return { text: 'SEED', cls: 'fp-prov fp-prov--seed' };
+  // During the July CDSE outage nothing could re-scan for 15 days, so watches
+  // froze in place and kept wearing a LIVE chip while ageing. A 19-day-old
+  // watch labelled LIVE is a claim about now that the data cannot support.
+  if (ageDays(createdAt) > ACTIVE_MAX_AGE_DAYS) {
+    return { text: 'AGED', cls: 'fp-prov fp-prov--seed' };
+  }
+  return { text: 'LIVE', cls: 'fp-prov fp-prov--live' };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────
@@ -668,11 +688,23 @@ export default function FarmlandPanel() {
               )}
             </div>
           )}
+          {/*
+            Was: "Run scripts.seed_farmland_alerts to populate sample data."
+            That advice is now wrong — seeded alerts are deliberately not
+            served, because a fabricated watch beside a real one is
+            indistinguishable. It also made a legitimately calm state read as
+            a broken feed. State the actual reason instead.
+          */}
           {!query.isLoading && !query.isError && alerts.length === 0 && (
             <div className="fp-alert-empty">
-              No alerts for {stateLabel}. Run{' '}
-              <code>python -m scripts.seed_farmland_alerts</code> from{' '}
-              <code>apps/api/</code> to populate sample data.
+              <strong>No encroachment signal cleared threshold in {stateLabel}.</strong>
+              <br />
+              Every Local Government Area is scanned on a rolling cycle, and a
+              watch is raised only when the satellite signals corroborate each
+              other. A quiet board means nothing cleared the bar on the LGAs
+              scanned so far — not that the feed is idle. Optical signals are
+              also weaker under heavy cloud, which is normal in the rainy
+              season.
             </div>
           )}
           {alerts.length === 0 && !query.isLoading && !query.isError && allAlerts.length > 0 && (
@@ -693,7 +725,7 @@ export default function FarmlandPanel() {
             const showResolved = a.status === 'resolved';
             const pendingResolve =
               resolveMutation.isPending && resolveMutation.variables?.alertId === a.id;
-            const prov = provenanceLabel(a.model_name);
+            const prov = provenanceLabel(a.model_name, a.created_at);
             return (
               <div key={a.id} className="fp-alert-item">
                 <div className="fp-alert-top">
