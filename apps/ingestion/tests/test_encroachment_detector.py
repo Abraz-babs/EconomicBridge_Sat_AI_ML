@@ -335,3 +335,42 @@ def test_missing_nodata_field_does_not_discard_everything():
 
     assert _Pt(0.6, sample_count=1000, no_data_count=0).valid_fraction == 1.0
     assert _usable_ndvi(_Pt(0.6)) is True
+
+
+# ─── the sweep must not render at farm resolution ─────────────────────────
+# Measured 2026-08-04: 88 Statistical calls/day at ~10 PU each, ~90% of the
+# 30,000 PU month. Each call rendered ~73,000 pixels (3 km box / 11 m = 270 x
+# 270, exactly the sampleCount seen in production) to produce ONE number — the
+# mean over the box. The precision was thrown away by the aggregation.
+
+
+def test_lga_sweep_uses_its_own_resolution_not_farm_checks():
+    """FARM_RESOLUTION_DEG (~11 m) is right for Farm Check, where a user is
+    inspecting one farm. Reusing it for a whole-LGA mean buys nothing and costs
+    the quota. They must stay separate constants."""
+    from sources.farm_check import FARM_RESOLUTION_DEG
+    from tasks.encroachment_detector import LGA_RESOLUTION_DEG
+
+    assert LGA_RESOLUTION_DEG > FARM_RESOLUTION_DEG
+    assert FARM_RESOLUTION_DEG == 0.0001, "Farm Check must stay at native res"
+
+
+def test_the_sweep_renders_a_sane_number_of_samples():
+    """Enough for a stable mean, not so coarse that one sample mixes clear and
+    cloudy ground — which would change masking behaviour, not just cost."""
+    from tasks.encroachment_detector import LGA_BOX_HALF_M, LGA_RESOLUTION_DEG
+
+    box_deg = (2 * LGA_BOX_HALF_M) / 111_320.0
+    per_side = box_deg / LGA_RESOLUTION_DEG
+    assert 40 <= per_side <= 150, f"{per_side:.0f} samples per side"
+    assert per_side ** 2 < 25_000, "still rendering far more than a mean needs"
+
+
+def test_both_sweep_fetches_use_the_lga_resolution():
+    import inspect
+
+    from tasks import encroachment_detector
+
+    src = inspect.getsource(encroachment_detector._fetch_lga_series)
+    assert src.count("resolution_deg=LGA_RESOLUTION_DEG") == 2
+    assert "FARM_RESOLUTION_DEG" not in src

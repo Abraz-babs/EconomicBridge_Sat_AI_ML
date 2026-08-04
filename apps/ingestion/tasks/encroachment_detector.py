@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from config import get_settings
 from db import PILOT_TENANT_IDS, get_session_factory, set_tenant_schema
 from sources.copernicus import CopernicusClient, CopernicusError
-from sources.farm_check import FARM_RESOLUTION_DEG, bbox_around, classify_health
+from sources.farm_check import bbox_around, classify_health
 from sources.nasa_firms import PILOT_BBOX
 from sources.sentinel_statistical import (
     EVALSCRIPT_S1_VV_DB,
@@ -78,6 +78,24 @@ ALERT_THRESHOLD = float(os.environ.get("ENCROACHMENT_ALERT_THRESHOLD", "0.30"))
 #     ~900 requests). Rolling refresh is per-LGA (we re-evaluate only the due
 #     LGAs and keep the others' current watch), so the map stays fully populated.
 LGA_BOX_HALF_M = 1500   # ~3 km box around an LGA centroid — captures local farmland
+
+# Aggregation grid for the per-LGA sweep. NOT FARM_RESOLUTION_DEG, which is
+# 0.0001 deg (~11 m, Sentinel-2 native) and correct for Farm Check — there a
+# user is inspecting a single farm and wants every pixel.
+#
+# Reusing it here rendered ~73,000 pixels per call (3 km / 11 m = 270 x 270,
+# which is exactly the sampleCount observed in production) to compute ONE
+# number: the mean over the whole box. Processing Units scale with pixels
+# rendered, so that was ~90% of the monthly CDSE quota spent on precision the
+# result throws away. Measured 2026-08-04: 88 Statistical calls/day at ~10 PU
+# each, against a 30,000 PU month.
+#
+# 0.0003 deg is ~33 m — still 90 x 90 samples across the box, far more than a
+# stable mean needs, and ~9x fewer pixels. Deliberately the moderate step: at
+# much coarser grids a single sample starts mixing clear and cloudy ground,
+# which would change how masking behaves rather than merely how much it costs.
+LGA_RESOLUTION_DEG = 0.0003
+
 LGA_NDVI_WINDOW_DAYS = 90
 LGA_SAR_WINDOW_DAYS = 120
 # Sentinel revisit ~5-6 days, but each due LGA costs 2 CDSE Statistical calls
@@ -478,12 +496,12 @@ async def _fetch_lga_series(
     ndvi_points = await client.compute_time_series(
         bbox=bbox, start=end - timedelta(days=LGA_NDVI_WINDOW_DAYS), end=end,
         dataset="sentinel-2-l2a", evalscript=EVALSCRIPT_S2_NDVI_CLOUDMASKED,
-        max_cloud_cover_pct=None, resolution_deg=FARM_RESOLUTION_DEG,
+        max_cloud_cover_pct=None, resolution_deg=LGA_RESOLUTION_DEG,
     )
     sar_points = await client.compute_time_series(
         bbox=bbox, start=end - timedelta(days=LGA_SAR_WINDOW_DAYS), end=end,
         dataset="sentinel-1-grd", evalscript=EVALSCRIPT_S1_VV_DB,
-        resolution_deg=FARM_RESOLUTION_DEG,
+        resolution_deg=LGA_RESOLUTION_DEG,
     )
     ndvi = [p.mean for p in ndvi_points if _usable_ndvi(p)]
     sar = [p.mean for p in sar_points if p.mean is not None]
