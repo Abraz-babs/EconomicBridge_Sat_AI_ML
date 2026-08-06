@@ -637,6 +637,12 @@ async def detect_per_lga_for_tenant(
 
     alerts = 0
     evaluated = 0
+    # Read successfully but NOT scoreable — compute_encroachment needs
+    # MIN_POINTS clear passes and cloud can leave fewer. Counted apart from
+    # `evaluated` because "we looked and it was calm" and "we could not judge
+    # this one" are different statements, and a board that renders them the
+    # same is the last corner of the not-checked / no-signal confusion.
+    unscorable: list[str] = []
     for g in batch:
         # Fetch FIRST — only refresh this LGA's watch on a SUCCESSFUL read, so a
         # rate-limit (429) or error skips the LGA without wiping its prior watch.
@@ -677,7 +683,13 @@ async def detect_per_lga_for_tenant(
             "DELETE FROM alert_events WHERE model_name = :m "
             "AND status = 'pending_review' AND lga = :lga"
         ), {"m": MODEL_VERSION, "lga": g["lga"]})
-        if signal is None or signal.score < ALERT_THRESHOLD:
+        if signal is None:
+            # Too few clear optical passes to judge. Its prior watch has just
+            # been cleared above, which is right — we are not asserting calm,
+            # we are declining to assert anything.
+            unscorable.append(g["lga"])
+            continue
+        if signal.score < ALERT_THRESHOLD:
             continue
         h = hashlib.sha256(json.dumps(
             {"t": tenant, "lga": g["lga"], "obs": str(latest), "m": MODEL_VERSION},
@@ -696,10 +708,16 @@ async def detect_per_lga_for_tenant(
             f"NOT CHECKED ({NO_DATA_REASON}) — {len(batch)} LGAs due, {mode}",
             0,
         )
-    return (
-        f"{alerts} alert(s) / {evaluated} scanned ({mode}, {len(batch)} LGAs due)",
-        evaluated,
-    )
+    scored = evaluated - len(unscorable)
+    detail = f"{alerts} alert(s) / {scored} scored ({mode}, {len(batch)} LGAs due"
+    if unscorable:
+        # Name them: with six LGAs an operator can act on "Kwali", and with
+        # sixty the count alone still says cloud is the limiting factor.
+        shown = ", ".join(sorted(unscorable)[:3])
+        more = f" +{len(unscorable) - 3}" if len(unscorable) > 3 else ""
+        detail += (f"; {len(unscorable)} not judged — too few clear passes "
+                   f"[{shown}{more}]")
+    return (detail + ")", evaluated)
 
 
 def _first_int(s: str) -> int:

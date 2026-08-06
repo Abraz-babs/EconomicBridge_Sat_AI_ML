@@ -374,3 +374,49 @@ def test_both_sweep_fetches_use_the_lga_resolution():
     src = inspect.getsource(encroachment_detector._fetch_lga_series)
     assert src.count("resolution_deg=LGA_RESOLUTION_DEG") == 2
     assert "FARM_RESOLUTION_DEG" not in src
+
+
+# ─── "could not judge" is not "found nothing" ─────────────────────────────
+# Found 2026-08-06 checking why FCT showed zero alerts. Five of its six LGAs
+# scored 0.119-0.225 against a 0.30 bar — genuinely calm, vegetation gaining in
+# the wet season. But Kwali had only 5 usable NDVI intervals against a 6-point
+# minimum, so it was never scored at all, and the sweep still reported
+# "0 alert(s) / 6 scanned". The board could not distinguish an LGA judged calm
+# from one that could not be judged.
+
+
+def test_sweep_reports_scored_separately_from_unjudgeable():
+    import inspect
+
+    from tasks import encroachment_detector
+
+    src = inspect.getsource(encroachment_detector.detect_per_lga_for_tenant)
+    assert "unscorable" in src
+    # the None branch must be distinct from the below-threshold branch
+    assert "if signal is None:" in src
+    assert "if signal.score < ALERT_THRESHOLD:" in src
+    assert "scored" in src and "not judged" in src
+
+
+def test_unjudgeable_lgas_are_named_not_just_counted():
+    """With six LGAs an operator can act on 'Kwali'; with sixty the count still
+    says cloud is the limiting factor."""
+    import inspect
+
+    from tasks import encroachment_detector
+
+    src = inspect.getsource(encroachment_detector.detect_per_lga_for_tenant)
+    assert "sorted(unscorable)[:3]" in src
+
+
+def test_an_unjudgeable_lga_still_loses_its_stale_watch():
+    """Its prior watch is cleared before the None check — we decline to assert
+    anything, rather than leaving an old alert standing as if still current."""
+    import inspect
+
+    from tasks import encroachment_detector
+
+    src = inspect.getsource(encroachment_detector.detect_per_lga_for_tenant)
+    delete = src.index("DELETE FROM alert_events")
+    none_branch = src.index("if signal is None:")
+    assert delete < none_branch, "stale watch must be cleared before we bail"
