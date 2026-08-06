@@ -25,12 +25,14 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from config import get_settings
 from dependencies import DPAGateError, dpa_gate_exception_handler
 from errors import http_exception_handler, validation_exception_handler
+from middleware.activity import ActivityMiddleware
 from middleware.audit import AuditLogMiddleware
 from middleware.module_access import ModuleAccessMiddleware
 from middleware.security import SecurityHeadersMiddleware
 from middleware.tenant import TenantContextMiddleware
 from middleware.trace import TraceIdMiddleware
 from routers import (
+    admin_activity,
     admin_tenants,
     auth,
     agency_alerts,
@@ -82,7 +84,18 @@ async def lifespan(_app: FastAPI):
         logging.getLogger(__name__).warning(
             "startup: could not load tenant registry (%s)", exc,
         )
-    yield
+
+    # Per-account usage counters accumulate in memory and are flushed on a
+    # timer (services/activity.py) — started here so the task lives on the
+    # app's event loop, and stopped below so a rolling deploy doesn't discard
+    # the final interval's counts.
+    from services.activity import start_flusher, stop_flusher
+
+    start_flusher()
+    try:
+        yield
+    finally:
+        await stop_flusher()
 
 
 app = FastAPI(
@@ -105,6 +118,7 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 # Inner-first add order (Starlette wraps in reverse):
 app.add_middleware(AuditLogMiddleware)
+app.add_middleware(ActivityMiddleware)
 app.add_middleware(ModuleAccessMiddleware)
 app.add_middleware(TenantContextMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -140,5 +154,6 @@ app.include_router(intelligence.router, prefix="/api/v1")
 app.include_router(overview.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
 app.include_router(admin_tenants.router, prefix="/api/v1")
+app.include_router(admin_activity.router, prefix="/api/v1")
 app.include_router(agency_alerts.router, prefix="/api/v1")
 app.include_router(dpa.router, prefix="/api/v1")

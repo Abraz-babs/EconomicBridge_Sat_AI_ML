@@ -80,9 +80,19 @@ interface TenantRegistryData {
   categories: TenantCategory[];
 }
 
-export function useAdminTenants(): UseQueryResult<TenantRegistryData, ApiException> {
+/**
+ * The tenant registry. Super-admin only — a non-admin caller gets 403.
+ *
+ * `active` defaults to true for the admin screens that always need it; pass
+ * false where the data is only needed conditionally (the "view as" simulation)
+ * so an ordinary dashboard load doesn't fire an admin request it can't use.
+ */
+export function useAdminTenants(
+  active: boolean = true,
+): UseQueryResult<TenantRegistryData, ApiException> {
   return useQuery<TenantRegistryData, ApiException>({
     queryKey: ['admin-tenants'],
+    enabled: active,
     staleTime: 15 * 1000,
     queryFn: async ({ signal }) => {
       const env: SuccessEnvelope<TenantRegistryData> =

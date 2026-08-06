@@ -25,10 +25,13 @@ import ipaddress
 import logging
 from typing import Any
 
+from jose import JWTError
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+
+from core.security import decode_access_token
 
 log = logging.getLogger(__name__)
 
@@ -89,6 +92,26 @@ def _data_type(path: str) -> str | None:
     if "/dpa/data-subject-requests" in p:
         return "data_subject_request"
     return None
+
+
+def _actor(request: Request) -> tuple[str | None, str | None]:
+    """(user_id, org_id) of the caller, from the Bearer token — or (None, None).
+
+    `audit_log` has had `actor_user_id`/`actor_org_id` columns since 0001 but
+    nothing ever wrote them, so every historical row answers "who" with NULL.
+    CLAUDE.md §4.6 requires the actor on every audited operation; this fills it.
+    A missing or invalid token is genuinely anonymous, not an error — the public
+    overview is unauthenticated by design.
+    """
+    auth = request.headers.get("Authorization", "")
+    scheme, _, token = auth.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        return None, None
+    try:
+        claims = decode_access_token(token.strip())
+    except JWTError:
+        return None, None
+    return claims.get("sub"), claims.get("org")
 
 
 def _client_ip(request: Request) -> str | None:
@@ -177,8 +200,11 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
             return
 
         tenant_id = getattr(request.state, "tenant_id", None)
+        actor_user_id, actor_org_id = _actor(request)
         params: dict[str, Any] = {
             "trace_id": trace_id,
+            "actor_user_id": actor_user_id,
+            "actor_org_id": actor_org_id,
             "tenant_schema": f"tenant_{tenant_id}" if tenant_id else None,
             "action_type": _action_type(request.method, request.url.path),
             "http_method": request.method,
@@ -195,11 +221,14 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
                 text(
                     """
                     INSERT INTO public.audit_log (
-                        trace_id, tenant_schema, action_type, http_method,
-                        path, status_code, ip_address, data_type, severity
+                        trace_id, actor_user_id, actor_org_id, tenant_schema,
+                        action_type, http_method, path, status_code,
+                        ip_address, data_type, severity
                     ) VALUES (
-                        :trace_id, :tenant_schema, :action_type, :http_method,
-                        :path, :status_code, CAST(:ip_address AS INET), :data_type, :severity
+                        :trace_id, CAST(:actor_user_id AS UUID),
+                        CAST(:actor_org_id AS UUID), :tenant_schema,
+                        :action_type, :http_method, :path, :status_code,
+                        CAST(:ip_address AS INET), :data_type, :severity
                     )
                     """
                 ),

@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
-import { useMyModules } from '@/hooks/useTenantModules';
+import { useEffectiveModules } from '@/hooks/useEffectiveModules';
 
 // Tabs that ARE modules (gated per tenant). overview + admin are always-on.
 const MODULE_TAB_IDS = new Set<string>([
@@ -56,7 +56,11 @@ export default function Navigation({
   // must not change with the selector), and NOT via the X-Tenant-Id path
   // (permitted_tenants 403s partner accounts asking about their own
   // non-pilot org — which silently disabled all padlocks).
-  const { data: enabledModules } = useMyModules(Boolean(user) && !isSuperAdmin);
+  //
+  // The one exception: while a super-admin is "viewing as" an account, this
+  // resolves to THAT account's plan, so the padlocks match what the account
+  // is complaining about.
+  const { modules: enabledModules, enforce } = useEffectiveModules();
 
   const isLocked = (navId: string) => roleConfig.navLocked.includes(navId);
 
@@ -67,7 +71,7 @@ export default function Navigation({
   // entitlements loaded.) The API's 403 middleware stays the real enforcement.
   // Super-admins are never padlocked — they administer plans, not buy them.
   const notEntitled = (id: TabId) =>
-    !isSuperAdmin &&
+    enforce &&
     MODULE_TAB_IDS.has(id) &&
     enabledModules !== undefined &&
     !enabledModules.includes(id);

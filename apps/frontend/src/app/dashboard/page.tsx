@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { RoleProvider } from '@/context/RoleContext';
 import { useAuth } from '@/context/AuthContext';
 import { useTenant, PILOT_TENANT_IDS } from '@/context/TenantContext';
-import { useMyModules } from '@/hooks/useTenantModules';
+import { useEffectiveModules } from '@/hooks/useEffectiveModules';
 import EmptyRegion from '@/components/common/EmptyRegion';
 import NotSubscribed from '@/components/common/NotSubscribed';
 import SubscribeModal from '@/components/common/SubscribeModal';
@@ -12,6 +12,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import RoleSwitcher from '@/components/RoleSwitcher';
 import Header from '@/components/Header';
 import Navigation, { TabId } from '@/components/Navigation';
+import ViewAsBanner from '@/components/admin/ViewAsBanner';
 import PermissionBanner from '@/components/PermissionBanner';
 import SystemStatus from '@/components/SystemStatus';
 import Footer from '@/components/Footer';
@@ -93,9 +94,12 @@ function DashboardContent() {
   // viewed tenant, and not the X-Tenant-Id path (permitted_tenants 403s
   // partner accounts asking about their own non-pilot org). undefined while
   // loading → fail-open. Super-admins are never gated.
-  const { data: enabledModules } = useMyModules(Boolean(user) && !isSuperAdmin);
+  // While a super-admin is "viewing as" an account this returns THAT account's
+  // plan with enforce=true, so the operator reproduces the account's view
+  // rather than their own unrestricted one.
+  const { modules: enabledModules, enforce } = useEffectiveModules();
   const subscribed =
-    isSuperAdmin ||
+    !enforce ||
     !isModuleTab(activeTab) || enabledModules === undefined || enabledModules.includes(activeTab);
   // Tenant exists but its plan doesn't include this module → clean "not
   // subscribed" state instead of letting the panel hit a 403. (Reports isn't a
@@ -175,6 +179,7 @@ function DashboardContent() {
         lockModules={!user}
         onLockedModule={(id) => setLockedModule(id)}
       />
+      <ViewAsBanner />
       <PermissionBanner />
 
       {gatedModule && (

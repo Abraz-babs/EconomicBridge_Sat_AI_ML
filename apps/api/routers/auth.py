@@ -12,6 +12,7 @@ the admin panel and account-bound actions can be gated.
 """
 from __future__ import annotations
 
+import ipaddress
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -47,6 +48,7 @@ from schemas.auth import (
     ResetPasswordRequest,
     TokenData,
 )
+from services.activity import record_login
 from services.email import send_password_reset_email
 from services.modules import enabled_modules_for
 from schemas.envelope import SuccessResponse, build_meta
@@ -118,13 +120,32 @@ async def _issue_tokens(session: AsyncSession, user) -> TokenData:
     )
 
 
-def _client_key(request: Request) -> str:
-    """IP-based rate-limit key. Behind the ALB the real client is the first hop
-    in X-Forwarded-For; fall back to the socket peer."""
+def _raw_client_ip(request: Request) -> str:
+    """Best-effort client address. Behind the ALB the real client is the first
+    hop in X-Forwarded-For; fall back to the socket peer."""
     xff = request.headers.get("x-forwarded-for", "")
-    ip = xff.split(",")[0].strip() if xff else (
+    return xff.split(",")[0].strip() if xff else (
         request.client.host if request.client else "unknown")
-    return f"login:{ip}"
+
+
+def _client_key(request: Request) -> str:
+    """IP-based rate-limit key — a plain string, so 'unknown' is acceptable."""
+    return f"login:{_raw_client_ip(request)}"
+
+
+def _client_ip(request: Request) -> str | None:
+    """The client address only if it really parses as one, else None.
+
+    `account_login.ip_address` is INET and Postgres rejects anything else —
+    TestClient sends 'testclient', and some proxies put hostnames in
+    X-Forwarded-For. A NULL IP beats failing the sign-in over telemetry.
+    """
+    candidate = _raw_client_ip(request)
+    try:
+        ipaddress.ip_address(candidate)
+    except ValueError:
+        return None
+    return candidate
 
 
 @router.post("/login", response_model=SuccessResponse[TokenData])
@@ -157,6 +178,12 @@ async def login(
     await session.execute(
         text("UPDATE public.users SET last_login_at = NOW() WHERE id = :id"),
         {"id": user["id"]},
+    )
+    await record_login(
+        session,
+        user_id=user["id"], org_id=user["org_id"],
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
     )
     await session.commit()
     return SuccessResponse(data=data, meta=build_meta())
