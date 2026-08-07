@@ -14,6 +14,20 @@ the Farm Check bulk path where a database round trip would be felt.
 
 Not module-gated — `geo` is absent from PATH_PREFIX_TO_MODULE, so
 ModuleAccessMiddleware passes it through like the other control-plane routes.
+
+## What this endpoint does NOT do, and what callers must add
+
+It answers "the nearest unit **we hold**", and we hold the ten pilots only. A
+point just over the border in a non-pilot state therefore gets the closest pilot
+unit, confidently and wrongly: measured at (4.60, 11.90) — Kebbe, in SOKOTO —
+this returns `kebbi / Jega`, 30 km away and in the wrong state. `distance_km`
+cannot flag it, because 30 km is an ordinary distance to a centroid.
+
+The dashboard resolves this by cross-checking against Mapbox's region and
+discarding our answer when the two disagree (`apps/frontend/src/lib/place.ts`).
+Any NEW consumer must do something equivalent before presenting this as the
+place a point is in — the raw answer is "nearest known unit", not "containing
+unit".
 """
 from __future__ import annotations
 
