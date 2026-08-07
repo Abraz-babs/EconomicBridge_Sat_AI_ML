@@ -5,7 +5,8 @@ import { useMemo, useState } from 'react';
 import { apiFetch, ingestionFetch } from '@/lib/api';
 import { useTenant } from '@/context/TenantContext';
 import { type FarmCheckResult, type FarmHealth } from '@/hooks/useFarmCheck';
-import { fetchPlaceName, parseCoord, pilotMismatch } from './FarmCheckPanel';
+import { parseCoord } from './FarmCheckPanel';
+import { pilotMismatch, resolvePlace } from '@/lib/place';
 
 // Bulk Farm Check: paste or upload a list of coordinates (e.g. a NASRDA
 // location list) and check them all at once. Drives the SAME per-farm endpoint
@@ -126,13 +127,13 @@ export default function FarmCheckBulkPanel() {
           half_m: halfM,
         },
       });
-      // Reverse-geocode to catch mistyped coordinates that land in the wrong
-      // state (best-effort; a geocode failure never fails the row).
-      let place: string | null = null;
-      try { place = await fetchPlaceName(res.lon, res.lat); } catch { /* best-effort */ }
+      // Name the coordinate to catch mistypes that land in the wrong state
+      // (best-effort; a resolution failure never fails the row).
+      let resolved = null;
+      try { resolved = await resolvePlace(res.lon, res.lat); } catch { /* best-effort */ }
       patchRow(row.idx, {
-        status: 'done', result: res, place,
-        mismatch: pilotMismatch(place, pilot.name), error: undefined,
+        status: 'done', result: res, place: resolved?.label ?? null,
+        mismatch: pilotMismatch(resolved, pilot.id), error: undefined,
       });
     } catch (err) {
       if (attempt < ROW_RETRIES) {

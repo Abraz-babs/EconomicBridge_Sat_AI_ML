@@ -5,6 +5,7 @@ import { PolygonLayer, ScatterplotLayer } from '@deck.gl/layers';
 import type { StyleSpecification } from 'mapbox-gl';
 
 import EBMap from '@/components/map/EBMap';
+import { pilotMismatch, resolvePlace, type ResolvedPlace } from '@/lib/place';
 import { useTenant } from '@/context/TenantContext';
 import { useTenantLgas } from '@/hooks/useCropPredictions';
 import {
@@ -103,38 +104,6 @@ export function parseCoord(raw: string): number | null {
   return val;
 }
 
-/** True when the reverse-geocoded place name does NOT sit in the selected
- *  pilot's state — the tell-tale of a mistyped coordinate (e.g. lat pasted
- *  into the longitude box lands 150 km away in the next state). */
-export function pilotMismatch(placeName: string | null, pilotName: string): boolean {
-  if (!placeName) return false;
-  const token = pilotName.replace(/\s+State$/i, '').toLowerCase();
-  const place = placeName.toLowerCase();
-  // FCT appears in Mapbox names as "Federal Capital Territory" or "Abuja".
-  if (token.includes('federal capital')) {
-    return !place.includes('federal capital') && !place.includes('abuja');
-  }
-  return !place.includes(token);
-}
-
-/** Reverse-geocode a coordinate to a place name (village / area / district)
- *  via Mapbox, so the result reads "near Kuje, FCT" instead of bare numbers. */
-export async function fetchPlaceName(lon: number, lat: number): Promise<string | null> {
-  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-  if (!token) return null;
-  try {
-    const res = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json` +
-        `?access_token=${token}&types=neighborhood,locality,place,district,region&limit=1`,
-    );
-    if (!res.ok) return null;
-    const j = (await res.json()) as { features?: { place_name?: string }[] };
-    return j.features?.[0]?.place_name ?? null;
-  } catch {
-    return null;
-  }
-}
-
 // Match the theme (light/cream): --ink text on --surface, like .fp-tenant-select.
 const inputStyle: React.CSSProperties = {
   background: 'var(--surface)',
@@ -158,7 +127,7 @@ export default function FarmCheckPanel() {
   const [halfM, setHalfM] = useState(60); // default Tight, for single-plot accuracy
   const [focus, setFocus] = useState<{ lng: number; lat: number; zoom: number } | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [placeName, setPlaceName] = useState<string | null>(null);
+  const [place, setPlace] = useState<ResolvedPlace | null>(null);
   const [showRecords, setShowRecords] = useState(true);
   const [recordSearch, setRecordSearch] = useState('');
   const [basemap, setBasemap] = useState<'mapbox' | 'arcgis'>('mapbox');
@@ -191,7 +160,7 @@ export default function FarmCheckPanel() {
     setLga('');
     setOwner('');
     setFocus(null);
-    setPlaceName(null);
+    setPlace(null);
     setSelectedDate(null);
   };
 
@@ -254,8 +223,8 @@ export default function FarmCheckPanel() {
           // the latest usable pass; reverse-geocode the place name.
           setFocus({ lng: data.lon, lat: data.lat, zoom: 15 });
           setSelectedDate(data.ndvi_date);
-          setPlaceName(null);
-          fetchPlaceName(data.lon, data.lat).then(setPlaceName).catch(() => {});
+          setPlace(null);
+          resolvePlace(data.lon, data.lat).then(setPlace).catch(() => {});
         },
       },
     );
@@ -405,13 +374,13 @@ export default function FarmCheckPanel() {
             borderLeft: `4px solid ${hs?.color ?? '#9ca3af'}`,
           }}
         >
-          {placeName && (
+          {place?.label && (
             <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '8px' }}>
-              📍 {placeName}
+              📍 {place.label}
             </div>
           )}
 
-          {placeName && pilotMismatch(placeName, pilot.name) && (
+          {pilotMismatch(place, pilot.id) && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
               margin: '0 0 10px', padding: '7px 10px', borderRadius: '6px',
@@ -420,7 +389,7 @@ export default function FarmCheckPanel() {
             }}>
               <strong style={{ color: '#ef4444' }}>⚠ Coordinate outside {pilot.name}</strong>
               <span className="ev-map-meta">
-                This point reverse-geocodes to “{placeName}” — check the latitude/longitude
+                This point falls in {place?.label} — check the latitude/longitude
                 (a swapped or mistyped digit lands in the wrong state) before saving.
               </span>
             </div>

@@ -226,3 +226,59 @@ def centroid_for(tenant_id: str, lga: str) -> tuple[float, float]:
         raise KeyError(
             f"No centroid for ({tenant_id}, {lga}) in lga_centroids dataset."
         ) from e
+
+
+# ─── Reverse lookup: coordinates → the administrative unit we know ────────
+#
+# Measured over the 447-unit dataset (2026-08-07), nearest-neighbour spacing
+# between centroids: median 23.2 km, p90 46.5 km, max 113.1 km (Senegal is the
+# sparsest, Ghana the densest at a 17.8 km median). A point genuinely inside a
+# sparse unit can therefore sit ~55 km from its own centroid, so the plausibility
+# bound below is deliberately generous — it exists to reject points nowhere near
+# any pilot, not to adjudicate borders.
+MAX_PLAUSIBLE_KM = 100.0
+
+EARTH_RADIUS_KM = 6371.0088
+
+
+def haversine_km(
+    lon1: float, lat1: float, lon2: float, lat2: float
+) -> float:
+    """Great-circle distance in kilometres.
+
+    Not a planar approximation: our pilots span ~5°N to ~16°N and Senegal to
+    Benue in longitude, where treating degrees as square would distort
+    comparisons enough to pick the wrong nearest unit near boundaries.
+    """
+    import math
+
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = p2 - p1
+    dlam = math.radians(lon2 - lon1)
+    h = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlam / 2) ** 2
+    return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(h))
+
+
+def nearest_unit(
+    lon: float, lat: float
+) -> tuple[str, str, float] | None:
+    """The closest known `(tenant_id, lga, distance_km)`, or None if nowhere near.
+
+    This is a NEAREST-CENTROID lookup, not point-in-polygon: it answers "which
+    unit's centre is closest", which is the same answer as containment for most
+    points but can differ near a border, especially where one unit is large and
+    its neighbour small. We hold centroids, not boundaries — callers that need
+    true containment need the geoBoundaries polygons, not this.
+
+    Returns None beyond MAX_PLAUSIBLE_KM so a coordinate in Lagos or a typo'd
+    hemisphere yields no claim at all rather than a confidently wrong LGA.
+    """
+    best: tuple[str, str, float] | None = None
+    for tenant_id, units in LGA_CENTROIDS.items():
+        for lga, (ulon, ulat) in units.items():
+            d = haversine_km(lon, lat, ulon, ulat)
+            if best is None or d < best[2]:
+                best = (tenant_id, lga, d)
+    if best is None or best[2] > MAX_PLAUSIBLE_KM:
+        return None
+    return best

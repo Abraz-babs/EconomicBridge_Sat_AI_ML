@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-import { fetchPlaceName } from '@/components/cropguard/FarmCheckPanel';
+import { resolvePlace } from '@/lib/place';
 import type { AlertResponse, AlertSeverity } from '@/hooks/useFarmlandAlerts';
 import {
   compareLandCover,
@@ -146,15 +146,16 @@ export default function AlertSpotlight(props: Props) {
   const { alerts, selected, stateLabel, onSelect, onClose, touring, onToggleTour } = props;
   const [place, setPlace] = useState<string | null>(null);
 
-  // Reverse-geocode the selected coordinate (same Mapbox helper Farm Check uses).
+  // Name the selected coordinate (same resolver Farm Check uses: our LGA
+  // from /geo/resolve, plus a Mapbox settlement name when one exists).
   useEffect(() => {
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset stale place for the new selection
     setPlace(null);
     if (selected?.location) {
-      fetchPlaceName(selected.location.lon, selected.location.lat).then((p) => {
-        if (!cancelled) setPlace(p);
-      });
+      resolvePlace(selected.location.lon, selected.location.lat).then((r) => {
+        if (!cancelled) setPlace(r.label);
+      }).catch(() => { /* label is optional */ });
     }
     return () => { cancelled = true; };
     // Primitive deps (id + coords) — the location OBJECT gets a fresh identity
