@@ -614,15 +614,23 @@ function TileCell({ tile, cols }: { tile: TileResult; cols: number }) {
 
 
 function RecentRow({ row }: { row: CropPredictionRow }) {
-  const isDisease = !row.predicted_class.endsWith('_healthy');
+  // An abstention is neither healthy nor diseased — it is the model saying it
+  // could not tell. Showing a confidence band beside it would imply a hidden
+  // verdict, so the band is dropped too.
+  const abstained = row.abstained;
+  const isDisease = !abstained && !(row.predicted_class ?? '').endsWith('_healthy');
   return (
     <div className="cg-recent-row">
       <div className="cg-recent-top">
         <span className={`cg-recent-marker ${isDisease ? 'cg-recent-marker--bad' : 'cg-recent-marker--ok'}`}>
-          {isDisease ? '⚠' : '✓'}
+          {abstained ? '–' : isDisease ? '⚠' : '✓'}
         </span>
-        <span className="cg-recent-class">{prettifyClass(row.predicted_class)}</span>
-        <span className={bandClass(row.confidence_band)}>{row.confidence_band}</span>
+        <span className="cg-recent-class">
+          {abstained ? 'Not identified' : prettifyClass(row.predicted_class ?? '')}
+        </span>
+        {!abstained && (
+          <span className={bandClass(row.confidence_band)}>{row.confidence_band}</span>
+        )}
       </div>
       <div className="cg-recent-meta">
         {Math.round(row.confidence * 100)}% confidence · {relativeAge(row.created_at)} ·{' '}

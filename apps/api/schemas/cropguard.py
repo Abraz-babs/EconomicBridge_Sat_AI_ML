@@ -35,7 +35,13 @@ class CropPredictionRow(BaseModel):
     id: UUID
     tenant_id: str
 
-    predicted_class: str
+    # None when the model ABSTAINED — it declined to name a disease rather
+    # than assert one. Nullable here because migration 0040 made the column
+    # nullable; a `str` annotation made this endpoint 500 the moment the first
+    # real abstention was stored.
+    predicted_class: str | None
+    abstained: bool = False
+    abstain_reason: str | None = None
     prediction: float
     confidence: float
     confidence_band: ConfidenceBand

@@ -70,7 +70,10 @@ export interface CropPredictionRequest {
 export interface CropPredictionRow {
   id: string;
   tenant_id: string;
-  predicted_class: string;
+  /** null when the model ABSTAINED on this photo. */
+  predicted_class: string | null;
+  abstained: boolean;
+  abstain_reason: string | null;
   prediction: number;
   confidence: number;
   confidence_band: 'HIGH' | 'MEDIUM' | 'LOW';

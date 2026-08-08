@@ -11,7 +11,7 @@ import type { CropPredictionRow } from '@/hooks/useCropPredictions';
 
 /** Disease severity → red ramp; healthy → green. */
 function colourFor(row: CropPredictionRow): [number, number, number, number] {
-  const isHealthy = row.predicted_class.endsWith('_healthy');
+  const isHealthy = (row.predicted_class ?? '').endsWith('_healthy');
   if (isHealthy) return [82, 183, 136, 220];
   if (row.prediction >= 0.80) return [255, 69, 0, 230];     // critical
   if (row.prediction >= 0.65) return [255, 140, 0, 220];    // high
@@ -62,7 +62,7 @@ function tooltipFor(obj: unknown): string | null {
   if (!p?.predicted_class) return null;
   const [lon, lat] = p.position;
   const lines = [
-    p.predicted_class.replace(/_/g, ' '),
+    (p.predicted_class ?? '').replace(/_/g, ' '),
     `Target area: ${p.lga ?? '—'}`,
     `Coordinates: ${formatLatLon(lat, lon)}`,
     `Disease prob: ${(p.prediction * 100).toFixed(0)}% · Confidence: ${(p.confidence * 100).toFixed(0)}%`,
@@ -74,12 +74,12 @@ function tooltipFor(obj: unknown): string | null {
 
 /** True for a disease prediction the analyst should look at first. */
 function isHighSeverity(p: PositionedPrediction): boolean {
-  return !p.predicted_class.endsWith('_healthy') && p.prediction >= 0.80;
+  return !(p.predicted_class ?? '').endsWith('_healthy') && p.prediction >= 0.80;
 }
 
 /** Halo-fallback ranking: healthy rows sink, diseased rows sort by probability. */
 function severityFor(p: PositionedPrediction): number {
-  return p.predicted_class.endsWith('_healthy') ? -1 : p.prediction;
+  return (p.predicted_class ?? '').endsWith('_healthy') ? -1 : p.prediction;
 }
 
 
@@ -91,7 +91,12 @@ interface Props {
 
 export default function CropGuardMap({ tenant, predictions }: Props) {
   const positioned = useMemo<PositionedPrediction[]>(
-    () => predictions.map((row) => {
+    // Abstentions are dropped before anything is plotted. A refusal to
+    // diagnose is not a disease observation, and putting one on the Disease
+    // Geography map would invent a finding out of the model declining to make
+    // one. Excluding at the source also keeps every downstream helper able to
+    // assume a class is present.
+    () => predictions.filter((row) => !row.abstained && row.predicted_class).map((row) => {
       const realCoord = row.location;
       if (realCoord) {
         return {
@@ -147,7 +152,7 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
   // re-aggregating the GPU-heavy HeatmapLayer on each heartbeat (the cause
   // of the Edge slowdown + Firefox blank-on-scroll).
   const diseasePoints = useMemo(
-    () => positioned.filter((p) => !p.predicted_class.endsWith('_healthy')),
+    () => positioned.filter((p) => !(p.predicted_class ?? '').endsWith('_healthy')),
     [positioned],
   );
   const pulseRows = useMemo(
@@ -216,7 +221,7 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
   const realCount = positioned.filter((p) => !p.synthetic_location).length;
   const syntheticCount = positioned.length - realCount;
   const diseaseCount = positioned.filter(
-    (p) => !p.predicted_class.endsWith('_healthy'),
+    (p) => !(p.predicted_class ?? '').endsWith('_healthy'),
   ).length;
 
   return (

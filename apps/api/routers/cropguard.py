@@ -101,7 +101,8 @@ async def list_predictions(
         text(
             """
             SELECT id, tenant_id,
-                   predicted_class, prediction, confidence, confidence_band,
+                   predicted_class, abstained, abstain_reason,
+                   prediction, confidence, confidence_band,
                    requires_human_review, top_k,
                    image_source, image_s3_bucket, image_s3_key,
                    model_name, model_version, inference_time_ms,
@@ -155,6 +156,8 @@ def _row_to_response(row: dict) -> CropPredictionRow:
         id=row["id"],
         tenant_id=row["tenant_id"],
         predicted_class=row["predicted_class"],
+        abstained=bool(row.get("abstained", False)),
+        abstain_reason=row.get("abstain_reason"),
         prediction=float(row["prediction"]),
         confidence=float(row["confidence"]),
         confidence_band=row["confidence_band"],
