@@ -3,8 +3,10 @@
 > Line 42 of this draft says *"Our team already built the security platform
 > Kebbi State government…"*. Citadel was built and pitched to Kebbi State
 > Government; **they never responded and it was never deployed.** The claim is
-> false and was cut from the recorded video. V2 was written specifically to
-> remove it.
+> false. In the video actually recorded it was REPLACED with *"we currently
+> work with farmers groups and cooperative societies in Kebbi State"* — which
+> is true and is the traction line to reuse. V2 was written to remove the
+> original claim.
 >
 > Kept for the record of what was drafted, not as source material. Anything
 > written from this folder should start from V2.

@@ -1,7 +1,13 @@
 # EconomicBridge — 2-Minute Pitch Video (v2)
 
-More cinematic; reflects the now-live platform (trained AI, satellite NDVI,
-full coverage, governments onboarding). No security-platform / Kebbi mention.
+More cinematic; reflects the live platform (trained AI, satellite NDVI, full
+coverage). No security-platform / Kebbi-government mention.
+
+**What was actually recorded differs from this script** (operator, 2026-08-08):
+the Kebbi government line was replaced with *"we currently work with farmers
+groups and cooperative societies in Kebbi State"* — true, verifiable, and the
+honest traction claim to reuse. Neither script on file captured that wording,
+so it is recorded here.
 Voiceover ~300 words ≈ 2:00. Record VOICE first, cut footage to it.
 
 ## SEG 1 — HOOK (0:00–0:18)
@@ -28,9 +34,15 @@ day, from space."
 3) Farmland halos pulsing, then ShockGuard flood/drought on the map.
 SAY: "Photograph a sick crop, and our AI names the disease in seconds — and
 shows you exactly where it looked. From orbit, we track the health of every
-field, week by week. We see floods through the clouds, droughts before they
-bite, and we predict farmer-herder conflict twenty-four to seventy-two hours
-before it erupts."
+field, week by week. We watch for flood and drought signatures through
+the clouds, and for the land-pressure that precedes farmer-herder conflict."
+
+<!-- Was: "we see floods ... droughts before they bite, and we predict
+     farmer-herder conflict twenty-four to seventy-two hours before it erupts".
+     Removed 2026-08-08: flood detection measured 0 of 11 against the documented
+     Kebbi 2024 flood by three methods, and the 24-72h conflict figure was never
+     validated against recorded incidents. Say what we observe, not what we
+     predict. -->
 
 ## SEG 4 — INCLUSION (1:18–1:38)
 SHOW: a farmer holding a basic feature phone showing an SMS; the Admin SMS
