@@ -176,7 +176,8 @@ export default function CropGuardPanel() {
     setUploadError(null);
     try {
       const base64 = await fileToBase64(selectedFile);
-      const tags = { lga: lga || undefined, zone_name: cropName.trim() || undefined };
+      const crop = cropName.trim() || undefined;
+      const tags = { lga: lga || undefined, zone_name: crop };
       if (analysisMode === 'leaf') {
         const result = await predictMutation.mutateAsync({
           tenant_id: activeTenantId,
@@ -185,6 +186,13 @@ export default function CropGuardPanel() {
           compute_saliency: requestSaliency,
           persist: true,
           ...tags,
+          // `crop` is NOT the same as `zone_name`. zone_name is a free-text
+          // record tag; crop goes to the MODEL, which restricts classes to it
+          // and declines when the photo plainly is not that crop. Sending only
+          // zone_name is why the gate never fired here — it was wired into
+          // LeafDiagnosisPanel, which is not the component this panel renders
+          // for the LEAF mode. Tiled/FIELD mode does not take it yet.
+          crop,
         });
         setLastResult(result);
         setLastTiledResult(null);
