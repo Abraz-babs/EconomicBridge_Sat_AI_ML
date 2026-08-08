@@ -56,12 +56,20 @@ export default function LeafDiagnosisPanel() {
       persist: true,
       lga: lga || undefined,
       zone_name: crop.trim() || undefined,
+      // Also sent as `crop` (not just the record tag): the model uses it to
+      // restrict the answer to this crop, and to decline when the photo
+      // plainly is not it.
+      crop: crop.trim() || undefined,
     });
   };
 
   const r = predict.data;
-  const isHealthy = r?.predicted_class.endsWith('_healthy') ?? false;
-  const color = !r ? '#9ca3af' : isHealthy ? '#22c55e' : r.confidence >= 0.6 ? '#ef4444' : '#eab308';
+  const abstained = r?.abstained ?? false;
+  const isHealthy = (!abstained && r?.predicted_class?.endsWith('_healthy')) ?? false;
+  const color = !r ? '#9ca3af'
+    : abstained ? '#9ca3af'
+    : isHealthy ? '#22c55e'
+    : r.confidence >= 0.6 ? '#ef4444' : '#eab308';
 
   return (
     <div className="sb-table-wrap" style={{ marginTop: '16px' }}>
@@ -155,15 +163,24 @@ export default function LeafDiagnosisPanel() {
         <div style={{ padding: '12px 14px', borderRadius: '8px', background: 'rgba(0,0,0,0.03)', borderLeft: `4px solid ${color}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <span style={{ background: color, color: '#10130f', fontWeight: 700, fontSize: '12px', padding: '3px 10px', borderRadius: '12px' }}>
-              {isHealthy ? 'Healthy' : 'Disease'}
+              {abstained ? 'No result' : isHealthy ? 'Healthy' : 'Disease'}
             </span>
-            <strong style={{ fontSize: '15px' }}>{fmtClass(r.predicted_class)}</strong>
-            <span className="ev-map-meta">
-              {(r.confidence * 100).toFixed(0)}% confidence · {r.confidence_band}
-              {r.requires_human_review ? ' · review advised' : ''}
-            </span>
+            <strong style={{ fontSize: '15px' }}>
+              {abstained ? 'Not identified' : fmtClass(r.predicted_class ?? '')}
+            </strong>
+            {!abstained && (
+              <span className="ev-map-meta">
+                {(r.confidence * 100).toFixed(0)}% confidence · {r.confidence_band}
+                {r.requires_human_review ? ' · review advised' : ''}
+              </span>
+            )}
           </div>
-          {r.top_k.length > 1 && (
+          {abstained && r.abstain_reason && (
+            <div className="ev-map-meta" style={{ marginTop: '8px' }}>
+              {r.abstain_reason}
+            </div>
+          )}
+          {!abstained && r.top_k.length > 1 && (
             <div className="ev-map-meta" style={{ marginTop: '8px' }}>
               Also considered:{' '}
               {r.top_k.slice(1).map((t) => `${fmtClass(t.class_name)} ${(t.probability * 100).toFixed(0)}%`).join(' · ')}

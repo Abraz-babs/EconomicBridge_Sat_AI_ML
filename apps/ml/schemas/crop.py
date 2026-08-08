@@ -35,6 +35,11 @@ class CropPredictionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     tenant_id: str = Field(min_length=1, max_length=50)
+    # What the operator says they photographed. Free text — the dashboard field
+    # is a text box — normalised server-side, and ignored when it is not one of
+    # our crops. Supplying it restricts the answer to that crop's diseases and
+    # lets the model decline when the image plainly is not that crop.
+    crop: str | None = Field(default=None, max_length=50)
 
     image_base64: str | None = Field(
         default=None,
@@ -120,8 +125,15 @@ class CropPredictionData(BaseModel):
     model_version: str
     tenant_id: str
 
-    # Inference output
-    predicted_class: str
+    # Inference output.
+    # `predicted_class` is None when the model ABSTAINED — it declined to name a
+    # disease rather than assert one it has not earned (see MIN_CROP_MASS in
+    # models/crop_classifier.py). Clients must render `abstain_reason` in that
+    # case and must never fall back to top_k[0], which is exactly the answer we
+    # refused to stand behind.
+    predicted_class: str | None
+    abstained: bool = False
+    abstain_reason: str | None = None
     prediction: float          # 0..1, higher = more concerning
     confidence: float          # top-1 probability
     confidence_band: str       # HIGH | MEDIUM | LOW

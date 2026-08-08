@@ -75,6 +75,55 @@ VALIDATED_DOMAIN = (
 )
 
 
+# ─── Guards against confidently answering the wrong crop ──────────────────
+#
+# Until retraining breaks the style/crop shortcut described above, two cheap
+# guards stop the failure being INVISIBLE to the user. Neither improves the
+# model; both stop it asserting something it has not earned.
+#
+# The important one is the crop mass. A plain confidence threshold is close to
+# useless here because the model is confidently WRONG — it returned
+# cassava_healthy at 0.770 on a maize field photo. But when the operator tells
+# us the crop, the probability the model puts on THAT crop's classes is a real
+# out-of-distribution signal: 0.770 on cassava with ~0.02 spread across every
+# maize class does not mean "the best maize class"; it means the model does not
+# recognise this as maize at all, and the honest answer is to say so.
+MIN_CROP_MASS = 0.15
+
+# With no declared crop there is nothing to check the model against, so we fall
+# back to confidence alone and set the bar high. Deliberately conservative:
+# a refusal costs a retake, a wrong diagnosis costs a season.
+MIN_CONFIDENCE_WITHOUT_CROP = 0.60
+
+
+def crop_of(class_name: str) -> str:
+    """The crop a class belongs to — 'maize_northern_blight' -> 'maize'."""
+    return class_name.split("_", 1)[0]
+
+
+SUPPORTED_CROPS: tuple[str, ...] = tuple(
+    dict.fromkeys(crop_of(c) for c in CROP_CLASSES)
+)
+
+
+def normalise_crop(raw: str | None) -> str | None:
+    """Map free text from the operator to a supported crop, else None.
+
+    The dashboard field is free text ("e.g. maize"), so accept the obvious
+    variants rather than silently ignoring a usable answer. None means "not
+    stated or not one of ours" — never a guess.
+    """
+    if not raw:
+        return None
+    s = raw.strip().lower()
+    if not s:
+        return None
+    aliases = {"corn": "maize", "manioc": "cassava", "yuca": "cassava",
+               "banana": "plantain", "paddy": "rice", "tomatoes": "tomato"}
+    s = aliases.get(s, s)
+    return s if s in SUPPORTED_CROPS else None
+
+
 # ─── Dataclasses ──────────────────────────────────────────────────────────
 
 
@@ -124,8 +173,16 @@ class CropClassifier:
         tenant_id: str,
         image: CropPredictionInput,
         top_k: int | None = None,
+        crop: str | None = None,
     ) -> tuple[ModelPrediction, list[CropTopKEntry]]:
-        """Run inference on one image. Returns (prediction, top_k_entries)."""
+        """Run inference on one image. Returns (prediction, top_k_entries).
+
+        `crop` is what the operator says they photographed. When it names a
+        supported crop the classes are restricted to it — the model may no
+        longer answer cassava for a maize leaf — and the answer is withheld
+        entirely if the model put almost no probability on that crop. See
+        MIN_CROP_MASS.
+        """
         settings = get_settings()
         k = top_k if top_k is not None else settings.crop_top_k_classes
         if not 1 <= k <= len(CROP_CLASSES):
@@ -139,15 +196,59 @@ class CropClassifier:
         else:
             probabilities = self._torch_inference(image.image_bytes)
 
+        declared = normalise_crop(crop)
+        crop_mass = (
+            sum(p for c, p in zip(CROP_CLASSES, probabilities)
+                if crop_of(c) == declared)
+            if declared else None
+        )
+
+        if declared is not None:
+            # Restrict to the declared crop and renormalise, so the reported
+            # confidence is "which disease of THIS crop", not a number borrowed
+            # from a crop the operator did not photograph.
+            masked = [p if crop_of(c) == declared else 0.0
+                      for c, p in zip(CROP_CLASSES, probabilities)]
+            total = sum(masked)
+            if total > 0:
+                probabilities = [p / total for p in masked]
+
         topk_entries = _top_k_entries(probabilities, k=k)
         top1 = topk_entries[0]
         confidence = top1.probability
+
+        # Withhold rather than assert. Two independent reasons:
+        #   * the operator named a crop the model barely recognises here;
+        #   * no crop was named and the model is not confident on its own.
+        #
+        # Only a TRAINED model has uncertainty worth acting on. In stub and
+        # untuned modes the "probabilities" are a deterministic hash of the
+        # image, so thresholding them would be theatre — those modes already
+        # declare themselves via execution_mode and requires_human_review.
+        abstain_reason: str | None = None
+        if self._mode != "trained":
+            pass
+        elif declared is not None and (crop_mass or 0.0) < MIN_CROP_MASS:
+            abstain_reason = (
+                f"This does not look like {declared} to the model "
+                f"({(crop_mass or 0.0):.0%} of its confidence went to {declared} "
+                f"classes). Re-take the photo with one leaf filling the frame, "
+                f"or check the crop selection."
+            )
+        elif declared is None and confidence < MIN_CONFIDENCE_WITHOUT_CROP:
+            abstain_reason = (
+                "Not confident enough to name a disease. Select the crop and "
+                "re-take the photo with one leaf filling the frame."
+            )
         # `prediction` = total probability mass on disease classes. Higher =
         # more concerning across all confidence levels (see test_crop_classifier).
         prediction_score = _disease_probability_mass(probabilities)
 
         band = band_for_confidence(confidence)
-        requires_review = (self._mode != "trained") or (band != "HIGH")
+        requires_review = (
+            (self._mode != "trained") or (band != "HIGH")
+            or abstain_reason is not None
+        )
 
         elapsed_ms = int((time.monotonic() - started) * 1000)
         return (
@@ -164,7 +265,17 @@ class CropClassifier:
                 requires_human_review=requires_review,
                 confidence_band=band,
                 features={
-                    "predicted_class": top1.class_name,
+                    # None when abstaining: downstream must not be able to read
+                    # a class name off a result we refused to stand behind.
+                    "predicted_class": (
+                        None if abstain_reason else top1.class_name
+                    ),
+                    "abstained": abstain_reason is not None,
+                    "abstain_reason": abstain_reason,
+                    "declared_crop": declared,
+                    "declared_crop_mass": (
+                        None if crop_mass is None else round(float(crop_mass), 4)
+                    ),
                     "image_source": image.image_source,
                     "execution_mode": self._mode,
                     # Travels with every stored prediction so the limitation is

@@ -478,17 +478,29 @@ export default function CropGuardPanel() {
 
 
 function ResultCard({ result }: { result: CropPredictionData }) {
-  const isDisease = !result.predicted_class.endsWith('_healthy');
+  // The model can decline to answer. Showing a confidence next to "Not
+  // identified" would imply a hidden result, so both the class and the
+  // confidence line are replaced rather than blanked.
+  const abstained = result.abstained;
+  const isDisease = !abstained && !result.predicted_class?.endsWith('_healthy');
   return (
     <div className="cg-result">
       <div className="cg-result-header">
         <div>
-          <div className="cg-result-class">{prettifyClass(result.predicted_class)}</div>
+          <div className="cg-result-class">
+            {abstained ? 'Not identified' : prettifyClass(result.predicted_class ?? '')}
+          </div>
           <div className="cg-result-sub">
+            {abstained ? (
+              result.abstain_reason ?? 'The model declined to name a disease.'
+            ) : (
+              <>
             Confidence: {Math.round(result.confidence * 100)}% ·{' '}
             <span className={bandClass(result.confidence_band)}>{result.confidence_band}</span>
             {result.requires_human_review && (
               <span className="cg-review-flag"> · ⚑ Human review required</span>
+            )}
+              </>
             )}
           </div>
         </div>

@@ -22,7 +22,11 @@ export interface CropPredictionData {
   model_name: string;
   model_version: string;
   tenant_id: string;
-  predicted_class: string;
+  /** null when the model ABSTAINED — never fall back to top_k[0] here, that
+   *  is precisely the answer it declined to stand behind. */
+  predicted_class: string | null;
+  abstained: boolean;
+  abstain_reason: string | null;
   prediction: number;
   confidence: number;
   confidence_band: 'HIGH' | 'MEDIUM' | 'LOW';
@@ -53,6 +57,9 @@ export interface CropPredictionRequest {
   lon?: number;
   lga?: string;
   zone_name?: string;
+  /** The crop the operator says they photographed. Restricts the answer to
+   *  that crop and lets the model decline when the image is not that crop. */
+  crop?: string;
 }
 
 /**

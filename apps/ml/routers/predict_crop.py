@@ -108,6 +108,7 @@ async def predict_crop_disease(
         result, top_k = classifier.predict(
             tenant_id=tenant_id,
             image=classifier_input,
+            crop=body.crop,
             top_k=body.top_k,
         )
     except ValueError as exc:
@@ -142,6 +143,8 @@ async def predict_crop_disease(
             model_version=result.model_version,
             tenant_id=result.tenant_id,
             predicted_class=result.features["predicted_class"],
+            abstained=bool(result.features.get("abstained", False)),
+            abstain_reason=result.features.get("abstain_reason"),
             prediction=result.prediction,
             confidence=result.confidence,
             confidence_band=result.confidence_band,
