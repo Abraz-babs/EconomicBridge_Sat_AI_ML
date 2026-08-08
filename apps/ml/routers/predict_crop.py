@@ -211,7 +211,7 @@ async def _persist_crop_prediction(
                 id, tenant_id,
                 model_name, model_version, input_hash,
                 prediction, confidence, confidence_band, requires_human_review,
-                predicted_class, top_k,
+                predicted_class, abstained, abstain_reason, top_k,
                 image_source, image_s3_bucket, image_s3_key, image_sha256,
                 location, lga, zone_name,
                 inference_time_ms, trace_id, created_at
@@ -219,7 +219,7 @@ async def _persist_crop_prediction(
                 :id, :tenant_id,
                 :model_name, :model_version, :input_hash,
                 :prediction, :confidence, :confidence_band, :requires_human_review,
-                :predicted_class, CAST(:top_k AS JSONB),
+                :predicted_class, :abstained, :abstain_reason, CAST(:top_k AS JSONB),
                 :image_source, :image_s3_bucket, :image_s3_key, :image_sha256,
                 CASE WHEN CAST(:lon AS double precision) IS NULL
                        OR CAST(:lat AS double precision) IS NULL THEN NULL
@@ -242,7 +242,11 @@ async def _persist_crop_prediction(
             "confidence": result.confidence,
             "confidence_band": result.confidence_band,
             "requires_human_review": result.requires_human_review,
+            # NULL when the model declined. Stored rather than dropped: the
+            # images it cannot handle are exactly the retraining set we need.
             "predicted_class": result.features["predicted_class"],
+            "abstained": bool(result.features.get("abstained", False)),
+            "abstain_reason": result.features.get("abstain_reason"),
             "top_k": top_k_blob,
             "image_source": image.image_source,
             "image_s3_bucket": image.image_s3_bucket,
