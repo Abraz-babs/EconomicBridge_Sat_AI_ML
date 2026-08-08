@@ -88,7 +88,24 @@ VALIDATED_DOMAIN = (
 # out-of-distribution signal: 0.770 on cassava with ~0.02 spread across every
 # maize class does not mean "the best maize class"; it means the model does not
 # recognise this as maize at all, and the honest answer is to say so.
-MIN_CROP_MASS = 0.15
+#
+# CALIBRATED 2026-08-08 against the same images that produced the 12/12 and 0/3
+# results above, with the trained weights. Declared-crop mass:
+#
+#     laboratory imagery (12 images)  0.8601 .. 0.9996
+#     field photographs   (3 images)  0.0094 .. 0.1699
+#
+# The two domains separate almost perfectly, with an empty band between 0.17 and
+# 0.86. The first version of this constant was 0.15 — chosen by judgement, and
+# WRONG: it sat below the field maximum, so a field photo at 0.1699 sailed
+# through and answered maize_streak_virus. Anywhere in the empty band works;
+# 0.50 is chosen because the costs are asymmetric — a refusal costs a retake, a
+# wrong diagnosis costs a season — and because "at least half the model's
+# confidence must land on the crop you declared" is a rule an agronomist can
+# check without reading the code.
+#
+# Calibrated on 15 images. Re-measure after retraining; the band will move.
+MIN_CROP_MASS = 0.50
 
 # With no declared crop there is nothing to check the model against, so we fall
 # back to confidence alone and set the bar high. Deliberately conservative:

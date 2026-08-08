@@ -116,6 +116,23 @@ def test_renormalising_reports_confidence_within_the_declared_crop():
     assert sum(r.values()) == pytest.approx(1.0)
 
 
-def test_thresholds_are_set_where_a_refusal_is_cheaper_than_a_wrong_answer():
-    assert 0.0 < MIN_CROP_MASS <= 0.25
+def test_threshold_sits_in_the_measured_gap_between_the_two_domains():
+    """Calibrated 2026-08-08 with the trained weights on the very images that
+    produced 12/12 and 0/3.
+
+        laboratory  0.8601 .. 0.9996
+        field       0.0094 .. 0.1699
+
+    The threshold must sit strictly inside the empty band. The original 0.15 did
+    NOT — it was below the field maximum, and a field photo at 0.1699 answered
+    maize_streak_virus. These bounds are the measurement, so moving the constant
+    back into either domain fails here rather than in someone's field.
+    """
+    FIELD_MAX = 0.1699
+    LAB_MIN = 0.8601
+
+    assert FIELD_MAX < MIN_CROP_MASS < LAB_MIN
+
+
+def test_a_refusal_is_cheaper_than_a_wrong_answer():
     assert MIN_CONFIDENCE_WITHOUT_CROP >= 0.5
