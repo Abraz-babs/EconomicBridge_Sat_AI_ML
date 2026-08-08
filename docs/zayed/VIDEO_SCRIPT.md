@@ -1,3 +1,14 @@
+> **SUPERSEDED — DO NOT REUSE. See VIDEO_SCRIPT_V2.md.**
+>
+> Line 42 of this draft says *"Our team already built the security platform
+> Kebbi State government…"*. Citadel was built and pitched to Kebbi State
+> Government; **they never responded and it was never deployed.** The claim is
+> false and was cut from the recorded video. V2 was written specifically to
+> remove it.
+>
+> Kept for the record of what was drafted, not as source material. Anything
+> written from this folder should start from V2.
+
 # EconomicBridge — 2-Minute Submission Video: Script + Shot Map
 
 Voiceover ~290 words ≈ 1:55. Record VOICE first, match footage to it.

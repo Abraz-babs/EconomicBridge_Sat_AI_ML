@@ -21,7 +21,16 @@ agricultural monitoring, and disaster relief.
 
 ---
 
-## 2. EXISTING DEPLOYED SYSTEMS (Do not rebuild — inherit patterns from these)
+## 2. PRIOR WORK (Do not rebuild — inherit patterns from these)
+
+> **These are systems we BUILT. None of them has a paying or deployed
+> government customer.** This section previously read "EXISTING DEPLOYED
+> SYSTEMS" and described Citadel as live with Kebbi State Government. That was
+> false, and because this file seeds every session and every generated
+> document, the claim propagated into the investor deck ("4 live government
+> deployments", "23 Conflicts Prevented"), the AEOC deck, and the submitted
+> Zayed technical specification. Corrected 2026-08-08. Describe prior work as
+> built and demonstrated — never as deployed, live, or in service.
 
 ### Sentinel National Intelligence Engine
 - Covers all 36 Nigerian states + FCT
@@ -32,11 +41,18 @@ agricultural monitoring, and disaster relief.
 - OSINT feeds; provisions for SIGINT and IoT scaling
 - AI/ML: anomaly detection, NLP on OSINT, LSTM time-series forecasting, ResNet CV
 
-### Citadel Kebbi State Security Dashboard (LIVE AND DEPLOYED)
+### Citadel Kebbi State Security Dashboard (BUILT AND PITCHED — NOT DEPLOYED)
+- Built by us and pitched to Kebbi State Government. **They did not respond.
+  It was never deployed, never operated for them, and produced no verified
+  results.** Do not describe it as live, deployed, in service, or as a
+  reference deployment, and never attribute outcome figures to it.
 - NASA FIRMS, Copernicus Sentinel-1 & 2, SAR all-weather, N2YO live pass
 - AI/ML: Random Forest conflict prediction, DBSCAN clustering
-- Predicts security incidents 24–72 hours in advance
-- **This is the reference deployment. All new state deployments mirror this pattern.**
+- The "predicts security incidents 24–72 hours in advance" claim is a DESIGN
+  INTENT that was never validated against recorded incidents. Do not repeat it
+  as a capability. (For the equivalent lesson on EconomicBridge's own
+  detectors, see the Kebbi 2024 flood backtest: three methods, 0 of 11.)
+- **Architecture patterns here are reusable. Its claims are not.**
 
 ### EconomicBridge Prototype (v0.3 — HTML dashboard)
 - Multi-tenant dashboard with role switcher (NGO/Gov/UN-World Bank/Research/Admin)

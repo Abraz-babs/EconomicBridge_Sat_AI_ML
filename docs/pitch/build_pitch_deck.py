@@ -155,8 +155,9 @@ bullets([
     "decision support, at local-government-level granularity.",
     "One platform gives governments, NGOs and regional bodies a real-time "
     "picture: forecast, reality on the ground, and who is affected.",
-    "Detect crop disease, flood and drought, and predict conflict 24 to 72 "
-    "hours ahead, then deliver the alert to the people who need it.",
+    "Monitor crop vegetation health, flood and drought conditions and "
+    "encroachment pressure, then deliver what we observe to the people who "
+    "need it.",
 ], lead="A satellite-and-AI early-warning system for the people who feed the continent.")
 c.showPage()
 
@@ -165,8 +166,8 @@ chrome(4)
 title("One platform, seven intelligence modules")
 bullets([
     "CropGuard: AI crop-disease diagnosis from a leaf photo + satellite vegetation health",
-    "ShockGuard: flood and drought detection from all-weather satellite radar",
-    "Farmland Protection: conflict and encroachment early warning (24-72h)",
+    "ShockGuard: flood and drought MONITORING from all-weather satellite radar",
+    "Farmland Protection: encroachment and land-pressure monitoring",
     "Economic Visibility: poverty and settlement mapping from satellite data",
     "Mobility Compass: income and cost-of-living intelligence",
     "SkillsBridge: education access and connectivity mapping",
@@ -181,7 +182,7 @@ bullets([
     "Copernicus Sentinel-1 (radar) and Sentinel-2 (vegetation/NDVI)",
     "NASA FIRMS active-fire detections and VIIRS night-lights",
     "World Bank economics, UNICEF GIGA schools, WorldPop population grids",
-    "AI: a ResNet-50 crop classifier (87% validation), conflict prediction, "
+    "AI: a ResNet-50 crop classifier (12 classes, laboratory-validated), "
     "and SAR / NDVI anomaly detection",
     "Honest provenance: live observations are always labelled distinctly from "
     "modelled baselines, so decision-makers trust what they see.",
@@ -194,7 +195,8 @@ title("Live in production, not a prototype")
 stat_grid([
     ("700+", "Local government areas / districts covered across Nigeria, Ghana and Senegal"),
     ("7", "Live satellite and economic data feeds, self-scheduled daily/weekly"),
-    ("87.2%", "Validation accuracy of our trained ResNet-50 crop-disease model"),
+    ("12", "Crop-disease classes served by our trained ResNet-50 (laboratory "
+           "imagery; field accuracy not yet established)"),
     ("5", "Microservices on AWS with CI/CD and multi-tenant data isolation"),
 ], note="Designed to scale to 52 administrative units: 36 Nigerian states + FCT + 15 ECOWAS countries.")
 c.showPage()
@@ -208,8 +210,8 @@ bullets([
     "Multilingual by design: English, French and Portuguese live; Hausa, "
     "Yoruba and Igbo in preparation.",
     "Delivered through trusted partner agencies, registration-free and privacy-first.",
-    "24 to 72 hours of early warning means time to act: protect a harvest, "
-    "move livestock, evacuate, or pre-position aid.",
+    "Timely information means time to act: protect a harvest, move livestock, "
+    "or pre-position aid.",
 ], lead="Technology only matters if it reaches the person in the field.")
 c.showPage()
 

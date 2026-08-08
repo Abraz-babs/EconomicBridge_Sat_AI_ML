@@ -77,7 +77,7 @@ story = [
         "states + FCT + 15 ECOWAS countries) with 10 pilot tenants live "
         "today, spanning over 700 LGAs/districts across Nigeria, Ghana and "
         "Senegal. Seven intelligence modules convert satellite and open "
-        "statistical data into 24–72-hour early warnings and decision-grade "
+        "statistical data into continuous monitoring and decision-grade "
         "reporting. The dashboard is open-access for situational awareness; "
         "institutional features are invite-gated per tenant.", BODY),
 
@@ -104,7 +104,7 @@ story = [
          "(24–72 h)", "Sentinel-1 SAR, NASA FIRMS, ML conflict model"],
         ["CropGuard", "Crop-disease diagnosis + vegetation &amp; price "
          "intelligence", "Leaf imagery (ResNet-50), Sentinel-2 NDVI, market prices"],
-        ["ShockGuard", "Flood / drought detection and alerting",
+        ["ShockGuard", "Flood / drought MONITORING and alerting",
          "Sentinel-1 SAR series, statistical detectors"],
         ["Mobility Compass", "Income &amp; cost-of-living, displacement capacity",
          "World Bank GNI/employment (USD-anchored, dual-currency)"],
@@ -134,9 +134,9 @@ story = [
         ["Model", "Purpose", "Status"],
         ["ResNet-50 (12-class)", "Crop-disease classification from leaf "
          "imagery; top-k output, confidence bands, human-review gating",
-         "Fine-tuned; 87.2% validation accuracy; serving in production"],
+         "Fine-tuned on laboratory imagery; field accuracy not yet established"],
         ["Random Forest", "Conflict prediction 24–72 h (lineage: our earlier "
-         "state security-intelligence build)", "Proven pattern, retrained per pilot"],
+         "state security-intelligence build)", "Design intent; not validated against recorded incidents"],
         ["Statistical detectors", "Flood (SAR z-scores) and NDVI anomaly on "
          "live Sentinel series", "Running on live Copernicus data"],
     ], [40, 78, 52]),
