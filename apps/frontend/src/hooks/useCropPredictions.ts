@@ -74,6 +74,9 @@ export interface CropPredictionRow {
   predicted_class: string | null;
   abstained: boolean;
   abstain_reason: string | null;
+  /** How `location` was derived. "lga_centroid" is the centre of the tagged
+   *  LGA — the right administrative unit, NOT the farm. */
+  location_source: 'gps' | 'lga_centroid' | 'none';
   prediction: number;
   confidence: number;
   confidence_band: 'HIGH' | 'MEDIUM' | 'LOW';

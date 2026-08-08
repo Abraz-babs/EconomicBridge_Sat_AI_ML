@@ -19,36 +19,9 @@ function colourFor(row: CropPredictionRow): [number, number, number, number] {
 }
 
 
-function hashString(s: string): number {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h);
-}
-
-/**
- * Deterministic position fallback when a prediction row has no lat/lon
- * attached. Jitter is hashed from the prediction id so the same row
- * always lands at the same fake-coord. Marked clearly via
- * `synthetic_location` in the consumer.
- */
-function syntheticPosition(
-  id: string,
-  centroid: [number, number],
-): [number, number] {
-  const h = hashString(id);
-  const angle = ((h % 360) * Math.PI) / 180;
-  const radius = 0.25 + ((h >> 8) % 60) / 100;  // 0.25..0.85 degrees
-  return [
-    centroid[0] + Math.cos(angle) * radius,
-    centroid[1] + Math.sin(angle) * radius * 0.85,
-  ];
-}
-
-
 export interface PositionedPrediction extends CropPredictionRow {
-  /** Always set — real coords when row carries them, synthesised otherwise. */
+  /** From the API: GPS when the photo carried it, else the tagged LGA's
+   *  true centroid. Rows the API could not place are never in this list. */
   position: [number, number];
   synthetic_location: boolean;
 }
@@ -96,22 +69,22 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
     // Geography map would invent a finding out of the model declining to make
     // one. Excluding at the source also keeps every downstream helper able to
     // assume a class is present.
-    () => predictions.filter((row) => !row.abstained && row.predicted_class).map((row) => {
-      const realCoord = row.location;
-      if (realCoord) {
-        return {
-          ...row,
-          position: [realCoord.lon, realCoord.lat],
-          synthetic_location: false,
-        };
-      }
-      return {
+    // The API now supplies the position: real GPS when the photo carried it,
+    // otherwise the true centroid of the LGA the operator tagged, with
+    // `location_source` saying which. The old client-side fallback scattered
+    // pins 28-95 km from the STATE centroid at a hashed bearing, which put
+    // them in the wrong LGA and sometimes outside the state.
+    //
+    // A row the API could not place at all is DROPPED rather than invented —
+    // an unplaceable diagnosis on a map is worse than one absent from it.
+    () => predictions
+      .filter((row) => !row.abstained && row.predicted_class && row.location)
+      .map((row) => ({
         ...row,
-        position: syntheticPosition(row.id, tenant.centroid),
-        synthetic_location: true,
-      };
-    }),
-    [predictions, tenant.centroid],
+        position: [row.location!.lon, row.location!.lat] as [number, number],
+        synthetic_location: row.location_source !== 'gps',
+      })),
+    [predictions],
   );
 
   // deck.gl layer classes are code-split — load them ONCE, not on every

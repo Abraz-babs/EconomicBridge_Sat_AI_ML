@@ -52,6 +52,11 @@ class CropPredictionRow(BaseModel):
     image_source: ImageSource
     image_s3_key: str | None
     image_s3_bucket: str | None
+    # How `location` was arrived at: "gps" (the photo carried it),
+    # "lga_centroid" (the centre of the LGA the operator tagged — inside the
+    # right unit, not the farm), or "none". The map must never present a
+    # centroid as a surveyed site.
+    location_source: Literal["gps", "lga_centroid", "none"] = "none"
 
     # Field/farm point when the caller attached one — drives the map marker.
     # Null for uploads with no GPS (map then synthesises a position).

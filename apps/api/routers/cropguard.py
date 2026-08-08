@@ -96,7 +96,7 @@ async def list_predictions(
         int, Query(ge=1, le=100, description="Max rows to return (default 10).")
     ] = 10,
 ) -> SuccessResponse[CropPredictionListData]:
-    _require_tenant(request)
+    tenant_id = _require_tenant(request)
 
     result = await session.execute(
         text(
@@ -128,7 +128,7 @@ async def list_predictions(
     )
     rows = result.mappings().all()
 
-    predictions = [_row_to_response(dict(r)) for r in rows]
+    predictions = [_row_to_response(dict(r), tenant_id) for r in rows]
     return SuccessResponse(
         data=CropPredictionListData(predictions=predictions),
         meta=ResponseMeta(
@@ -140,7 +140,34 @@ async def list_predictions(
     )
 
 
-def _row_to_response(row: dict) -> CropPredictionRow:
+def _location_for(row: dict, tenant_id: str | None) -> LonLat | None:
+    """Real GPS if the photo had it, else the tagged LGA's true centroid."""
+    if row.get("lon") is not None and row.get("lat") is not None:
+        return LonLat(lon=float(row["lon"]), lat=float(row["lat"]))
+    lga = row.get("lga")
+    if tenant_id and lga:
+        try:
+            lon, lat = lga_geo.centroid_for(tenant_id, lga)
+        except KeyError:
+            return None      # unknown LGA name — no position beats a wrong one
+        return LonLat(lon=lon, lat=lat)
+    return None
+
+
+def _location_source(row: dict, tenant_id: str | None) -> str:
+    """How the coordinates were arrived at, so the UI never implies a survey."""
+    if row.get("lon") is not None and row.get("lat") is not None:
+        return "gps"
+    if tenant_id and row.get("lga"):
+        try:
+            lga_geo.centroid_for(tenant_id, row["lga"])
+        except KeyError:
+            return "none"
+        return "lga_centroid"
+    return "none"
+
+
+def _row_to_response(row: dict, tenant_id: str | None = None) -> CropPredictionRow:
     """Map a raw mapping from `crop_predictions` to its Pydantic shape.
 
     `top_k` rides through Postgres as JSONB; asyncpg/SQLAlchemy hands us
@@ -168,11 +195,18 @@ def _row_to_response(row: dict) -> CropPredictionRow:
         image_source=row["image_source"],
         image_s3_key=row.get("image_s3_key"),
         image_s3_bucket=row.get("image_s3_bucket"),
-        location=(
-            LonLat(lon=float(row["lon"]), lat=float(row["lat"]))
-            if row.get("lon") is not None and row.get("lat") is not None
-            else None
-        ),
+        # A leaf photo usually carries no GPS, and the map still has to put the
+        # pin somewhere. It used to be placed by the FRONTEND at a hashed
+        # bearing 0.25-0.85 degrees (28-95 km) from the STATE centroid, which
+        # scattered pins across neighbouring LGAs and sometimes out of the state
+        # entirely — an authority reading the halo was sent to the wrong place.
+        #
+        # We hold 447 real geoBoundaries LGA centroids, so use the centroid of
+        # the LGA the operator actually tagged. Still not the farm, and the
+        # response says so via `location_source`; but it is inside the right
+        # administrative unit, which is the claim the map is making.
+        location=_location_for(row, tenant_id),
+        location_source=_location_source(row, tenant_id),
         lga=row.get("lga"),
         zone_name=row.get("zone_name"),
         model_name=row["model_name"],
