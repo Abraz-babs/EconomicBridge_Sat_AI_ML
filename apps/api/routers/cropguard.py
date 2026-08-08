@@ -12,6 +12,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -118,6 +119,7 @@ async def list_predictions(
              -- pattern is bound, not inlined, so no %-escaping ambiguity
              -- between the asyncpg and psycopg paramstyles.
              WHERE COALESCE(model_version, '') NOT LIKE :seed_pattern
+               AND NOT is_deleted
              ORDER BY created_at DESC
              LIMIT :limit
             """
@@ -331,3 +333,37 @@ async def list_yield_forecasts(
             pagination=None,
         ),
     )
+
+
+@router.delete(
+    "/predictions/{prediction_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove a diagnosis from the feed (soft delete)",
+)
+async def delete_prediction(
+    prediction_id: UUID,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    """Retire a test upload or a mistaken photo from the operator's view.
+
+    Soft delete (CLAUDE.md §4.4): the row is flagged, never destroyed. That
+    matters more here than elsewhere — an abstention records an image the model
+    could not handle, which is exactly the retraining material we need.
+    Removing it from the feed must not remove it from the evidence.
+    """
+    _require_tenant(request)
+    result = await session.execute(
+        text(
+            "UPDATE crop_predictions SET is_deleted = TRUE "
+            "WHERE id = :id AND NOT is_deleted"
+        ),
+        {"id": prediction_id},
+    )
+    if result.rowcount == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Prediction not found",
+        )
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

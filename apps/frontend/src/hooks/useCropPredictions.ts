@@ -296,3 +296,26 @@ export function usePredictCropDiseaseTiled(
     },
   });
 }
+
+
+/**
+ * Retire a diagnosis from the feed. SOFT delete server-side — the row is
+ * flagged, not destroyed, so an abstention still counts as evidence of an image
+ * the model could not handle even after the operator clears it from view.
+ */
+export function useDeletePrediction(
+  tenantId: string,
+): UseMutationResult<void, ApiException, string> {
+  const qc = useQueryClient();
+  return useMutation<void, ApiException, string>({
+    mutationFn: async (predictionId) => {
+      await apiFetch<void>(`/cropguard/predictions/${predictionId}`, {
+        method: 'DELETE',
+        tenantId,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['crop-predictions', tenantId] });
+    },
+  });
+}

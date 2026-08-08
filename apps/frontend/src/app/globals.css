@@ -3045,3 +3045,22 @@ nav::-webkit-scrollbar {
 .srep-email { font-size: 0.74rem; color: var(--ink2); max-width: 20ch; overflow: hidden; text-overflow: ellipsis; }
 
 .fp-map-overlay__muted { color: var(--dim, #b0aa9f); font-style: italic; }
+
+/* ── CropGuard recent-predictions: collapse + per-row removal ───────────── */
+.cg-section-toggle {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  background: none; border: 0; cursor: pointer; text-align: left; font: inherit;
+}
+.cg-caret { color: var(--muted); font-size: 10px; flex: 0 0 auto; }
+/* Pushed to the right edge and quiet until hovered — removal is occasional
+   housekeeping, not a primary action competing with reading the feed. */
+.cg-recent-remove {
+  margin-left: auto; flex: 0 0 auto;
+  width: 20px; height: 20px; line-height: 1; padding: 0; cursor: pointer;
+  border: 1px solid transparent; border-radius: 4px;
+  background: none; color: var(--muted); font-size: 15px;
+}
+.cg-recent-remove:hover:not(:disabled) {
+  border-color: #e05a2b; color: #e05a2b; background: rgba(224,90,43,0.08);
+}
+.cg-recent-remove:disabled { opacity: 0.4; cursor: default; }

@@ -7,6 +7,7 @@ import {
   fileToBase64,
   useCropModelInfo,
   useCropPredictions,
+  useDeletePrediction,
   usePredictCropDisease,
   usePredictCropDiseaseTiled,
   useTenantLgas,
@@ -105,6 +106,11 @@ export default function CropGuardPanel() {
 
   const lgasQuery = useTenantLgas(activeTenantId);
   const recentQuery = useCropPredictions({ tenantId: activeTenantId, limit: 10 });
+  // Collapsed state is local and defaults open — the feed is the panel's
+  // point; it just gets long while testing.
+  const [recentOpen, setRecentOpen] = useState(true);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const del = useDeletePrediction(activeTenantId);
   const recent = useMemo(
     () => recentQuery.data?.predictions ?? [],
     [recentQuery.data],
@@ -431,10 +437,17 @@ export default function CropGuardPanel() {
 
         {/* RIGHT: RECENT FEED */}
         <div className="cg-recent-col">
-          <div className="cg-section-header">
+          <button
+            type="button"
+            className="cg-section-header cg-section-toggle"
+            aria-expanded={recentOpen}
+            onClick={() => setRecentOpen((v) => !v)}
+          >
+            <span className="cg-caret" aria-hidden="true">{recentOpen ? '▾' : '▸'}</span>
             Recent predictions — {stateLabel}
             <span className="fp-alert-count">{recent.length}</span>
-          </div>
+          </button>
+          {recentOpen && (<>
           {recentQuery.isLoading && (
             <div className="fp-alert-empty">Loading recent predictions…</div>
           )}
@@ -448,7 +461,17 @@ export default function CropGuardPanel() {
               No predictions yet for {stateLabel}. Upload a leaf photo to populate the feed.
             </div>
           )}
-          {recent.map((row) => <RecentRow key={row.id} row={row} />)}
+          {recent.map((row) => (
+            <RecentRow
+              key={row.id}
+              row={row}
+              deleting={removing === row.id}
+              onDelete={(id) => { setRemoving(id); del.mutate(id, {
+                onSettled: () => setRemoving(null),
+              }); }}
+            />
+          ))}
+          </>)}
         </div>
       </div>
 
@@ -613,7 +636,11 @@ function TileCell({ tile, cols }: { tile: TileResult; cols: number }) {
 }
 
 
-function RecentRow({ row }: { row: CropPredictionRow }) {
+function RecentRow({ row, onDelete, deleting }: {
+  row: CropPredictionRow;
+  onDelete: (id: string) => void;
+  deleting: boolean;
+}) {
   // An abstention is neither healthy nor diseased — it is the model saying it
   // could not tell. Showing a confidence band beside it would imply a hidden
   // verdict, so the band is dropped too.
@@ -631,11 +658,25 @@ function RecentRow({ row }: { row: CropPredictionRow }) {
         {!abstained && (
           <span className={bandClass(row.confidence_band)}>{row.confidence_band}</span>
         )}
+        <button
+          type="button"
+          className="cg-recent-remove"
+          title="Remove from this feed (the record is retained for audit)"
+          aria-label="Remove diagnosis"
+          disabled={deleting}
+          onClick={() => onDelete(row.id)}
+        >
+          ×
+        </button>
       </div>
       <div className="cg-recent-meta">
-        {Math.round(row.confidence * 100)}% confidence · {relativeAge(row.created_at)} ·{' '}
-        {row.model_version}
-        {row.requires_human_review && <span className="cg-review-flag"> · review</span>}
+        {/* No percentage on an abstention. The model declined; "55% confidence"
+            beside "Not identified" reads as a verdict being withheld. */}
+        {!abstained && `${Math.round(row.confidence * 100)}% confidence · `}
+        {relativeAge(row.created_at)} · {row.model_version}
+        {!abstained && row.requires_human_review && (
+          <span className="cg-review-flag"> · review</span>
+        )}
       </div>
       {(row.lga || row.zone_name) && (
         <div className="cg-recent-meta">
