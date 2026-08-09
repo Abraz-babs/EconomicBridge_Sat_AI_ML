@@ -36,6 +36,13 @@ class TrainConfig:
     seed: int = DEFAULT_SEED
     unfreeze_backbone: bool = False
     num_workers: int = 2
+    # Explicit validation directory. When set, `data_dir` is used ENTIRELY for
+    # training and this is the validation set — no random_split. That split is
+    # the whole point: the old trainer validated on a random slice of the same
+    # pooled laboratory images, so 0.872 measured in-domain memorisation and
+    # said nothing about a field photo. Point this at CCMT field imagery and
+    # the reported accuracy is field accuracy.
+    val_dir: Path | None = None
     tiny: bool = False  # tiny mode = fewer steps + synthetic-OK
 
 
@@ -144,28 +151,90 @@ def train_model(config: TrainConfig) -> TrainResult:
     seed_everything(config.seed)
     discover_class_dirs(config.data_dir, CROP_CLASSES)
 
-    transform = transforms.Compose([
+    # Deterministic pipeline for EVALUATION only.
+    eval_transform = transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize(mean=list(IMAGENET_MEAN), std=list(IMAGENET_STD)),
     ])
 
-    full = datasets.ImageFolder(str(config.data_dir), transform=transform)
-    classes_seen = full.classes  # alphabetical, set by torchvision
+    # Training augmentation, aimed at the THREE shifts measured between
+    # laboratory and field imagery (saturation d=3.90, border edge density
+    # d=3.33, foreground occupancy d=2.48):
+    #   * RandomResizedCrop over a wide scale range — a lab leaf fills the
+    #     frame, a field leaf does not. CenterCrop(224) alone taught the model
+    #     to expect a centred, frame-filling subject.
+    #   * ColorJitter — saturation/brightness/contrast separate the domains
+    #     more than any other single statistic.
+    #   * Flips and rotation — a detached lab leaf is always presented upright.
+    train_transform = transforms.Compose([
+        transforms.RandomResizedCrop(224, scale=(0.35, 1.0), ratio=(0.75, 1.33)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(p=0.2),
+        transforms.RandomRotation(25),
+        transforms.ColorJitter(brightness=0.35, contrast=0.35,
+                               saturation=0.45, hue=0.03),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=list(IMAGENET_MEAN), std=list(IMAGENET_STD)),
+    ])
+    transform = eval_transform
 
-    val_size = max(1, int(len(full) * config.val_fraction))
-    train_size = len(full) - val_size
-    if train_size <= 0:
-        raise RuntimeError(
-            f"Dataset too small: {len(full)} samples; can't split "
-            f"into train ({train_size}) + val ({val_size})."
+    if config.val_dir is not None:
+        # Explicit, source-held-out split. Train and validation come from
+        # DIFFERENT image sets by construction, so the reported accuracy
+        # cannot be inflated by having seen the picture before.
+        train_set = datasets.ImageFolder(str(config.data_dir),
+                                         transform=train_transform)
+        val_set = datasets.ImageFolder(str(config.val_dir),
+                                       transform=eval_transform)
+        classes_seen = train_set.classes
+        missing = set(val_set.classes) - set(classes_seen)
+        if missing:
+            raise RuntimeError(
+                f"Validation has classes absent from training: {sorted(missing)}"
+            )
+
+        # ImageFolder numbers classes ALPHABETICALLY PER DIRECTORY, so a
+        # validation set holding a SUBSET of the classes gets a different
+        # index for the same name: with 12 training classes and 5 validation
+        # classes, val index 0 (cassava_healthy) was being scored against
+        # model output 0 (cassava_brown_streak). Every label was compared to
+        # the wrong class and the run reported val_acc=0.009 — worse than the
+        # 1/12 you would get by guessing, which is the tell.
+        #
+        # Remap validation targets onto the TRAINING index space. Checking
+        # that the class NAMES are present is not enough; the numbering has to
+        # agree too.
+        if val_set.classes != classes_seen:
+            remap = {v_idx: classes_seen.index(name)
+                     for v_idx, name in enumerate(val_set.classes)}
+            val_set.samples = [(path, remap[t]) for path, t in val_set.samples]
+            val_set.targets = [remap[t] for t in val_set.targets]
+            val_set.classes = list(classes_seen)
+            val_set.class_to_idx = {n: i for i, n in enumerate(classes_seen)}
+            log.info(
+                "validation covers %d of %d classes — targets remapped onto "
+                "the training index space; accuracy describes those classes "
+                "only, not the full set",
+                len(remap), len(classes_seen),
+            )
+    else:
+        full = datasets.ImageFolder(str(config.data_dir), transform=transform)
+        classes_seen = full.classes  # alphabetical, set by torchvision
+
+        val_size = max(1, int(len(full) * config.val_fraction))
+        train_size = len(full) - val_size
+        if train_size <= 0:
+            raise RuntimeError(
+                f"Dataset too small: {len(full)} samples; can't split "
+                f"into train ({train_size}) + val ({val_size})."
+            )
+
+        generator = torch.Generator().manual_seed(config.seed)
+        train_set, val_set = random_split(
+            full, [train_size, val_size], generator=generator,
         )
-
-    generator = torch.Generator().manual_seed(config.seed)
-    train_set, val_set = random_split(
-        full, [train_size, val_size], generator=generator,
-    )
     train_loader = DataLoader(
         train_set, batch_size=config.batch_size, shuffle=True,
         num_workers=config.num_workers,

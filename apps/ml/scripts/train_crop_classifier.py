@@ -72,6 +72,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--output", type=Path, default=None,
         help="Where to save the .pth (default: apps/ml/artifacts/crop_classifier.pth).",
     )
+    p.add_argument(
+        "--val-dir", type=Path, default=None,
+        help=(
+            "Explicit validation directory. When given, --data-dir is used "
+            "entirely for training and NO random split happens. Point this at "
+            "field imagery to make the reported accuracy a field number."
+        ),
+    )
     p.add_argument("--epochs", type=int, default=DEFAULT_EPOCHS)
     p.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     p.add_argument("--learning-rate", type=float, default=DEFAULT_LR)
@@ -98,6 +106,7 @@ def config_from_args(args: argparse.Namespace) -> TrainConfig:
         output = ML_ROOT / "artifacts" / "crop_classifier.pth"
     return TrainConfig(
         data_dir=args.data_dir,
+        val_dir=args.val_dir,
         output_path=output,
         epochs=args.epochs,
         batch_size=args.batch_size,
