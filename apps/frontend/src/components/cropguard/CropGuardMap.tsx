@@ -19,6 +19,16 @@ function colourFor(row: CropPredictionRow): [number, number, number, number] {
 }
 
 
+/** Halo ring colour — the pin's severity ramp at ring alpha, so the pulsing
+ *  ring and the dot it surrounds always agree about how bad this is. */
+function haloColourFor(
+  p: PositionedPrediction,
+): [number, number, number, number] {
+  const [r, g, b] = colourFor(p);
+  return [r, g, b, 70];
+}
+
+
 export interface PositionedPrediction extends CropPredictionRow {
   /** From the API: GPS when the photo carried it, else the tagged LGA's
    *  true centroid. Rows the API could not place are never in this list. */
@@ -128,9 +138,14 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
     () => positioned.filter((p) => !(p.predicted_class ?? '').endsWith('_healthy')),
     [positioned],
   );
+  // Halo = "look here". A HEALTHY result is not something to look at, so the
+  // shared helper's top-N fallback is fed only the diseased rows: if nothing is
+  // diseased, nothing pulses, rather than ringing the three least-healthy
+  // healthy leaves. That fallback is why a clean state still showed a pulsing
+  // ring, which reads as an alert that does not exist.
   const pulseRows = useMemo(
-    () => haloRows(positioned, isHighSeverity, severityFor),
-    [positioned],
+    () => haloRows(diseasePoints, isHighSeverity, severityFor),
+    [diseasePoints],
   );
 
   const layers = useMemo<unknown[]>(() => {
@@ -154,15 +169,19 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
           [255, 69, 0],
         ],
       }),
-      // Pulse halo on high-severity disease — the ONLY layer whose accessor
-      // rides the heartbeat (cheap: a few rows, pixel-radius only).
+      // Pulse halo — the ONLY layer whose accessor rides the heartbeat
+      // (cheap: a few rows, pixel-radius only).
       new ScatterplotLayer<PositionedPrediction>({
         id: 'cropguard-pulse',
         data: pulseRows,
         getPosition: (p) => p.position,
         // Uniform pixel-pulse halo (Slice 25 fix): matches Poverty.
         getRadius: () => haloRadiusPx(pulse),
-        getFillColor: [255, 69, 0, 40],
+        // Severity ramp, not a fixed colour. The ring was hard-coded
+        // [255,69,0] whatever the finding, so a mild case pulsed the same
+        // red as a critical one and the legend beside it was decorative.
+        // Same ramp as the pin, at ring alpha.
+        getFillColor: (p) => haloColourFor(p),
         radiusUnits: 'pixels',
         stroked: false,
         // Pickable so hovering the halo ring (not just the centre pin)

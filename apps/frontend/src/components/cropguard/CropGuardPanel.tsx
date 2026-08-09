@@ -115,6 +115,14 @@ export default function CropGuardPanel() {
     () => recentQuery.data?.predictions ?? [],
     [recentQuery.data],
   );
+  // What the map can actually draw: a diagnosis it stands behind, somewhere it
+  // can place. Everything else is reported as "not shown" rather than silently
+  // dropped — an empty map with a count above it looks broken.
+  const plottedCount = useMemo(
+    () => recent.filter((r) => !r.abstained && r.predicted_class && r.location).length,
+    [recent],
+  );
+  const unplottedCount = recent.length - plottedCount;
   const modelInfo = useCropModelInfo();
 
   const predictMutation = usePredictCropDisease(activeTenantId);
@@ -277,9 +285,18 @@ export default function CropGuardPanel() {
             {/* Leaf photos only — this map carries NO satellite layer. The
                 statewide per-LGA Sentinel-2 coverage is the Crop Health map
                 below; claiming Sentinel-2 here read as missing LGA coverage. */}
-            {recent.length} leaf-photo diagnos{recent.length === 1 ? 'is' : 'es'} ·
-            Source: ResNet-50 on uploaded photos · one pin per upload, not a
-            statewide scan — see Statewide Crop Health below for every LGA
+            {/* Count what is PLOTTED, and say what is not. The header used to
+                report every recent row while the map drew only the ones it
+                could place and diagnose, so "9 diagnoses" sat above an empty
+                map with no explanation — which reads as a broken map rather
+                than an honest one. */}
+            {plottedCount} plotted · Source: ResNet-50 on uploaded photos · one
+            pin per upload, not a statewide scan — see Statewide Crop Health
+            below for every LGA
+            {unplottedCount > 0 && (
+              <> · {unplottedCount} not shown (the model could not identify
+                them, or they carry no location)</>
+            )}
           </span>
         </div>
         <CropGuardMap tenant={activeTenant} predictions={recent} />
