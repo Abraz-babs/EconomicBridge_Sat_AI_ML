@@ -67,7 +67,8 @@ def main() -> int:
     if args.add:
         num = normalise(args.add)
         if not E164.match(num):
-            print(f"'{args.add}' -> '{num}' is not valid E.164"); return 1
+            print(f"'{args.add}' -> '{num}' is not valid E.164")
+            return 1
         print(f"adding {num} ...")
         rc, out = aws("sns", "create-sms-sandbox-phone-number",
                       "--phone-number", num, "--language-code", "en-US")
