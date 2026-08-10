@@ -195,6 +195,42 @@ async def _insert(
     })
 
 
+async def _record_history(
+    session: AsyncSession, *, tenant: str, lga: str, lon: float, lat: float,
+    sig: RainstormSignal, observed: date,
+) -> None:
+    """Append the advisory to the permanent record.
+
+    `_replace_prior` deletes the live rows on every scan, so without this an
+    advisory stops existing the moment it is superseded — no way to show an
+    insurer what was advised, no anchor for an SMS delivery log, and a quiet
+    day makes the platform look inert. Migration 0042.
+
+    ON CONFLICT DO NOTHING against (lga, observed_date): a re-run must not
+    double-count the same rainfall in what is meant to be evidence.
+    """
+    metrics = dict(sig.as_metrics())
+    metrics["observed_date"] = observed.isoformat()
+    await session.execute(text("""
+        INSERT INTO rainfall_advisory_history (
+            tenant_id, lga, lon, lat, severity, confidence, confidence_band,
+            observed_date, rain_mm_day, lga_p99_wet_day_mm,
+            percentile_in_lga, metrics, detector_version
+        ) VALUES (
+            :tenant_id, :lga, :lon, :lat, :severity, :confidence, :band,
+            :observed, :rain_mm, :p99, :pct, CAST(:metrics AS JSONB), :dver
+        )
+        ON CONFLICT (lga, observed_date) DO NOTHING
+    """), {
+        "tenant_id": tenant, "lga": lga, "lon": lon, "lat": lat,
+        "severity": sig.severity, "confidence": sig.confidence,
+        "band": sig.confidence_band, "observed": observed,
+        "rain_mm": sig.rain_mm, "p99": sig.threshold_mm,
+        "pct": sig.percentile, "metrics": json.dumps(metrics),
+        "dver": DETECTOR_VERSION,
+    })
+
+
 async def _record_run(
     session: AsyncSession, *, tenant: str, written: int,
     started_at: datetime, trigger: str, error: str | None = None,
@@ -300,6 +336,15 @@ async def scan_tenant(
             continue
         await _insert(session, tenant=tenant, lga=g["lga"], lon=g["lon"],
                       lat=g["lat"], sig=sig, observed=series[-1].day)
+        # Permanent record alongside the live row. Failing to archive must not
+        # cost the operator the advisory itself, so this never breaks the scan.
+        try:
+            await _record_history(session, tenant=tenant, lga=g["lga"],
+                                  lon=g["lon"], lat=g["lat"], sig=sig,
+                                  observed=series[-1].day)
+        except Exception as exc:            # noqa: BLE001
+            log.warning("advisory history write skipped %s/%s: %r",
+                        tenant, g["lga"], exc)
         written += 1
 
     await _record_run(session, tenant=tenant, written=written,
