@@ -541,7 +541,9 @@ async def _nightlight_by_point(
             points, day=anchor - timedelta(days=VIIRS_BASELINE_LAG_DAYS),
             max_lookback_days=12, **kw)
     except Exception as exc:  # noqa: BLE001 — VIIRS optional, never fail the sweep
-        log.warning("encroachment nightlight sample failed: %s", exc)
+        # %r — a bare `except Exception` can catch an httpx timeout, whose
+        # str() is empty. See the note in tasks/rainstorm_scan.py.
+        log.warning("encroachment nightlight sample failed: %r", exc)
         return {}
     out: dict[tuple[float, float], float] = {}
     for pt in points:
@@ -605,7 +607,7 @@ async def _write_crop_health(
                 "health": health, "verdict": verdict,
             })
     except Exception as exc:  # noqa: BLE001 — never break the sweep on crop_health
-        log.warning("crop_health write skipped tenant=%s lga=%s: %s", tenant, lga, exc)
+        log.warning("crop_health write skipped tenant=%s lga=%s: %r", tenant, lga, exc)
 
 
 async def detect_per_lga_for_tenant(

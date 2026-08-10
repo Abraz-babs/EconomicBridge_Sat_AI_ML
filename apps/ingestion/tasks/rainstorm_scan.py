@@ -244,7 +244,12 @@ async def fetch_region_window(
         except ImergAuthError:
             raise
         except Exception as exc:            # noqa: BLE001 — one bad day
-            log.warning("imerg region %s %s skipped: %s", region, day, exc)
+            # %r, NOT %s. httpx timeout exceptions stringify to the EMPTY
+            # STRING — str(ReadTimeout('')) == '' — so this line once logged
+            # "imerg region nigeria 2024-09-30 skipped: " sixty-eight times in
+            # a row and told an operator nothing at all about why. repr() keeps
+            # the class name when there is no message: ReadTimeout('').
+            log.warning("imerg region %s %s skipped: %r", region, day, exc)
             consecutive_failures += 1
             if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                 log.error(
@@ -367,7 +372,7 @@ async def run(
                 await session.rollback()
                 raise
             except Exception as exc:            # noqa: BLE001 — one bad tenant
-                log.exception("rainfall scan failed for %s: %s", tenant, exc)
+                log.exception("rainfall scan failed for %s: %r", tenant, exc)
                 await session.rollback()
                 results[tenant] = 0
         await session.commit()
