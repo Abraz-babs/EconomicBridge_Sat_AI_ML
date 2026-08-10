@@ -121,6 +121,12 @@ apps/ml/artifacts/*.h5
 # CropGuard training data — large image corpora, never committed (operator-local).
 apps/ml/.plantvillage_src/
 data/cropguard/
+# Generated/derived training sets. These run to tens of thousands of image
+# files; untracked, every one of them shows up individually in the IDE's
+# source-control view. Training data is never committed — keep any new
+# data/ subdirectory ignored here as soon as it is created.
+data/cropguard_v2/
+data/cropguard_v2_corrupt/
 !apps/ml/artifacts/.gitkeep
 
 # ─────────────────────────────────────────
