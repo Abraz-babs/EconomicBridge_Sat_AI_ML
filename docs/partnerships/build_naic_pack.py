@@ -114,14 +114,27 @@ lpara("1. Claims verification. Radar satellites see flood extent through cloud, 
 lpara("2. Underwriting. Our archive of satellite observations from 2023 to date, covering more than "
       "31,000 monthly readings across 447 LGAs, supports pre season risk zoning: flood prone and "
       "drought frequency profiles at LGA resolution for premium and exposure decisions.", before=8)
-lpara("3. Portfolio oversight. Autonomous daily satellite scans raise flood, drought and land "
-      "disturbance alerts through the season, delivered by dashboard and scheduled email digests to "
-      "your operations desk.", before=8)
-lpara("We would welcome the opportunity to demonstrate the platform to your technical team, including a "
-      "retrospective analysis over a state and season of your choosing from 2023 to 2026, so the "
-      "Corporation can judge the signals against events it already knows. Should the demonstration merit "
-      "it, we propose a one season paid pilot in one or two states, with service levels and data "
-      "protection terms (NDPA 2023) provided in writing.", before=8)
+lpara("3. Portfolio oversight. Autonomous daily satellite scans track vegetation condition, surface "
+      "water and land disturbance through the season, delivered by dashboard and scheduled email "
+      "digests to your operations desk. These are observations with dated provenance, not validated "
+      "loss triggers; see the note on our own backtesting below.", before=8)
+lpara("Before proposing anything to the Corporation we tested ourselves. Against the documented "
+      "September 2024 flooding in Kebbi State, we ran three independent methods over the eleven local "
+      "government areas named in the public record: satellite radar backscatter within the season, the "
+      "same measure year on year, and an exceptional rainfall index. All three failed to identify the "
+      "affected areas, and the rainfall index additionally flagged four upland areas that were not "
+      "flooded. The reason is physical: that flooding was fluvial, driven by rainfall upstream in the "
+      "Niger and Rima catchments and by reservoir operation, and local rainfall over a floodplain is "
+      "not what floods it.", before=8)
+lpara("We report this because an index built on local rainfall would have paid four areas that were "
+      "not affected and nothing to the eleven that were. We would rather the Corporation learn that "
+      "from us than from a claims season.", before=8)
+lpara("We therefore propose a joint validation exercise rather than a demonstration: a retrospective "
+      "analysis over a state and season of the Corporation's choosing from 2023 to 2026, with the "
+      "method fixed in writing before we see the outcome, and the results shared in full whatever they "
+      "show. Should that exercise establish a defensible trigger, we propose a one season paid pilot "
+      "in one or two states, with service levels and data protection terms (NDPA 2023) provided in "
+      "writing.", before=8)
 lpara("Thank you for your consideration. We are at your convenience for a meeting in Abuja.", before=8)
 lpara("Yours faithfully,", before=14)
 lpara("Abdullahi Zuru Ibrahim", font=BODY_B, before=26)
@@ -199,9 +212,11 @@ bpara("LGA level risk zoning before the season: flood prone flags and drought fr
       "computed from our 2023 to 2026 satellite archive (31,000+ monthly radar and vegetation readings "
       "across 447 LGAs). Any additional state can be activated within days.",
       bold_head="1. Underwriting.")
-bpara("autonomous daily satellite scans through the season raise flood, drought and land disturbance "
-      "alerts per LGA, delivered in a dedicated dashboard workspace and scheduled email digests to "
-      "your operations desk. Radar works through cloud, day and night, all wet season.",
+bpara("autonomous daily satellite scans track surface water, vegetation condition and land "
+      "disturbance per LGA, delivered in a dedicated dashboard workspace and scheduled email digests "
+      "to your operations desk. Radar works through cloud, day and night, all wet season. These are "
+      "dated observations with per pass provenance, not validated loss triggers - see WHAT WE DO NOT "
+      "CLAIM.",
       bold_head="2. In-season monitoring.")
 bpara("radar flood extent within days of an event, before any field visit; vegetation decline "
       "corroboration for drought claims; and per farm verification of individual insured plots, "
@@ -217,11 +232,15 @@ bpara("isolated tenant workspace, role based access, audit logged queries, NDPA 
       bold_head="5. Enterprise delivery.")
 
 section("WHAT WE DO NOT CLAIM", accent=AMBER)
-bpara("We state limits plainly because verification businesses live on credibility. We do not forecast "
-      "yields without locally calibrated data. Reference imagery shown for context is labelled as such "
-      "and is never presented as detection evidence; detection comes from Copernicus and NASA sensors "
-      "with per pass provenance. Model outputs carry published confidence and route to human review. "
-      "Every claim in this brief can be checked live at economicbridge.org.")
+bpara("We state limits plainly because verification businesses live on credibility. WE DO NOT HAVE A "
+      "VALIDATED FLOOD TRIGGER. Tested against the documented September 2024 Kebbi flooding, three "
+      "independent methods each identified none of the eleven affected local government areas; a local "
+      "rainfall index also flagged four unaffected upland areas. Our leaf photograph diagnosis is "
+      "validated on laboratory imagery and is unreliable on photographs taken in a field, where it "
+      "declines to answer rather than guess. We do not forecast yields without locally calibrated data. "
+      "Reference imagery shown for context is labelled as such and is never presented as detection "
+      "evidence. Model outputs carry published confidence and route to human review. Every claim in "
+      "this brief can be checked live at economicbridge.org.")
 
 section("PROPOSED ENGAGEMENT")
 bpara("technical briefing and live demonstration in Abuja, including a retrospective analysis over a "
