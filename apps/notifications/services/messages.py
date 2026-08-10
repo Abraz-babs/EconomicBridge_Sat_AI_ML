@@ -201,3 +201,106 @@ def should_dispatch(
     if alert_types and incoming_alert_type not in alert_types:
         return False
     return True
+
+
+# ─── Farmer advisories ────────────────────────────────────────────────────
+#
+# Separate from _PHRASES above, on purpose. That pack assembles a fragment
+# format built for an agency desk — "[CRITICAL] EconomicBridge — Flood alert in
+# X. ETA 48h. 120 ha at risk." A farmer holding a feature phone needs the
+# opposite: no severity shouting, no hectares, no ETA, one observation and one
+# thing to do.
+#
+# Every template states what was OBSERVED and never what is expected. We have no
+# forecasting capability, and a farmer who reads "rain is expected" may delay
+# moving stored grain on a prediction that does not exist behind the message.
+#
+# Hausa reviewed by the operator (native speaker, Kebbi) 2026-08-10, with two
+# phrases adjusted afterwards — see FARMER_HA_PENDING_CONFIRMATION.
+FARMER_ADVISORIES: dict[str, dict[str, str]] = {
+    "en": {
+        "enrolment":
+            "EconomicBridge: you now get free satellite farm advisories for "
+            "{lga}, {state}, from Bizra Farms. About 2-4 msgs a month. "
+            "Reply STOP to opt out.",
+        "rainfall":
+            "EconomicBridge advisory: heavy rain recorded in {lga}, {state}. "
+            "Check low-lying fields and clear drainage channels. "
+            "Reply STOP to opt out.",
+        "fire":
+            "EconomicBridge advisory: fire activity seen near {lga}, {state}. "
+            "Check firebreaks and stored harvest. Reply STOP to opt out.",
+        "crop_stress":
+            "EconomicBridge advisory: crop vigour in {lga}, {state} is below "
+            "normal now. Check fields for pests, disease or dry soil. "
+            "Reply STOP to opt out.",
+        "land_change":
+            "EconomicBridge advisory: unusual land change seen near {lga}, "
+            "{state}. Please inspect your farm boundary when you can. "
+            "Reply STOP to opt out.",
+    },
+    "ha": {
+        "enrolment":
+            "EconomicBridge: yanzu kuna samun shawarwarin noma na tauraron dan "
+            "adam kyauta a {lga}, {state}, daga Bizra Farms. Sako 2-4 a wata. "
+            "Aika STOP don dainawa.",
+        # "an yi" (rain FELL), not "ana tsammanin" (rain is EXPECTED). The
+        # advisory fires on rainfall already measured; we cannot forecast.
+        "rainfall":
+            "Shawarar EconomicBridge: an yi ruwan sama mai yawa a {lga}, "
+            "{state}. Ku duba gonakin kwarai, ku share magudanan ruwa. "
+            "Aika STOP don dainawa.",
+        "fire":
+            "Shawarar EconomicBridge: an hango alamar wutar daji kusa da "
+            "{lga}, {state}. Ku duba shingen wuta da amfanin gonar da kuka "
+            "ajiye. Aika STOP don dainawa.",
+        "crop_stress":
+            "Shawarar EconomicBridge: lafiyar amfanin gona a {lga}, {state} ya "
+            "ragu a yanzu. Ku duba gonaki don kwari, cuta ko kasa mai bushewa. "
+            "Aika STOP don dainawa.",
+        # Shortened: the original ran to 172 characters at the longest LGA
+        # name, which splits into two segments and doubles the cost.
+        "land_change":
+            "Shawarar EconomicBridge: an hango canjin kasa wanda ba a saba samu "
+            "ba kusa da {lga}, {state}. Ku duba iyakar gonarku. "
+            "Aika STOP don dainawa.",
+    },
+}
+
+# The two Hausa phrases changed after the operator's review. Neither is a
+# translation of new content — one fixes tense, one shortens for cost — but a
+# native speaker should confirm both before these reach a real recipient.
+FARMER_HA_PENDING_CONFIRMATION: tuple[str, ...] = ("rainfall", "land_change")
+
+# Alert types that are NOT offered here, and must not be added without evidence:
+#   drought  — the detector has no seasonal awareness; when the rains end,
+#              NDVI falls naturally and it fires on nearly every LGA.
+#   flood    — tested against the documented Sept 2024 Kebbi flooding and
+#              identified none of the eleven affected LGAs.
+#   conflict — the 24-72h prediction has never been validated against recorded
+#              incidents, and a message that moves someone toward or away from
+#              a boundary on an unvalidated signal could get a person hurt.
+FARMER_WITHHELD: tuple[str, ...] = ("drought", "flood", "conflict")
+
+SMS_SINGLE_SEGMENT_CHARS = 160
+
+
+def render_farmer_sms(
+    advisory: str, *, lga: str, state: str, lang: str = "en"
+) -> str:
+    """One farmer-facing SMS. Falls back to English for an unknown language.
+
+    Raises for a withheld advisory type rather than rendering it — the reason
+    each is withheld is in FARMER_WITHHELD, and none should reach a farmer on
+    the strength of a caller passing the wrong string.
+    """
+    if advisory in FARMER_WITHHELD:
+        raise ValueError(
+            f"'{advisory}' is withheld from farmer SMS: see FARMER_WITHHELD "
+            f"in services/messages.py for why"
+        )
+    pack = FARMER_ADVISORIES.get(lang, FARMER_ADVISORIES["en"])
+    template = pack.get(advisory) or FARMER_ADVISORIES["en"].get(advisory)
+    if template is None:
+        raise ValueError(f"unknown farmer advisory type: {advisory!r}")
+    return template.format(lga=lga, state=state)
