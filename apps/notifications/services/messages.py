@@ -49,10 +49,12 @@ _PHRASES: dict[str, dict] = {
         "eta": "ETA {h}h.",
         "area": "{ha} ha at risk.",
         "act_conflict": "Move livestock from boundaries.",
+        "act_rainfall": "Check low-lying fields and drainage.",
         "act_default": "Avoid affected area.",
         "optout": "Reply STOP to opt out.",
         "sev": {"critical": "CRITICAL", "high": "HIGH", "medium": "MEDIUM", "low": "LOW"},
-        "types": {"conflict": "Conflict", "flood": "Flood", "drought": "Drought", "fire": "Fire"},
+        "types": {"conflict": "Conflict", "flood": "Flood", "drought": "Drought", "fire": "Fire",
+                  "rainfall": "Heavy rainfall"},
     },
     "fr": {
         "brand": "EconomicBridge",
@@ -63,7 +65,8 @@ _PHRASES: dict[str, dict] = {
         "act_default": "Evitez la zone touchee.",
         "optout": "Repondez STOP pour vous desabonner.",
         "sev": {"critical": "CRITIQUE", "high": "ELEVE", "medium": "MOYEN", "low": "FAIBLE"},
-        "types": {"conflict": "conflit", "flood": "inondation", "drought": "secheresse", "fire": "incendie"},
+        "types": {"conflict": "conflit", "flood": "inondation", "drought": "secheresse", "fire": "incendie",
+                  "rainfall": "Fortes pluies"},
     },
     "pt": {
         "brand": "EconomicBridge",
@@ -74,7 +77,8 @@ _PHRASES: dict[str, dict] = {
         "act_default": "Evite a area afetada.",
         "optout": "Responda STOP para cancelar.",
         "sev": {"critical": "CRITICO", "high": "ALTO", "medium": "MEDIO", "low": "BAIXO"},
-        "types": {"conflict": "conflito", "flood": "inundacao", "drought": "seca", "fire": "incendio"},
+        "types": {"conflict": "conflito", "flood": "inundacao", "drought": "seca", "fire": "incendio",
+                  "rainfall": "Chuva forte"},
     },
     # ── DRAFT — pending native-speaker review (do not treat as final) ──
     "ha": {
@@ -83,10 +87,12 @@ _PHRASES: dict[str, dict] = {
         "eta": "Cikin awa {h}.",
         "area": "Hekta {ha} cikin hadari.",
         "act_conflict": "Ku kawar da dabbobi daga iyaka.",
+        "act_rainfall": "Ku duba gonaki masu kasa da magudanar ruwa.",
         "act_default": "Ku guji wurin da abin ya shafa.",
         "optout": "Aika STOP don dainawa.",
         "sev": {"critical": "MAI TSANANI", "high": "BABBA", "medium": "MATSAKAICI", "low": "KARAMI"},
-        "types": {"conflict": "rikici", "flood": "ambaliya", "drought": "fari", "fire": "gobara"},
+        "types": {"conflict": "rikici", "flood": "ambaliya", "drought": "fari", "fire": "gobara",
+                  "rainfall": "ruwan sama mai yawa"},
     },
     "yo": {
         "brand": "EconomicBridge",
@@ -155,7 +161,15 @@ def render_conflict_sms(ctx: RenderContext, lang: str = "en") -> str:
         if ctx.affected_area_ha is not None and ctx.affected_area_ha > 0
         else ""
     )
-    action = p["act_conflict"] if ctx.alert_type == "conflict" else p["act_default"]
+    # Rainfall gets its own advice. "Avoid affected area" is wrong for a
+    # rainfall reading — nothing has happened to avoid; the useful action is
+    # to go and look at the fields most likely to be affected.
+    if ctx.alert_type == "conflict":
+        action = p["act_conflict"]
+    elif ctx.alert_type == "rainfall":
+        action = p.get("act_rainfall", p["act_default"])
+    else:
+        action = p["act_default"]
 
     parts = [
         f"[{sev}] {p['brand']}",
