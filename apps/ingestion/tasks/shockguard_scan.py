@@ -26,6 +26,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import PILOT_TENANT_IDS, get_session_factory, set_tenant_schema
+from processors.ndvi_climatology import (
+    Climatology,
+    build_climatology,
+    load_climatology_rows,
+    seasonal_drought,
+)
 from sources.copernicus import CopernicusClient, CopernicusError
 from sources.sentinel_statistical import SentinelStatisticalClient
 from tasks.encroachment_detector import (
@@ -69,6 +75,13 @@ THRESHOLD = 0.55      # confidence at/above this raises an event (serious feed)
 #   drought : a real vegetation decline moves NDVI by >= 0.10; 0.08 is the
 #             conservative edge of that, and well outside the ~0.02
 #             measurement uncertainty.
+# NOTE: the "drought" entries in the three constants below are now DEAD for the
+# drought path — drought is judged by processors/ndvi_climatology.py against a
+# per-LGA seasonal normal, not by compute_shock's rolling window. They are kept
+# so compute_shock stays a complete, self-consistent function for flood, and so
+# the old thresholds remain readable next to the reason they were insufficient.
+# Do NOT re-route drought through compute_shock: it measures the season, not the
+# drought (435 of 436 LGAs swing more than 0.08 across a normal year).
 MIN_ABSOLUTE_DROP = {"flood": 1.5, "drought": 0.08}
 
 # Degeneracy floor only — this exists so nothing divides by ~0, NOT as a
@@ -100,6 +113,34 @@ def _band(c: float) -> str:
     if c >= 0.55:
         return "MEDIUM"
     return "LOW"
+
+
+def drought_from_climatology(
+    ndvi: list[float], climatology: Climatology | None, *,
+    tenant: str, lga: str, month: int,
+) -> ShockSignal | None:
+    """Drought for one LGA, judged against its own normal for this month.
+
+    Replaces `compute_shock(ndvi, "drought", ...)`. That compared the last three
+    NDVI readings with the three before them, which in West Africa measures the
+    season rather than the drought: 435 of 436 LGAs swing by more than the 0.08
+    detection threshold across an ordinary year, and in November 55.9% of LGAs
+    fall by 0.08 or more for entirely normal reasons. See
+    processors/ndvi_climatology.py for the full measurement.
+
+    Returns None when there is no climatology to judge against. That is
+    deliberate — no baseline means no claim, and falling back to the rolling
+    window would reintroduce the seasonal blindness.
+    """
+    if climatology is None or not ndvi:
+        return None
+    latest = ndvi[-1]
+    sig = seasonal_drought(
+        latest, climatology, tenant=tenant, lga=lga, month=month,
+    )
+    if sig is None:
+        return None
+    return ShockSignal("drought", sig.z, sig.confidence, sig.severity, sig.band)
 
 
 def compute_shock(vals: list[float], event_type: str, scale: float) -> ShockSignal | None:
@@ -137,6 +178,36 @@ def compute_shock(vals: list[float], event_type: str, scale: float) -> ShockSign
 
 
 # ─── Database access ───────────────────────────────────────────────────────
+
+
+async def _climatology_for(
+    session: AsyncSession, tenant: str,
+) -> Climatology | None:
+    """Load this tenant's NDVI normals. Returns None if there is no history.
+
+    A missing or thin climatology must NOT fall back to the rolling-window
+    comparison — that is the seasonal-blindness bug. No baseline, no drought
+    claim; the LGA is simply not judged this run.
+
+    `load_climatology_rows` names public.lga_signal_history explicitly, which
+    matters: callers here run under a tenant search_path.
+    """
+    try:
+        rows = await load_climatology_rows(session, tenant_id=tenant)
+    except Exception as exc:  # noqa: BLE001 — never let this break the scan
+        log.warning("shockguard: climatology load failed tenant=%s: %r", tenant, exc)
+        return None
+    if not rows:
+        log.info(
+            "shockguard: no NDVI history for tenant=%s — drought not evaluated",
+            tenant,
+        )
+        return None
+    clim = build_climatology(rows)
+    log.info(
+        "shockguard: climatology tenant=%s cells=%d", tenant, len(clim),
+    )
+    return clim
 
 
 async def _load_series(session: AsyncSession):
@@ -227,7 +298,14 @@ async def detect_for_tenant(session: AsyncSession, tenant: str) -> int:
     await session.execute(
         text("DELETE FROM shock_events WHERE source = :s"), {"s": SOURCE})
     flood = compute_shock(sar, "flood", SAR_SCALE)
-    drought = compute_shock(ndvi, "drought", NDVI_SCALE)
+    # ROI fallback path: the climatology is keyed per LGA, so use the tenant's
+    # representative LGA — the same one this fallback already attributes to.
+    climatology = await _climatology_for(session, tenant)
+    rep_lga, _lon, _lat = representative_lga(tenant)   # (name | None, lon, lat)
+    drought = drought_from_climatology(
+        ndvi, climatology, tenant=tenant, lga=rep_lga or "",
+        month=datetime.now(timezone.utc).month,
+    )
     written = [s for s in (flood, drought) if s is not None]
     for sig in written:
         await _insert_event(session, tenant=tenant, sig=sig)
@@ -255,6 +333,11 @@ async def detect_per_lga_for_tenant(
     if not batch:
         return await detect_for_tenant(session, tenant), 0  # ROI fallback
 
+    # Built once per tenant, not per LGA: it reads the whole banked history and
+    # the per-LGA loop below would otherwise repeat that read for every LGA.
+    climatology = await _climatology_for(session, tenant)
+    scan_month = datetime.now(timezone.utc).month
+
     events = 0
     evaluated = 0
     for g in batch:
@@ -273,7 +356,9 @@ async def detect_per_lga_for_tenant(
             continue
         evaluated += 1
         flood = compute_shock(sar, "flood", SAR_SCALE)
-        drought = compute_shock(ndvi, "drought", NDVI_SCALE)
+        drought = drought_from_climatology(
+            ndvi, climatology, tenant=tenant, lga=g["lga"], month=scan_month,
+        )
         await session.execute(text(
             "DELETE FROM shock_events WHERE source = :s AND lga = :lga"
         ), {"s": SOURCE, "lga": g["lga"]})
