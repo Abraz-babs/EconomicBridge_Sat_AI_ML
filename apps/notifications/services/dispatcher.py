@@ -26,10 +26,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import set_tenant_schema
 from gateways.base import SendResult, SmsGateway
-from services.messages import RenderContext, render_conflict_sms, should_dispatch
+from services.messages import (
+    RenderContext,
+    render_conflict_sms,
+    render_farmer_sms,
+    should_dispatch,
+)
 from services.providers import resolve_gateway
 
 log = logging.getLogger(__name__)
+
+# PostgreSQL SQLSTATEs. 23505 (unique_violation) is the one we expect and
+# handle: the partial unique indexes from migration 0026 firing on a genuine
+# re-dispatch. Anything else arriving as IntegrityError is a bug in our INSERT,
+# not a duplicate, and must not be reported as one — see _is_duplicate_violation.
+PG_UNIQUE_VIOLATION = "23505"
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +62,11 @@ class DispatchOutcome:
     provider_message_id: str | None
     error_message: str | None
     skipped_duplicate: bool = False
+    # The language this recipient's message was rendered in. Defaulted so the
+    # conflict path is unaffected; the advisory path sets it, because "which
+    # languages did this actually go out in" is the question an operator asks
+    # when part of the copy is still awaiting native-speaker confirmation.
+    language: str = "en"
 
 
 async def fetch_matching_subscribers(
@@ -149,12 +165,39 @@ async def _insert_outbox_row(
             },
         )
         return True
-    except IntegrityError:
-        # Either pkey clash (vanishingly unlikely) or — more interesting — the
-        # idempotency rule (prediction_id, subscriber_id) UNIQUE WHERE
-        # prediction_id IS NOT NULL caught a duplicate.
+    except IntegrityError as exc:
         await session.rollback()
-        return False
+        if _is_duplicate_violation(exc):
+            # The idempotency rule from 0026 — (prediction_id, subscriber_id)
+            # or (alert_id, subscriber_id) UNIQUE — caught a real re-dispatch.
+            return False
+        # Anything else is a defect in what we are inserting, and silence here
+        # is expensive: this branch used to swallow a CHECK violation and
+        # report it as `skipped_duplicate`, which would have shown a clean
+        # "no duplicates to send" result while delivering nothing at all
+        # (see migration 0043 — 'sns' was missing from the provider CHECK).
+        log.error(
+            "dispatcher: outbox INSERT rejected for tenant=%s subscriber=%s "
+            "provider=%s — NOT a duplicate (sqlstate=%s): %s",
+            tenant_id, subscriber.id, provider, _sqlstate(exc), exc,
+        )
+        raise
+
+
+def _sqlstate(exc: IntegrityError) -> str | None:
+    """Best-effort SQLSTATE from a wrapped driver error.
+
+    asyncpg exposes `.sqlstate`; psycopg exposes `.pgcode`. Returning None when
+    neither is present makes `_is_duplicate_violation` fail closed (treat as
+    NOT a duplicate), which surfaces the error rather than hiding it.
+    """
+    orig = getattr(exc, "orig", None)
+    return getattr(orig, "sqlstate", None) or getattr(orig, "pgcode", None)
+
+
+def _is_duplicate_violation(exc: IntegrityError) -> bool:
+    """True only for a unique-constraint violation (the idempotency case)."""
+    return _sqlstate(exc) == PG_UNIQUE_VIOLATION
 
 
 async def _finalise_outbox_row(
@@ -186,6 +229,153 @@ async def _finalise_outbox_row(
             "cost_currency": result.cost_currency,
         },
     )
+
+
+async def fetch_advisory_subscribers(
+    session: AsyncSession, *, tenant_id: str, advisory: str, lga: str | None,
+) -> list[SubscriberRow]:
+    """Active subscribers for a farmer advisory in `lga`.
+
+    Deliberately does NOT apply `should_dispatch`. That gate ranks an alert's
+    severity against the subscriber's threshold, which suits a graded conflict
+    alert; a farmer advisory is not graded — "heavy rain was recorded" is either
+    relevant to your LGA or it is not. Applying the default 'high' threshold
+    would silently drop every advisory.
+
+    `alert_types` is still honoured: a subscriber who explicitly narrowed their
+    subscription chose that, and an advisory is a type like any other.
+    """
+    await set_tenant_schema(session, tenant_id)
+
+    sql = (
+        "SELECT id, phone_e164, language, lga, severity_threshold, alert_types "
+        "FROM alert_subscribers "
+        "WHERE is_active = TRUE"
+    )
+    params: dict[str, object] = {}
+    if lga:
+        sql += " AND (lga = :lga OR lga IS NULL)"
+        params["lga"] = lga
+
+    rows = (await session.execute(text(sql), params)).mappings().all()
+    return [
+        SubscriberRow(
+            id=r["id"], phone_e164=r["phone_e164"], language=r["language"],
+            lga=r["lga"], severity_threshold=r["severity_threshold"],
+            alert_types=list(r["alert_types"]) if r["alert_types"] else None,
+        )
+        for r in rows
+        if not r["alert_types"] or advisory in r["alert_types"]
+    ]
+
+
+async def dispatch_farmer_advisory(
+    session: AsyncSession,
+    *,
+    tenant_id: str,
+    advisory: str,
+    lga: str,
+    state: str,
+    related_alert_id: UUID | None,
+    trace_id: UUID,
+    gateway: SmsGateway | None = None,
+    dry_run: bool = False,
+) -> list[DispatchOutcome]:
+    """Send one farmer advisory to every matching subscriber, in their language.
+
+    Distinct from `dispatch_conflict_alert` because the message is different in
+    kind, not just wording: `render_conflict_sms` produces an agency-desk line
+    ("[CRITICAL] EconomicBridge — Flood alert in X. ETA 48h. 120 ha at risk."),
+    while a farmer holding a feature phone needs one observation and one action.
+    See the FARMER_ADVISORIES block in services/messages.py.
+
+    `render_farmer_sms` raises for a withheld advisory type (drought, flood,
+    conflict) — that raise is the safety gate and is deliberately not caught
+    here; the router turns it into a 400.
+
+    `dry_run` renders and matches without sending or writing an outbox row, so
+    the exact set of recipients and message bodies can be inspected before any
+    money is spent. Worth using for the first send of a pilot.
+    """
+    subscribers = await fetch_advisory_subscribers(
+        session, tenant_id=tenant_id, advisory=advisory, lga=lga,
+    )
+    if not subscribers:
+        log.info(
+            "advisory: no subscribers matched  tenant=%s advisory=%s lga=%s",
+            tenant_id, advisory, lga,
+        )
+        return []
+
+    gw = gateway or resolve_gateway(tenant_id)
+    outcomes: list[DispatchOutcome] = []
+
+    for sub in subscribers:
+        message = render_farmer_sms(
+            advisory, lga=lga, state=state, lang=sub.language,
+        )
+        if dry_run:
+            outcomes.append(
+                DispatchOutcome(
+                    subscriber_id=sub.id, phone_e164=sub.phone_e164,
+                    provider=gw.name, status="dry_run",
+                    provider_message_id=None,
+                    # The rendered body rides back in error_message so a dry run
+                    # shows exactly what each recipient would receive. Named for
+                    # the shared DispatchSummary shape, not for an error.
+                    error_message=message,
+                    language=sub.language,
+                )
+            )
+            continue
+
+        outbox_id = uuid4()
+        inserted = await _insert_outbox_row(
+            session,
+            outbox_id=outbox_id,
+            tenant_id=tenant_id,
+            subscriber=sub,
+            message=message,
+            # Farmer advisories are not severity-graded; the column is nullable
+            # and a made-up severity would pollute reporting.
+            severity=None,
+            alert_type=advisory,
+            related_prediction_id=None,
+            related_alert_id=related_alert_id,
+            provider=gw.name,
+            trace_id=trace_id,
+        )
+        if not inserted:
+            outcomes.append(
+                DispatchOutcome(
+                    subscriber_id=sub.id, phone_e164=sub.phone_e164,
+                    provider=gw.name, status="skipped_duplicate",
+                    provider_message_id=None, error_message=None,
+                    skipped_duplicate=True, language=sub.language,
+                )
+            )
+            continue
+        await session.commit()
+
+        result = await gw.send(phone_e164=sub.phone_e164, message=message)
+        await _finalise_outbox_row(session, outbox_id=outbox_id, result=result)
+        await session.commit()
+
+        outcomes.append(
+            DispatchOutcome(
+                subscriber_id=sub.id, phone_e164=sub.phone_e164,
+                provider=gw.name, status=result.status,
+                provider_message_id=result.provider_message_id,
+                error_message=result.error_message,
+                language=sub.language,
+            )
+        )
+        log.info(
+            "advisory: tenant=%s advisory=%s subscriber=%s provider=%s status=%s",
+            tenant_id, advisory, sub.id, gw.name, result.status,
+        )
+
+    return outcomes
 
 
 async def dispatch_conflict_alert(

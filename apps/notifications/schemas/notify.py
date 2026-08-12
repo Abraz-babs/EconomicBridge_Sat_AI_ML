@@ -138,6 +138,55 @@ class NotifyConflictData(BaseModel):
     dispatches: list[DispatchSummary]
 
 
+class NotifyAdvisoryRequest(BaseModel):
+    """Send one farmer advisory to subscribers in an LGA.
+
+    Separate from NotifyConflictRequest because a farmer advisory carries no
+    severity, ETA or hectares — deliberately. It states one observation and one
+    action (see FARMER_ADVISORIES in services/messages.py).
+
+    `advisory` is validated against the renderer, not an enum here, so the
+    withheld list (drought / flood / conflict) stays defined in exactly one
+    place and cannot drift out of sync with the reason each is withheld.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str = Field(min_length=1, max_length=50)
+    advisory: str = Field(min_length=1, max_length=40)
+    lga: str = Field(min_length=1, max_length=120)
+    alert_id: UUID | None = None
+    dry_run: bool = Field(
+        default=False,
+        description=(
+            "Render and match recipients without sending or writing an outbox "
+            "row. Use before the first real send of a pilot."
+        ),
+    )
+
+
+class NotifyAdvisoryData(BaseModel):
+    tenant_id: str
+    advisory: str
+    lga: str
+    matched_subscribers: int
+    dispatched: int
+    skipped_duplicate: int
+    failed: int
+    dry_run: bool
+    provider_chosen: str
+    languages: list[str]
+    unconfirmed_copy: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Languages whose copy for this advisory has NOT been confirmed by "
+            "a native speaker. Non-blocking, but a send to a real recipient "
+            "should clear it first."
+        ),
+    )
+    dispatches: list[DispatchSummary]
+
+
 class SmsPreviewData(BaseModel):
     """Rendered SMS preview for one language — no send, no PII, no DB."""
     language: str

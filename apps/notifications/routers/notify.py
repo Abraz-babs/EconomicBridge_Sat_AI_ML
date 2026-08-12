@@ -17,14 +17,22 @@ from dependencies import TENANT_HEADER, require_signed_dpa
 from schemas.envelope import ResponseMeta, SuccessResponse
 from schemas.notify import (
     DispatchSummary,
+    NotifyAdvisoryData,
+    NotifyAdvisoryRequest,
     NotifyConflictData,
     NotifyConflictRequest,
     OutboxListData,
     OutboxRow,
     SmsPreviewData,
 )
-from services.dispatcher import dispatch_conflict_alert
-from services.messages import RenderContext, is_verified, render_conflict_sms
+from services.dispatcher import dispatch_conflict_alert, dispatch_farmer_advisory
+from services.messages import (
+    FARMER_HA_PENDING_CONFIRMATION,
+    STATE_NAMES,
+    RenderContext,
+    is_verified,
+    render_conflict_sms,
+)
 from services.providers import gateway_for_tenant
 from sqlalchemy import text
 
@@ -128,6 +136,115 @@ async def recent_outbox(
         meta=ResponseMeta(
             tenant_id=tenant_id,
             trace_id=_trace_id(request),
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
+
+
+@router.post(
+    "/advisory",
+    response_model=SuccessResponse[NotifyAdvisoryData],
+    summary="Dispatch a farmer advisory SMS to subscribers in one LGA",
+    description=(
+        "**PII gate:** requires `X-Tenant-Id` + `X-Organisation-Id` matching a "
+        "signed Data Processing Agreement, and `X-Tenant-Id` must equal "
+        "`body.tenant_id`.\n\n"
+        "Sends the farmer-facing copy (one observation, one action, no severity "
+        "shouting) rather than the agency-desk conflict format. Advisory types "
+        "withheld for lack of evidence — drought, flood, conflict — are "
+        "rejected with 400; see `FARMER_WITHHELD` in services/messages.py.\n\n"
+        "Set `dry_run: true` to see the exact recipients and message bodies "
+        "without sending or spending."
+    ),
+    dependencies=[Depends(require_signed_dpa)],
+)
+async def notify_advisory(
+    body: NotifyAdvisoryRequest,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[NotifyAdvisoryData]:
+    tenant_id = body.tenant_id.strip().lower()
+    if not is_valid_tenant_id(tenant_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unknown tenant: {tenant_id!r}",
+        )
+
+    header_tenant = (request.headers.get(TENANT_HEADER) or "").strip().lower()
+    if header_tenant != tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"X-Tenant-Id header ({header_tenant!r}) does not match "
+                f"body.tenant_id ({tenant_id!r})."
+            ),
+        )
+
+    trace = _trace_id(request)
+    state = STATE_NAMES.get(tenant_id, tenant_id.title())
+    try:
+        outcomes = await dispatch_farmer_advisory(
+            session,
+            tenant_id=tenant_id,
+            advisory=body.advisory,
+            lga=body.lga,
+            state=state,
+            related_alert_id=body.alert_id,
+            trace_id=trace,
+            dry_run=body.dry_run,
+        )
+    except ValueError as exc:
+        # Withheld advisory type, or an unknown one. The renderer owns that
+        # decision; surface its reason verbatim rather than paraphrasing it.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc),
+        ) from exc
+
+    languages = sorted({o.language for o in outcomes})
+    # Flag unconfirmed copy only when it was actually used. Two Hausa phrases
+    # were edited after the operator's review (one tense fix, one shortened for
+    # cost) and have not been re-confirmed by a native speaker — worth saying
+    # when a Hausa message just went to a real farmer, noise otherwise.
+    unconfirmed = (
+        ["ha"]
+        if "ha" in languages and body.advisory in FARMER_HA_PENDING_CONFIRMATION
+        else []
+    )
+
+    dispatched = sum(
+        1 for o in outcomes if o.status in {"sent", "delivered", "mock", "dry_run"}
+    )
+    skipped = sum(1 for o in outcomes if o.skipped_duplicate)
+    failed = sum(1 for o in outcomes if o.status == "failed")
+
+    return SuccessResponse(
+        data=NotifyAdvisoryData(
+            tenant_id=tenant_id,
+            advisory=body.advisory,
+            lga=body.lga,
+            matched_subscribers=len(outcomes),
+            dispatched=dispatched,
+            skipped_duplicate=skipped,
+            failed=failed,
+            dry_run=body.dry_run,
+            provider_chosen=gateway_for_tenant(tenant_id),
+            languages=languages,
+            unconfirmed_copy=unconfirmed,
+            dispatches=[
+                DispatchSummary(
+                    subscriber_id=o.subscriber_id,
+                    phone_e164=o.phone_e164,
+                    provider=o.provider,
+                    status=o.status,
+                    provider_message_id=o.provider_message_id,
+                    error_message=o.error_message,
+                )
+                for o in outcomes
+            ],
+        ),
+        meta=ResponseMeta(
+            tenant_id=tenant_id,
+            trace_id=trace,
             timestamp=datetime.now(timezone.utc),
         ),
     )
