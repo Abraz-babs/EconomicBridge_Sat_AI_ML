@@ -267,10 +267,20 @@ FARMER_ADVISORIES: dict[str, dict[str, str]] = {
     },
 }
 
-# The two Hausa phrases changed after the operator's review. Neither is a
-# translation of new content — one fixes tense, one shortens for cost — but a
-# native speaker should confirm both before these reach a real recipient.
-FARMER_HA_PENDING_CONFIRMATION: tuple[str, ...] = ("rainfall", "land_change")
+# Two Hausa phrases were edited after the operator's first review — 'rainfall'
+# for tense ("ana tsammanin" / expected -> "an yi" / fell, because we cannot
+# forecast) and 'land_change' shortened from 172 characters, which cost a second
+# segment. Both edited strings were put back to the operator (native Hausa
+# speaker, Kebbi) and confirmed 2026-08-12. Nothing is outstanding.
+#
+# Kept as an empty tuple rather than deleted: it is the hook the advisory
+# endpoint reports `unconfirmed_copy` from, and any future edit to translated
+# copy should land here until a native speaker has seen that exact string.
+FARMER_HA_PENDING_CONFIRMATION: tuple[str, ...] = ()
+
+# NOTE: this confirmation covers FARMER_ADVISORIES only. The `_PHRASES` pack
+# above is different copy for a different audience (agency desk) and its HA/YO/IG
+# entries remain unreviewed — hence 'ha' stays out of VERIFIED_LANGUAGES.
 
 # Alert types that are NOT offered here, and must not be added without evidence:
 #   drought  — the detector has no seasonal awareness; when the rains end,
