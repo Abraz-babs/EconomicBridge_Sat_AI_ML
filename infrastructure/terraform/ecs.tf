@@ -106,7 +106,8 @@ locals {
         { name = "SERVICE_NAME", value = k },
         { name = "LOG_LEVEL", value = var.environment == "production" ? "INFO" : "DEBUG" },
       ],
-      v.needs_db ? [{ name = "DATABASE_URL", value = local.database_url }] : [],
+      # DATABASE_URL is NOT here: it embeds the RDS password and now arrives via
+      # Secrets Manager (see service_secrets below / secrets.tf).
       v.needs_redis ? [{ name = "REDIS_URL", value = local.redis_url }] : [],
       # ALB path prefix the app must strip itself (see UrlPrefixStripMiddleware).
       lookup(v, "url_prefix", "") != "" ? [{ name = "URL_PREFIX", value = v.url_prefix }] : [],
@@ -160,7 +161,16 @@ resource "aws_ecs_task_definition" "service" {
       ]
 
       environment = local.service_env[each.key]
-      secrets     = local.service_secrets[each.key]
+      # DATABASE_URL is appended here rather than baked into service_secrets so
+      # it follows needs_db directly — a new service that touches the database
+      # gets the credential injected without anyone remembering to add it.
+      secrets = concat(
+        local.service_secrets[each.key],
+        each.value.needs_db ? [{
+          name      = "DATABASE_URL"
+          valueFrom = aws_secretsmanager_secret.database_url.arn
+        }] : [],
+      )
 
       logConfiguration = {
         logDriver = "awslogs"

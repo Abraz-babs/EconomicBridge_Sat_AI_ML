@@ -47,6 +47,10 @@ data "aws_iam_policy_document" "ecs_execution_secrets" {
     resources = concat(
       [aws_secretsmanager_secret.rds_password.arn],
       [aws_secretsmanager_secret.jwt.arn],
+      # Without this the agent cannot fetch DATABASE_URL and every db-backed
+      # task fails at start with ResourceInitializationError, which reads like
+      # a networking fault rather than a missing permission.
+      [aws_secretsmanager_secret.database_url.arn],
       [for s in aws_secretsmanager_secret.external : s.arn],
     )
   }
