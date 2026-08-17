@@ -66,7 +66,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from config import get_settings
 from processors.ndvi_climatology import build_climatology, seasonal_drought
-from sources.gpm_imerg import _lat_index, _lon_index, _parse_region_ascii
+from sources.gpm_imerg import _lat_index, _lon_index
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -93,9 +93,59 @@ def _lga_centroids() -> dict[str, list[dict]]:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def _parse_monthly_ascii(body: str) -> dict[int, list[float]]:
+    """Parse the monthly HDF5 ASCII payload into {lon_offset: [values by lat]}.
+
+    The monthly product labels rows POSITIONALLY, unlike the daily .nc4 product
+    which labels each row with its longitude in degrees:
+
+        monthly   precipitation[0][0], 0.646, 0.58, 0.491
+        daily     precipitation.precipitation[...][precipitation.lon=8.55], 3.2
+
+    So `sources.gpm_imerg._parse_region_ascii`, which keys off `lon=`, matches
+    nothing here and silently returns an empty grid — which is exactly how the
+    first run of this script reported all 42 months "unavailable" while every
+    request had returned HTTP 200.
+
+    The offsets are relative to the requested slice, so the caller must add the
+    slice origin back. Keys are the SECOND index (longitude); the values run
+    along latitude.
+    """
+    out: dict[int, list[float]] = {}
+    for raw in body.splitlines():
+        label, _, rest = raw.partition(",")
+        if not rest or "precipitation[" not in label:
+            continue
+        idx = label[label.index("[") :].strip()
+        parts = [p for p in idx.replace("]", " ").replace("[", " ").split() if p]
+        if len(parts) < 2:
+            continue
+        try:
+            lon_off = int(parts[1])
+        except ValueError:
+            continue
+        vals: list[float] = []
+        for tok in rest.split(","):
+            tok = tok.strip()
+            if not tok:
+                continue
+            try:
+                vals.append(float(tok))
+            except ValueError:
+                continue
+        if vals:
+            out[lon_off] = vals
+    return out
+
+
 async def _fetch_month(client: httpx.AsyncClient, year: int, month: int,
                        token: str) -> dict[int, list[float]] | None:
-    """Regional monthly rainfall grid, or None if the granule is unavailable."""
+    """Regional monthly rainfall grid, or None if the granule is unavailable.
+
+    Values are the month's mean rate in mm/hr. No conversion is applied: every
+    comparison here is a month against the SAME calendar month's normal, so the
+    units cancel and converting would only invite an arithmetic slip.
+    """
     lo_lon, hi_lon = _lon_index(_LON_MIN), _lon_index(_LON_MAX)
     lo_lat, hi_lat = _lat_index(_LAT_MIN), _lat_index(_LAT_MAX)
     constraint = (
@@ -106,7 +156,15 @@ async def _fetch_month(client: httpx.AsyncClient, year: int, month: int,
         url = f"{_ROOT}/{year}/{g}.ascii?{constraint}"
         r = await client.get(url, headers={"Authorization": f"Bearer {token}"})
         if r.status_code == 200:
-            return _parse_region_ascii(r.text)
+            grid = _parse_monthly_ascii(r.text)
+            if not grid:
+                # 200 with nothing parsed is a format change, not a dry month.
+                # Say so loudly rather than let it look like missing data.
+                log.error(
+                    "  %d-%02d: HTTP 200 but parsed 0 rows — payload shape "
+                    "changed? first 120 chars: %r", year, month, r.text[:120],
+                )
+            return grid
         if r.status_code in (401, 403):
             raise RuntimeError(
                 f"IMERG {r.status_code}: Earthdata token rejected. The token "
@@ -117,18 +175,17 @@ async def _fetch_month(client: httpx.AsyncClient, year: int, month: int,
 
 
 def _sample(grid: dict[int, list[float]], lon: float, lat: float) -> float | None:
-    """Mean of the valid cells in a 3x3 window around a centroid, mm/day."""
-    lon_i, lat_i = _lon_index(lon), _lat_index(lat)
-    base_lat = _lat_index(_LAT_MIN)
+    """Mean of the valid cells in a 3x3 window around a centroid, mm/hr."""
+    lon_off = _lon_index(lon) - _lon_index(_LON_MIN)
+    lat_off = _lat_index(lat) - _lat_index(_LAT_MIN)
     vals: list[float] = []
-    for li in (lon_i - 1, lon_i, lon_i + 1):
+    for li in (lon_off - 1, lon_off, lon_off + 1):
         col = grid.get(li)
         if not col:
             continue
-        for lj in (lat_i - 1, lat_i, lat_i + 1):
-            k = lj - base_lat
-            if 0 <= k < len(col) and col[k] > -9000.0:
-                vals.append(col[k])
+        for lj in (lat_off - 1, lat_off, lat_off + 1):
+            if 0 <= lj < len(col) and col[lj] > -9000.0:
+                vals.append(col[lj])
     return st.mean(vals) if vals else None
 
 
