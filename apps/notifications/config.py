@@ -40,7 +40,16 @@ class Settings(BaseSettings):
     # ── Termii (Nigerian SMS gateway) ───────────────────────────────────
     termii_api_key: str = ""
     termii_base_url: str = "https://api.ng.termii.com/api"
-    termii_sender_id: str = "EconoBridge"
+    # MUST match a sender ID registered and ACTIVE on the Termii account —
+    # Termii rejects unregistered IDs, and Nigerian carriers will not deliver
+    # them. Verified against the live account 2026-08-17:
+    #   GET /api/sender-id -> {"sender_id": "Ecobridge", "status": "active",
+    #                          "company": "BizraFarms", "country": "Nigeria"}
+    # The previous default here was "EconoBridge", which is a different string
+    # and is not registered; every farmer send would have been rejected.
+    # Do not "tidy" this into EconomicBridge — the registration is what counts,
+    # and changing it means re-registering with Termii first.
+    termii_sender_id: str = "Ecobridge"
 
     # ── Twilio (ECOWAS / international SMS fallback) ────────────────────
     twilio_account_sid: str = ""
