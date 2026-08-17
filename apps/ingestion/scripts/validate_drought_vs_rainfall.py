@@ -296,6 +296,63 @@ async def main() -> None:
     print("means the signal is unrelated to rainfall — which would be the")
     print("finding, and would need saying plainly rather than burying.")
 
+    # ── accumulated deficit (SPI-style) ───────────────────────────────────
+    #
+    # Drought is cumulative. A single month's anomaly is a noisy proxy — one wet
+    # week can mask six dry ones — which is why the standard index (SPI-k) works
+    # on ACCUMULATED rainfall over k months. This asks the same question of a
+    # 2- and 3-month window ending at, and just before, the detection month.
+    def accum(tenant: str, lga: str, y: int, m: int, k: int) -> float | None:
+        total = 0.0
+        for back in range(k):
+            yy, mm = y, m - back
+            while mm < 1:
+                mm += 12
+                yy -= 1
+            v = rain.get((tenant, lga, yy, mm))
+            if v is None:
+                return None
+            total += v
+        return total
+
+    acc_norm: dict[tuple[str, str, int, int], tuple[float, float, int]] = {}
+    for k in (2, 3):
+        buck: dict[tuple[str, str, int, int], list[float]] = collections.defaultdict(list)
+        for (tenant, lga, y, m) in rain:
+            a = accum(tenant, lga, y, m, k)
+            if a is not None:
+                buck[(tenant, lga, m, k)].append(a)
+        for key, vals in buck.items():
+            acc_norm[key] = (
+                st.mean(vals), st.pstdev(vals) if len(vals) > 1 else 0.0, len(vals),
+            )
+
+    def acc_z(key, k: int, lag: int) -> float | None:
+        tenant, lga, y, m = shifted(key, lag)
+        a = accum(tenant, lga, y, m, k)
+        n = acc_norm.get((tenant, lga, m, k))
+        if a is None or n is None or n[2] < _MIN_YEARS:
+            return None
+        return (a - n[0]) / max(n[1], _MIN_STD * k)
+
+    print("\nAccumulated rainfall deficit (SPI-style), window ending at lag L")
+    print(f"{'window':>7} {'lag':>4} {'n_fired':>8} {'fired_mean':>11} "
+          f"{'quiet_mean':>11} {'separation':>11} {'%fired dry':>11}")
+    for k in (2, 3):
+        for lag in (0, 1):
+            fz = [z for key in fired if (z := acc_z(key, k, lag)) is not None]
+            qz = [z for key in quiet if (z := acc_z(key, k, lag)) is not None]
+            if not fz or not qz:
+                print(f"{k:>7} {lag:>4} insufficient overlap")
+                continue
+            sep = st.mean(qz) - st.mean(fz)
+            dry = sum(1 for z in fz if z < 0) / len(fz) * 100
+            print(f"{k:>6}mo {lag:>4} {len(fz):>8} {st.mean(fz):>11.3f} "
+                  f"{st.mean(qz):>11.3f} {sep:>11.3f} {dry:>10.1f}%")
+    print("\nIf accumulation does NOT beat the single-month result, say so: it")
+    print("would mean the signal is not behaving like a water-deficit signal,")
+    print("and that is more useful to know than a number that flatters us.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
