@@ -28,6 +28,7 @@ from db import set_tenant_schema
 from gateways.base import SendResult, SmsGateway
 from services.messages import (
     RenderContext,
+    region_label,
     render_conflict_sms,
     render_farmer_sms,
     should_dispatch,
@@ -313,6 +314,9 @@ async def dispatch_farmer_advisory(
     for sub in subscribers:
         message = render_farmer_sms(
             advisory, lga=lga, state=state, lang=sub.language,
+            # Territory name for the enrolment line, in the subscriber's own
+            # language — 'Kebbi State' / 'Jihar Kebbi', never 'Ghana State'.
+            region=region_label(tenant_id, sub.language),
         )
         if dry_run:
             outcomes.append(

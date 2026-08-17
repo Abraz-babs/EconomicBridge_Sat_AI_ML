@@ -22,7 +22,12 @@ from services.dispatcher import (
     _is_duplicate_violation,
     dispatch_farmer_advisory,
 )
-from services.messages import FARMER_WITHHELD, STATE_NAMES, render_farmer_sms
+from services.messages import (
+    FARMER_WITHHELD,
+    STATE_NAMES,
+    region_label,
+    render_farmer_sms,
+)
 from uuid import uuid4
 
 
@@ -203,10 +208,15 @@ _GSM7_SINGLE_SEGMENT = 160
 # Hausa is the operator's call — it is their translation — and this set makes
 # both a regression and a fix visible.
 _KNOWN_OVERFLOW_OUTSIDE_KEBBI = {
-    ("ha", "enrolment"),    # 167 chars
     ("ha", "fire"),         # 165
     ("ha", "crop_stress"),  # 168
 }
+# ('ha', 'enrolment') used to sit here at 167 chars. It came OUT on 2026-08-17
+# when the enrolment line stopped naming an LGA and started naming the
+# territory instead ("a Jihar Kebbi" rather than "a Birnin Magaji-Kiyaw,
+# Zamfara"), which shortened it below one segment everywhere. Recorded rather
+# than silently deleted, because a pinned set is only useful if changes to it
+# are deliberate.
 
 
 def _lga_data() -> dict:
@@ -227,9 +237,13 @@ def _worst(tenants, lang: str, advisory: str) -> tuple[int, str, str]:
     hi = (0, "", "")
     for tenant in tenants:
         state = STATE_NAMES.get(tenant, tenant.title())
+        # Pass the REAL region string, not the bare state name: what ships is
+        # "Jihar Kebbi", which is longer than "Kebbi", and a length test that
+        # measures something shorter than production is worse than none.
+        region = region_label(tenant, lang)
         for row in data.get(tenant, []):
             body = render_farmer_sms(
-                advisory, lga=row["lga"], state=state, lang=lang,
+                advisory, lga=row["lga"], state=state, lang=lang, region=region,
             )
             if len(body) > hi[0]:
                 hi = (len(body), row["lga"], state)

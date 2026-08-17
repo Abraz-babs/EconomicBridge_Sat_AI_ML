@@ -217,11 +217,38 @@ def should_dispatch(
 #
 # Hausa reviewed by the operator (native speaker, Kebbi) 2026-08-10, with two
 # phrases adjusted afterwards — see FARMER_HA_PENDING_CONFIRMATION.
+# Tenants whose name is a Nigerian STATE. Everything else is a country (Ghana,
+# Senegal) or a territory (FCT), where "<name> State" would simply be wrong —
+# which is why the enrolment line cannot just concatenate the word "State".
+_NG_STATES: frozenset[str] = frozenset({
+    "kebbi", "benue", "plateau", "kaduna", "niger", "zamfara", "nasarawa",
+})
+
+
+def region_label(tenant_id: str, lang: str = "en") -> str:
+    """How to name a tenant's whole territory in an enrolment message.
+
+    The enrolment SMS introduces the service and is not about one place, so it
+    names the territory rather than an LGA: a cooperative leader is being told
+    what they have signed up to, not warned about a field.
+
+        kebbi   en -> "Kebbi State"      ha -> "Jihar Kebbi"
+        fct     en -> "the FCT"          ha -> "Abuja"
+        ghana   en -> "Ghana"            ha -> "Ghana"
+    """
+    name = STATE_NAMES.get(tenant_id, tenant_id.title())
+    if tenant_id == "fct":
+        return "Abuja" if lang == "ha" else "the FCT"
+    if tenant_id in _NG_STATES:
+        return f"Jihar {name}" if lang == "ha" else f"{name} State"
+    return name
+
+
 FARMER_ADVISORIES: dict[str, dict[str, str]] = {
     "en": {
         "enrolment":
             "EconomicBridge: you now get free satellite farm advisories for "
-            "{lga}, {state}, from Bizra Farms. About 2-4 msgs a month. "
+            "{region} from Bizra Farms. About 2-4 msgs a month. "
             "Reply STOP to opt out.",
         "rainfall":
             "EconomicBridge advisory: heavy rain recorded in {lga}, {state}. "
@@ -240,9 +267,10 @@ FARMER_ADVISORIES: dict[str, dict[str, str]] = {
             "Reply STOP to opt out.",
     },
     "ha": {
+        # "a {region}" — the territory, not an LGA. See region_label().
         "enrolment":
             "EconomicBridge: yanzu kuna samun shawarwarin noma na tauraron dan "
-            "adam kyauta a {lga}, {state}, daga Bizra Farms. Sako 2-4 a wata. "
+            "adam kyauta a {region} daga Bizra Farms. Sako 2-4 a wata. "
             "Aika STOP don dainawa.",
         # "an yi" (rain FELL), not "ana tsammanin" (rain is EXPECTED). The
         # advisory fires on rainfall already measured; we cannot forecast.
@@ -296,13 +324,19 @@ SMS_SINGLE_SEGMENT_CHARS = 160
 
 
 def render_farmer_sms(
-    advisory: str, *, lga: str, state: str, lang: str = "en"
+    advisory: str, *, lga: str, state: str, lang: str = "en",
+    region: str | None = None,
 ) -> str:
     """One farmer-facing SMS. Falls back to English for an unknown language.
 
     Raises for a withheld advisory type rather than rendering it — the reason
     each is withheld is in FARMER_WITHHELD, and none should reach a farmer on
     the strength of a caller passing the wrong string.
+
+    `region` names the whole territory and is used by the enrolment message
+    only; the hazard advisories name the LGA where something was actually
+    observed, because "rain fell somewhere in your state" is not actionable.
+    Defaults to the state name so a caller that does not pass one still renders.
     """
     if advisory in FARMER_WITHHELD:
         raise ValueError(
@@ -313,4 +347,4 @@ def render_farmer_sms(
     template = pack.get(advisory) or FARMER_ADVISORIES["en"].get(advisory)
     if template is None:
         raise ValueError(f"unknown farmer advisory type: {advisory!r}")
-    return template.format(lga=lga, state=state)
+    return template.format(lga=lga, state=state, region=region or state)
