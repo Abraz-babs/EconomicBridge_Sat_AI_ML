@@ -85,6 +85,19 @@ class SubscriberResponse(BaseModel):
     opted_out_at: datetime | None
 
 
+class SubscriberOptOut(BaseModel):
+    """A request to stop messaging one phone number.
+
+    Keyed on the phone rather than a subscriber id because opt-outs reach us
+    from a person — via their cooperative or a phone call — and that person has
+    a number, never a UUID.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    phone_e164: str = Field(min_length=8, max_length=20)
+
+
 class SubscriberListData(BaseModel):
     subscribers: list[SubscriberResponse]
 

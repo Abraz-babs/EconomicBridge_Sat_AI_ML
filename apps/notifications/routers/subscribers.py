@@ -21,6 +21,7 @@ from schemas.envelope import ResponseMeta, SuccessResponse
 from schemas.notify import (
     SubscriberCreate,
     SubscriberListData,
+    SubscriberOptOut,
     SubscriberResponse,
 )
 
@@ -164,6 +165,82 @@ async def create_subscriber(
         {"id": sub_id},
     )).mappings().one()
 
+    return SuccessResponse(
+        data=SubscriberResponse(
+            id=row["id"],
+            tenant_id=row["tenant_id"],
+            full_name=row["full_name"],
+            phone_e164=row["phone_e164"],
+            language=row["language"],
+            lga=row["lga"],
+            zone_name=row["zone_name"],
+            severity_threshold=row["severity_threshold"],
+            alert_types=list(row["alert_types"]) if row["alert_types"] else None,
+            channel=row["channel"],
+            is_active=row["is_active"],
+            opted_in_at=row["opted_in_at"],
+            opted_out_at=row["opted_out_at"],
+        ),
+        meta=ResponseMeta(
+            tenant_id=tenant_id,
+            trace_id=_trace_id(request),
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
+
+
+@router.post(
+    "/opt-out",
+    response_model=SuccessResponse[SubscriberResponse],
+    summary="Stop sending to a phone number (honour an opt-out)",
+    description=(
+        "**PII gate:** requires `X-Tenant-Id` + `X-Organisation-Id` matching a "
+        "signed Data Processing Agreement.\n\n"
+        "Deactivates every subscription held for a phone number in this tenant "
+        "and stamps `opted_out_at`. The row is KEPT, not deleted: an "
+        "append-only record of who asked to stop, and when, is what makes the "
+        "opt-out auditable — and it stops a later bulk import silently "
+        "re-subscribing someone who has already said no.\n\n"
+        "Exists because every advisory ends with 'Reply STOP to opt out' while "
+        "the Termii sender ID is one-way and cannot receive replies, so opt-out "
+        "requests arrive by other routes (the cooperative, a phone call). "
+        "Without this endpoint there was no way to act on one at all."
+    ),
+    dependencies=[Depends(require_signed_dpa)],
+)
+async def opt_out_subscriber(
+    body: SubscriberOptOut,
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[SubscriberResponse]:
+    tenant_id = _require_tenant(request)
+    await set_tenant_schema(session, tenant_id)
+
+    # Match on phone, not id: whoever relays the request has a number, never a
+    # UUID. One person may hold several rows (different LGAs); all must stop.
+    rows = (await session.execute(
+        text(
+            """
+            UPDATE alert_subscribers
+               SET is_active = FALSE,
+                   opted_out_at = COALESCE(opted_out_at, NOW())
+             WHERE phone_e164 = :phone
+            RETURNING id, tenant_id, full_name, phone_e164, language, lga,
+                      zone_name, severity_threshold, alert_types, channel,
+                      is_active, opted_in_at, opted_out_at
+            """
+        ),
+        {"phone": body.phone_e164},
+    )).mappings().all()
+
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No subscriber for {body.phone_e164} in tenant {tenant_id!r}",
+        )
+    await session.commit()
+
+    row = rows[0]
     return SuccessResponse(
         data=SubscriberResponse(
             id=row["id"],

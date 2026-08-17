@@ -285,3 +285,48 @@ def test_hausa_overflow_outside_kebbi_matches_the_known_set() -> None:
         if _worst(ng, "ha", advisory)[0] > _GSM7_SINGLE_SEGMENT
     }
     assert actual == _KNOWN_OVERFLOW_OUTSIDE_KEBBI
+
+
+# ─── opt-out actually stops delivery ──────────────────────────────────────
+#
+# Every advisory ends with "Reply STOP to opt out" while the Termii sender ID
+# is one-way and cannot receive replies, so opt-out requests arrive by other
+# routes. Until 2026-08-17 there was no way to act on one at all: the
+# alert_subscribers table has is_active and opted_out_at, the list endpoint
+# read them, and nothing in the service could write them.
+#
+# What matters is not that a flag flips but that a deactivated person stops
+# receiving messages, so the test asserts the dispatcher's behaviour.
+
+
+@pytest.mark.asyncio
+async def test_opted_out_subscriber_receives_nothing(monkeypatch) -> None:
+    """fetch_advisory_subscribers filters on is_active — an opt-out must bite."""
+    from services.dispatcher import fetch_advisory_subscribers
+
+    captured: dict[str, str] = {}
+
+    class _Result:
+        def mappings(self):  # noqa: ANN202
+            return self
+
+        def all(self):  # noqa: ANN202
+            return []
+
+    class _Session:
+        async def execute(self, stmt, params=None):  # noqa: ANN001, ANN202
+            captured["sql"] = str(stmt)
+            return _Result()
+
+    async def _noop(session, tenant_id):  # noqa: ANN001, ANN202
+        return None
+
+    monkeypatch.setattr("services.dispatcher.set_tenant_schema", _noop)
+
+    await fetch_advisory_subscribers(
+        _Session(), tenant_id="kebbi", advisory="rainfall", lga="Argungu",
+    )
+    assert "is_active = TRUE" in captured["sql"], (
+        "advisory dispatch must exclude opted-out subscribers, or an opt-out "
+        "is recorded but never honoured"
+    )
