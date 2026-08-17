@@ -3,7 +3,41 @@
 # pytest-cov reads this when invoked as `pytest --cov=.`. Living at the
 # repo root rather than per-service so the omit list stays consistent
 # across api / ingestion / ml / notifications.
+#
+# WHY `scripts/*` APPEARS AS WELL AS `*/scripts/*` (2026-08-14)
+# -------------------------------------------------------------
+# CI runs pytest from INSIDE each service directory (`cd apps/ingestion &&
+# pytest --cov=.`), so coverage records relative paths like
+# `scripts/backfill_lga_history.py`. The pattern `*/scripts/*` requires at
+# least one character and a slash BEFORE `scripts`, so it never matched a
+# single one of them — every untested operational script in every service has
+# been counted against the coverage floor since this file was written.
+#
+# That is almost certainly why the floors in .github/workflows/ci.yml were
+# repeatedly lowered rather than raised (api "was 68", ml "was 67",
+# notifications "was 71"): the floors were being fitted to a measurement that
+# was silently including code the config already said to exclude.
+#
+# Measured on ingestion when this was found: 65.7% with scripts counted,
+# 67.7% with them properly omitted.
+#
+# Both forms are kept because pytest can legitimately be invoked from either
+# the service directory (relative) or the repo root (nested).
 
+# NO INLINE COMMENTS BELOW. Coverage does not strip a trailing `; ...` from an
+# entry in a multi-line list, so `*/scripts/*  ; seed scripts` became the literal
+# pattern "*/scripts/*  ; seed scripts", which matches no file that has ever
+# existed. Both `*/scripts/*` and `*/main.py` carried such comments and were
+# therefore dead. Annotate above the list, never beside an entry.
+#
+# Notes on the entries, keyed by pattern:
+#   */main.py    uvicorn entrypoint; the `if __name__ == "__main__"` guard is
+#                never executed under test
+#   scripts/*    seed + CLI + backfill tools, run end-to-end by hand. The
+#                relative form is required because CI runs pytest from INSIDE
+#                each service (`cd apps/ingestion && pytest --cov=.`), so paths
+#                are recorded as `scripts/x.py` with nothing before them for
+#                `*/scripts/*` to match. The backslash form covers Windows dev.
 [run]
 branch = True
 omit =
@@ -13,8 +47,11 @@ omit =
     */.venv/*
     */node_modules/*
     */conftest.py
-    */main.py             ; uvicorn entrypoint — exercised by TestClient health checks but the if __name__ == "__main__" guard isn't
-    */scripts/*           ; seed + CLI scripts run end-to-end manually, not unit-tested
+    */main.py
+    main.py
+    */scripts/*
+    scripts/*
+    scripts\*
 
 [report]
 # Skip files where coverage would be misleading (empty __init__.py etc).
