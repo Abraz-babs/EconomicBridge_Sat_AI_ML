@@ -427,5 +427,25 @@ async def run(
 
 
 async def run_rainfall_scan() -> None:
-    """Scheduler entry point."""
+    """Scheduler entry point: detect, then notify subscribed farmers.
+
+    Dispatch is a SEPARATE step after the scan rather than part of it, and it
+    reads its work from `rainfall_advisory_history` rather than from anything
+    held in memory. That ordering is deliberate: the advisory is durable before
+    anyone is messaged, so a crash mid-dispatch loses at most a notification —
+    never the detection itself — and the undispatched row is simply picked up
+    on the next run.
+
+    Dispatch is off unless `farmer_sms_enabled` is set, and never raises: a
+    notification failure must not mark a successful scan as failed.
+    """
     await run(trigger="scheduled")
+
+    try:
+        from tasks.farmer_sms_dispatch import run_farmer_sms_dispatch
+
+        results = await run_farmer_sms_dispatch()
+        if results:
+            log.info("farmer sms dispatch: %s", results)
+    except Exception:  # noqa: BLE001 — the scan's own result is already safe
+        log.exception("farmer sms dispatch failed after rainfall scan")

@@ -103,6 +103,34 @@ class Settings(BaseSettings):
     # as DEFAULT_MAX_ALERTS_PER_RUN for FIRMS — keeps the feed legible.
     conflict_max_alerts_per_run: int = 3
 
+    # ─── Automatic farmer SMS ─────────────────────────────────────────────
+    #
+    # Sends a rainfall advisory straight to subscribed farmers with no human
+    # between the satellite and the handset. Every default here is chosen to
+    # fail SAFE, because the cost of a mistake is not a bad dashboard — it is a
+    # real person receiving something wrong, at 6am, in their own language.
+    #
+    # OFF by default. Turning it on is a deliberate act per environment.
+    farmer_sms_enabled: bool = False
+    # Explicit allowlist, not "every tenant with subscribers". A tenant gaining
+    # subscribers must never start auto-sending as a side effect.
+    farmer_sms_tenants: str = "kebbi"
+    # Caps, enforced against rainfall_advisory_history.sms_dispatched_at.
+    # The monthly cap is the important one: the enrolment SMS promises
+    # "2-4 msgs a month" to real cooperative leaders, and a promise that only
+    # holds in a calm season is not a promise. 4 keeps us inside it even if the
+    # weather does something unusual; the daily cap stops a single stormy
+    # morning spending the whole month's allowance at once.
+    farmer_sms_max_per_day: int = 2
+    farmer_sms_max_per_month: int = 4
+    # Service-to-service call into notifications, which owns SMS (CLAUDE.md §5:
+    # ingestion never sends directly). Same pattern as ml_base_url.
+    notifications_base_url: str = "http://127.0.0.1:8003/api/v1"
+    # Organisation UUID with a signed DPA for the tenant — the notify endpoint
+    # is PII-gated and refuses without it. Empty disables dispatch entirely,
+    # which is the correct behaviour: no DPA, no farmer messaging.
+    notifications_org_id: str = ""
+
     # NASA Earthdata (LAADS DAAC) — VIIRS Black Marble nightlight catalog.
     # Bearer token from urs.earthdata.nasa.gov → "Generate Token". Empty
     # token means "catalog client returns no scenes" — the processor
