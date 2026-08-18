@@ -85,6 +85,22 @@ locals {
   # worldpop/{year}/{ISO3}/{iso3}_ppp_{year}.tif
   ingestion_extra_env = [
     { name = "WORLDPOP_RASTER_BASE_URL", value = "s3://${aws_s3_bucket.artifacts.bucket}/worldpop" },
+
+    # Automatic farmer SMS: the rainfall scan dispatches advisories straight to
+    # subscribed farmers. This is the only path where satellite output reaches
+    # the public unattended, so it stays OFF unless var.farmer_sms_enabled is
+    # set explicitly, and refuses to send at all without an organisation id
+    # (the notify endpoint is DPA-gated).
+    #
+    # NOTE the base URL goes via the public ALB rather than a service-internal
+    # address: there is no service discovery in this cluster, and the ALB is
+    # already the path every other cross-service call takes.
+    { name = "FARMER_SMS_ENABLED", value = var.farmer_sms_enabled ? "true" : "false" },
+    { name = "FARMER_SMS_TENANTS", value = var.farmer_sms_tenants },
+    { name = "FARMER_SMS_MAX_PER_DAY", value = tostring(var.farmer_sms_max_per_day) },
+    { name = "FARMER_SMS_MAX_PER_MONTH", value = tostring(var.farmer_sms_max_per_month) },
+    { name = "NOTIFICATIONS_BASE_URL", value = "${local.public_app_url}/notifications/api/v1" },
+    { name = "NOTIFICATIONS_ORG_ID", value = var.notifications_org_id },
   ]
 
   # notifications-only env: outbound SMS via Amazon SNS. The gateway resolves to

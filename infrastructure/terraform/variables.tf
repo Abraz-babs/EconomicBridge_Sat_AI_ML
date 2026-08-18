@@ -288,3 +288,45 @@ variable "primary_domain" {
   type        = string
   default     = "economicbridge.org"
 }
+
+# ─── Automatic farmer SMS ──────────────────────────────────────────────────
+#
+# The rainfall scan can dispatch advisories directly to subscribed farmers.
+# This is the only path in the platform where satellite output reaches a member
+# of the public with no human in between, so it is opt-in per environment and
+# every default fails safe.
+
+variable "farmer_sms_enabled" {
+  description = "Dispatch rainfall advisories to subscribed farmers automatically after each scan. OFF by default: turning this on means real SMS reach real farmers with no human review. Requires notifications_org_id and a topped-up SMS gateway balance."
+  type        = bool
+  default     = false
+}
+
+variable "farmer_sms_tenants" {
+  description = "Comma-separated tenant allowlist for automatic farmer SMS. Deliberately explicit rather than 'any tenant with subscribers', so a tenant cannot start auto-sending as a side effect of a roster upload."
+  type        = string
+  default     = "kebbi"
+}
+
+variable "farmer_sms_max_per_day" {
+  description = "Max advisory batches auto-sent per tenant per day. Stops one stormy morning spending the whole month's allowance."
+  type        = number
+  default     = 2
+}
+
+variable "farmer_sms_max_per_month" {
+  description = "Max advisory batches auto-sent per tenant per calendar month. The enrolment SMS promises farmers '2-4 msgs a month'; this is what keeps that promise when the weather is not calm."
+  type        = number
+  default     = 4
+
+  validation {
+    condition     = var.farmer_sms_max_per_month <= 4
+    error_message = "The enrolment SMS promises farmers 2-4 messages a month. Raising this above 4 breaks a promise already made to real cooperative leaders — change the enrolment copy first."
+  }
+}
+
+variable "notifications_org_id" {
+  description = "Organisation UUID holding a signed DPA, used by ingestion to call the PII-gated notify endpoint. Empty disables automatic farmer SMS entirely — no DPA, no farmer messaging."
+  type        = string
+  default     = ""
+}
