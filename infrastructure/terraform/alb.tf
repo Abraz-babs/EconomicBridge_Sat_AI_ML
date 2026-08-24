@@ -22,6 +22,15 @@ resource "aws_lb" "main" {
   subnets            = aws_subnet.public[*].id
 
   enable_deletion_protection = var.environment == "production"
+
+  # Client IP / path / user-agent / referrer per request. Without this the only
+  # request record is the container's, which sees the ALB's internal address and
+  # is drowned in health checks — see s3.tf for why this was turned on.
+  access_logs {
+    bucket  = aws_s3_bucket.artifacts.id
+    prefix  = "alb-logs"
+    enabled = true
+  }
   # 300s: big report PDF/CSV exports and slower admin operations were getting
   # cut by the 60s default (manual job triggers also 504'd before they became
   # background tasks).
