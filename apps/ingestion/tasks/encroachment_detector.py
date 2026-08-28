@@ -382,6 +382,62 @@ async def _insert_alert(
         "trace_id": trace_id,
     })
 
+    # Permanent record, in addition to the live row above. See migration 0045.
+    await _record_watch_history(
+        session, tenant=tenant, signal=signal, lga=lga_name, lon=lon, lat=lat,
+        zone_name=zone, area_ha=area_ha, livelihoods=livelihoods,
+    )
+
+
+async def _record_watch_history(
+    session: AsyncSession, *, tenant: str, signal, lga: str | None,
+    lon: float | None, lat: float | None, zone_name: str,
+    area_ha: int, livelihoods: int,
+) -> None:
+    """Append this watch to the permanent record (migration 0045).
+
+    The live refresh deletes an LGA's watch on every successful read, so
+    without this a watch stops existing the moment the LGA reads calm — and
+    nothing anywhere remembers it was ever raised. The operator's requirement
+    is to "not miss anything"; a table that deletes by design cannot meet that
+    on its own.
+
+    Deliberately best-effort: history is valuable, but never at the cost of the
+    detection itself. A failure here must not lose the alert we just wrote, so
+    it is logged and swallowed. Same posture as _record_history in
+    tasks/rainstorm_scan.py.
+
+    ON CONFLICT (lga, observed_date) DO NOTHING — a re-run or a manual full
+    sweep on the same day must not double-count one observation in what is
+    meant to be evidence.
+    """
+    if not lga:
+        return
+    try:
+        await session.execute(text("""
+            INSERT INTO encroachment_watch_history (
+                tenant_id, lga, lon, lat, severity, score, zone_name,
+                components, affected_area_ha, livelihoods_at_risk,
+                observed_date, detector_version
+            ) VALUES (
+                :tenant_id, :lga, :lon, :lat, :severity, :score, :zone,
+                CAST(:components AS JSONB), :area_ha, :livelihoods,
+                CURRENT_DATE, :dver
+            )
+            ON CONFLICT (lga, observed_date) DO NOTHING
+        """), {
+            "tenant_id": tenant, "lga": lga, "lon": lon, "lat": lat,
+            "severity": signal.severity, "score": signal.score,
+            "zone": zone_name, "components": json.dumps(signal.components),
+            "area_ha": area_ha, "livelihoods": livelihoods,
+            "dver": MODEL_VERSION,
+        })
+    except Exception as exc:  # noqa: BLE001 - history must never break a scan
+        log.warning(
+            "encroachment: watch history write failed tenant=%s lga=%s: %r",
+            tenant, lga, exc,
+        )
+
 
 async def detect_for_tenant(session: AsyncSession, tenant: str) -> str:
     """Evaluate one tenant; refresh its current watch from the latest scan.
