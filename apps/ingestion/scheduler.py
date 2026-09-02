@@ -38,6 +38,7 @@ from tasks.poverty_ingest import ingest_all as poverty_ingest_all
 from tasks.satellite_observations_ingest import ingest_all as satobs_ingest_all
 from tasks.food_prices_ingest import run_food_price_ingest
 from tasks.rainstorm_scan import run_rainfall_scan
+from tasks.storm_scan import run_storm_scan
 from tasks.shockguard_scan import run_shockguard_scan
 from tasks.skills_ingest import ingest_skills_for_tenant
 from tasks.worldpop_raster_sample import sweep_tenant as worldpop_sweep_tenant
@@ -54,6 +55,7 @@ JOB_ID_POVERTY_WEEKLY = "poverty_viirs_weekly_mon_0630utc"
 JOB_ID_ENCROACHMENT_DAILY = "encroachment_daily_0700utc"
 JOB_ID_SHOCKGUARD_DAILY = "shockguard_scan_daily_0730utc"
 JOB_ID_RAINFALL_DAILY = "imerg_rainfall_daily_0800utc"
+JOB_ID_STORM_DAILY = "imerg_storm_daily_0830utc"
 JOB_ID_FOOD_PRICES_MONTHLY = "food_prices_monthly_5th_0930utc"
 JOB_ID_MOBILITY_MONTHLY = "mobility_worldbank_monthly_1st_08utc"
 JOB_ID_AID_MONTHLY = "aid_hapi_monthly_1st_09utc"
@@ -165,6 +167,30 @@ def setup_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(hour=8, minute=0, timezone="UTC"),
         id=JOB_ID_RAINFALL_DAILY,
         name="IMERG exceptional-rainfall advisory (all pilots, daily)",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=21600,
+    )
+
+    scheduler.add_job(
+        run_storm_scan,
+        # Storm reconstruction from HALF-HOURLY rainfall. Runs at 08:30 UTC,
+        # after the daily rainfall advisory, because the two answer different
+        # questions and the second needs the first to have had its turn.
+        #
+        # The daily advisory asks "was yesterday exceptionally wet here", judged
+        # on a calendar-day total. This asks "was there a STORM, and how intense"
+        # — which a calendar day cannot see, because West African convection
+        # runs into the night and a storm crossing 00:00 UTC is split across two
+        # granules. Abuja, 2026-08-30: one storm 21:00-00:30 WAT reported as
+        # 6.5mm then 0.1mm against a 30.6mm gate. The city flooded.
+        #
+        # Full statewide coverage every day, no rolling revisit: a half-hourly
+        # slice is one request per REGION whatever the LGA count, so unlike the
+        # CDSE sweeps there is nothing to ration.
+        trigger=CronTrigger(hour=8, minute=30, timezone="UTC"),
+        id=JOB_ID_STORM_DAILY,
+        name="IMERG storm reconstruction (all pilots, all LGAs, daily)",
         replace_existing=True,
         max_instances=1,
         misfire_grace_time=21600,
