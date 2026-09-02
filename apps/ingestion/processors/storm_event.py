@@ -127,9 +127,12 @@ def find_storms(series: list[tuple[datetime, float]]) -> list[StormEvent]:
         peak_at, peak = max(g, key=lambda x: x[1])
         start = g[0][0]
         end = g[-1][0] + timedelta(minutes=30)
-        # Accumulations are measured over the FULL series, not just the raining
-        # slices, so a window spanning a brief lull still counts the lull's zero
-        # rather than skipping it and overstating the rate.
+        # Accumulations run over this event's OWN span including its lulls -
+        # not over the raining slices alone, which would skip a lull and
+        # overstate the rate, and not over the whole series, which would hand
+        # every storm in the window the largest storm's numbers. That second
+        # error is invisible while a window holds one storm and silently wrong
+        # the moment it holds two.
         inside = [(t, r) for t, r in pts if start <= t < end]
         events.append(StormEvent(
             start=start,
@@ -137,10 +140,32 @@ def find_storms(series: list[tuple[datetime, float]]) -> list[StormEvent]:
             peak_mm_hr=round(peak, 2),
             peak_at=peak_at,
             total_mm=round(sum(r * _SLICE_HOURS for _, r in inside), 2),
-            accum={h: round(_rolling_max(pts, h), 2) for h in WINDOWS_H},
+            accum={h: round(_rolling_max(inside, h), 2) for h in WINDOWS_H},
             slices=len(g),
         ))
     return events
+
+
+def window_maxima(
+    series: list[tuple[datetime, float]],
+) -> tuple[dict[int, float], float] | None:
+    """Rolling maxima and peak rate over a whole series, ignoring storm bounds.
+
+    This is what the intensity BASELINE is built from, and it is deliberately
+    not "the largest storm's numbers". A day's worst hour is a property of the
+    day: an afternoon squall can deliver less total rain than an all-night
+    soaking while being far more intense, so picking the storm with the highest
+    total and reporting its peak understates the day.
+
+    Returns (accumulations by hour, peak mm/hr), or None if it never rained.
+    """
+    pts = sorted((t, r) for t, r in series if r is not None)
+    if not any(r >= RAINING_MM_HR for _, r in pts):
+        return None
+    return (
+        {h: round(_rolling_max(pts, h), 2) for h in WINDOWS_H},
+        round(max(r for _, r in pts), 2),
+    )
 
 
 def largest(series: list[tuple[datetime, float]]) -> StormEvent | None:

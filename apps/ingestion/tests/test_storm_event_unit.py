@@ -8,11 +8,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from processors.storm_event import (
     MAX_GAP,
     RAINING_MM_HR,
     find_storms,
     largest,
+    window_maxima,
 )
 
 
@@ -127,3 +130,61 @@ def test_duration_reflects_the_whole_storm() -> None:
     assert e is not None
     # 20:00 through 23:30 + the last slice = 4 hours.
     assert e.duration_h == 4.0
+
+
+# ─── Per-event accumulation ───────────────────────────────────────────────
+
+
+def _series(spec):
+    """(hour offset, mm/hr) pairs -> a UTC series starting 2026-08-30T00:00."""
+    base = datetime(2026, 8, 30, tzinfo=timezone.utc)
+    return [(base + timedelta(hours=h), r) for h, r in spec]
+
+
+def test_two_storms_do_not_share_the_bigger_ones_numbers():
+    """Each storm reports what fell on IT, not what fell in the window.
+
+    Accumulations were computed over the whole series, so a modest storm
+    sitting in the same window as a violent one inherited the violent one's
+    figures. With one storm per window that is invisible; with two it is a
+    fabricated reading, and it would have been rated and alerted on.
+    """
+    # A violent storm, six dry hours, then a modest one.
+    heavy = [(0.0, 40.0), (0.5, 40.0)]
+    light = [(7.0, 2.0), (7.5, 2.0)]
+    events = find_storms(_series(heavy + light))
+
+    assert len(events) == 2, "six dry hours must separate these"
+    big, small = sorted(events, key=lambda e: e.total_mm, reverse=True)
+    assert big.accum[1] > small.accum[1]
+    # The small storm delivered 2 mm/hr for an hour: 2 mm, not the heavy
+    # storm's 40.
+    assert small.accum[1] == pytest.approx(2.0, abs=0.51)
+
+
+def test_window_maxima_is_day_wide_not_the_largest_storm():
+    """The baseline needs the DAY's worst hour, whichever storm delivered it.
+
+    A long soaking can carry more total rain than a short squall while being
+    far less intense. Recording the highest-total storm's peak would file the
+    soaking and discard the squall - and the squall is the flood risk.
+    """
+    squall = [(1.0, 30.0)]                       # 15 mm in 30 min, brief
+    soaking = [(6.0 + i * 0.5, 4.0) for i in range(12)]   # 24 mm over 6 h
+    series = _series(squall + soaking)
+
+    events = find_storms(series)
+    by_total = max(events, key=lambda e: e.total_mm)
+    assert by_total.peak_mm_hr == pytest.approx(4.0), "the soaking wins total"
+
+    result = window_maxima(series)
+    assert result is not None
+    _, peak = result
+    assert peak == pytest.approx(30.0), "the day's peak is the squall's"
+
+
+def test_window_maxima_returns_none_on_a_dry_series():
+    """A dry day must not create a baseline row - it is not a measurement of
+    an ordinary storm, it is the absence of one, and entering it would drag
+    every percentile down."""
+    assert window_maxima(_series([(0.0, 0.0), (1.0, 0.1)])) is None

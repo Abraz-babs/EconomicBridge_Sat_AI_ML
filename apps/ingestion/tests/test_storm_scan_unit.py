@@ -6,6 +6,8 @@ between "scanned and calm" and "not scanned".
 """
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta, timezone
+
 import pytest
 
 from tasks import storm_scan as ss
@@ -88,6 +90,9 @@ class _FakeSession:
     silently writes rows into a real database.
     """
 
+    #: intensity rows written, shared across every session the factory makes
+    intensity: list[dict] = []
+
     def __init__(self, recorded: list[dict]) -> None:
         self._recorded = recorded
         self.committed = False
@@ -96,6 +101,8 @@ class _FakeSession:
         sql = str(stmt)
         if "ingestion_runs" in sql:
             self._recorded.append(dict(params or {}))
+        elif "storm_intensity_daily" in sql and "INSERT" in sql:
+            self.intensity.append(dict(params or {}))
         return None
 
     async def commit(self) -> None:
@@ -192,3 +199,71 @@ def test_full_coverage_not_a_rolling_slice() -> None:
     import inspect
     src = inspect.getsource(ss.run_storm_scan)
     assert "select_lgas(tenant, full=True)" in src
+
+
+@pytest.mark.asyncio
+async def test_intensity_is_filed_under_the_day_the_rain_fell(monkeypatch) -> None:
+    """Not under the day the scan ran.
+
+    The window is 36h so a storm crossing midnight is seen whole, which means
+    consecutive runs overlap by twelve hours. Filing everything under "today"
+    entered one storm into TWO days of the record - inflating the upper tail
+    with a day that never happened, and making every later storm look ordinary
+    against it. It also disagreed with the bootstrap, which files by the real
+    day, while both fed one distribution.
+    """
+    monkeypatch.setattr(ss.ImergHalfHourlyClient, "configured",
+                        property(lambda self: True))
+
+    # Rain on two distinct UTC days inside one window.
+    day_a = datetime(2026, 8, 30, 22, 0, tzinfo=timezone.utc)
+    day_b = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+
+    class _Grid:
+        def __init__(self, at, rate):  # noqa: ANN001
+            self.at = at
+            self._rate = rate
+
+        def sample_max(self, lon, lat):  # noqa: ANN001, ANN202
+            return self._rate
+
+    grids = [
+        _Grid(day_a, 20.0), _Grid(day_a + timedelta(minutes=30), 20.0),
+        _Grid(day_b, 6.0), _Grid(day_b + timedelta(minutes=30), 6.0),
+    ]
+
+    async def _window(client, http, region, *, end, hours):  # noqa: ANN001, ANN202
+        return grids, hours * 2
+
+    monkeypatch.setattr(ss, "scan_region", _window)
+    monkeypatch.setattr(ss, "select_lgas", lambda tenant, full=False: [
+        {"lga": "Bwari", "lon": 7.38, "lat": 9.28},
+    ])
+
+    async def _pct(session, *, lga, column, value):  # noqa: ANN001, ANN202
+        return None, 0
+
+    monkeypatch.setattr(ss, "_percentile", _pct)
+    monkeypatch.setattr(ss, "set_tenant_schema",
+                        lambda session, tenant: _noop())
+
+    _FakeSession.intensity = []
+    recorded: list[dict] = []
+    monkeypatch.setattr(ss, "get_session_factory",
+                        lambda: _fake_factory(recorded))
+
+    await ss.run_storm_scan(tenants=["fct"])
+
+    days = {r["day"] for r in _FakeSession.intensity}
+    assert days == {date(2026, 8, 30), date(2026, 8, 31)}, (
+        "both days of rain must be recorded, each under its own date"
+    )
+
+    # And each day carries ITS OWN intensity, not the window's worst.
+    by_day = {r["day"]: r for r in _FakeSession.intensity}
+    assert by_day[date(2026, 8, 30)]["peak"] > by_day[date(2026, 8, 31)]["peak"]
+    assert by_day[date(2026, 8, 31)]["peak"] == pytest.approx(6.0)
+
+    # Coverage is judged against a DAY (48 slices), never the 72-slice window -
+    # otherwise every row would look badly under-observed.
+    assert all(r["expected"] == 48 for r in _FakeSession.intensity)

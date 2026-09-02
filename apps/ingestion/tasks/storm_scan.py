@@ -43,7 +43,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import PILOT_TENANT_IDS, get_session_factory, set_tenant_schema
-from processors.storm_event import find_storms
+from processors.storm_event import find_storms, window_maxima
 from sources.gpm_imerg_halfhourly import ImergHalfHourlyClient
 from tasks.encroachment_detector import select_lgas
 from tasks.rainstorm_scan import REGIONS, TENANT_REGION
@@ -61,6 +61,10 @@ SOURCE = DETECTOR_VERSION
 # scan, so a storm that began yesterday evening and ended after midnight is
 # seen whole — which is the entire point.
 WINDOW_HOURS = 36
+
+# A full UTC day of half-hourly slices. The intensity record is per DAY, so
+# coverage is judged against a day and not against the scan's wider window.
+SLICES_PER_DAY = 48
 
 # The Late run trails real time; asking for the last couple of hours returns
 # 404s that are not errors. Start the window slightly back rather than logging
@@ -153,14 +157,24 @@ async def _percentile(
 
 
 async def _record_intensity(
-    session: AsyncSession, *, tenant: str, s: LgaStorm, day: date,
-    seen: int, expected: int,
+    session: AsyncSession, *, tenant: str, lga: str, day: date,
+    accum: dict[int, float], peak_mm_hr: float, seen: int, expected: int,
 ) -> None:
-    """Append today's worst accumulations for this LGA.
+    """Append ONE UTC DAY's worst accumulations for this LGA.
 
-    This is what grows the baseline. Every scan adds one row per LGA, so the
-    record deepens on its own and a bootstrap only needs to cover enough
-    history to be usable rather than all of it.
+    This is what grows the baseline, and the day it is filed under is the day
+    the rain actually fell - not the day the scan ran.
+
+    The scan reads a 36h window so a storm that crosses midnight is seen whole,
+    which means consecutive runs overlap by twelve hours. Filing everything
+    under "today" would enter one storm into two different days of the record,
+    inflating the upper tail with a day that never happened and making every
+    later storm look ordinary by comparison. Filing by the day of the rain
+    makes the write idempotent instead: tomorrow's overlapping window
+    recomputes the same day and GREATEST leaves it unchanged.
+
+    It also makes live rows and bootstrap rows the same measurement. They land
+    in one distribution, so they had better be measuring one thing.
     """
     await session.execute(text("""
         INSERT INTO storm_intensity_daily (
@@ -176,9 +190,10 @@ async def _record_intensity(
             peak_mm_hr = GREATEST(COALESCE(storm_intensity_daily.peak_mm_hr, 0), EXCLUDED.peak_mm_hr),
             slices_seen = GREATEST(storm_intensity_daily.slices_seen, EXCLUDED.slices_seen)
     """), {
-        "t": tenant, "lga": s.lga, "day": day,
-        "h1": s.max_1h, "h3": s.max_3h, "h6": s.max_6h,
-        "peak": s.storm.peak_mm_hr, "seen": seen, "expected": expected,
+        "t": tenant, "lga": lga, "day": day,
+        "h1": accum.get(1, 0.0), "h3": accum.get(3, 0.0),
+        "h6": accum.get(6, 0.0),
+        "peak": peak_mm_hr, "seen": seen, "expected": expected,
     })
 
 
@@ -269,7 +284,8 @@ async def run_storm_scan(
     started_at = datetime.now(timezone.utc)
     target = sorted(tenants if tenants is not None else PILOT_TENANT_IDS)
     end = datetime.now(timezone.utc) - timedelta(hours=LATENCY_HOURS)
-    today = end.date()
+    # No "today" here on purpose: intensity rows are filed under the day the
+    # rain fell, read off each slice, never under the day the scan ran.
 
     needed = {TENANT_REGION.get(t) for t in target} - {None}
     windows: dict[str, tuple[list, int]] = {}
@@ -318,7 +334,27 @@ async def run_storm_scan(
                         events = find_storms(series)
                         if not events:
                             continue
-                        e = max(events, key=lambda x: x.total_mm)
+
+                        # BASELINE: one row per UTC day the rain fell on,
+                        # measured from that day's own slices. The window spans
+                        # parts of up to three days; a partly-covered day is
+                        # written anyway because GREATEST can only raise a row,
+                        # never lower one, and the following run sees the rest.
+                        by_day: dict[date, list] = {}
+                        for at, rate in series:
+                            by_day.setdefault(at.date(), []).append((at, rate))
+                        for d, day_series in by_day.items():
+                            wm = window_maxima(day_series)
+                            if wm is None:
+                                continue
+                            day_accum, day_peak = wm
+                            await _record_intensity(
+                                session, tenant=tenant, lga=g["lga"], day=d,
+                                accum=day_accum, peak_mm_hr=day_peak,
+                                seen=len(day_series), expected=SLICES_PER_DAY)
+
+                        # RATING: the storm itself, on its own accumulations.
+                        e = max(events, key=lambda x: x.accum.get(1, 0.0))
                         s = LgaStorm(
                             lga=g["lga"], lon=g["lon"], lat=g["lat"], storm=e,
                             max_1h=e.accum.get(1, 0.0),
@@ -331,9 +367,6 @@ async def run_storm_scan(
                             session, lga=s.lga, column="max_3h_mm", value=s.max_3h)
                         bdays = max(n1, n3)
                         sev = _severity(p1, p3, bdays)
-                        await _record_intensity(
-                            session, tenant=tenant, s=s, day=today,
-                            seen=len(grids), expected=expected)
                         if sev is not None:
                             await _record_event(
                                 session, tenant=tenant, s=s, pct_1h=p1,
