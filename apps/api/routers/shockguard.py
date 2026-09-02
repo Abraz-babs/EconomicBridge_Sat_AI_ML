@@ -532,6 +532,21 @@ async def list_storms(
         text("SELECT count(DISTINCT day) FROM storm_intensity_daily")
     )).scalar() or 0)
 
+    # The number that actually governs whether anything can be rated. A row
+    # exists for an LGA only on days it rained there, so after a full 28-day
+    # backfill a wet district may hold 27 days of its own record and a dry
+    # one 4. Reporting only the calendar depth above would say "record
+    # complete" while most of the territory was still unrankable.
+    coverage = (await session.execute(
+        text(
+            "SELECT count(*) AS known, "
+            "       count(*) FILTER (WHERE n >= :m) AS rateable "
+            "  FROM (SELECT lga, count(*) AS n "
+            "          FROM storm_intensity_daily GROUP BY lga) q"
+        ),
+        {"m": STORM_MIN_BASELINE_DAYS},
+    )).mappings().one()
+
     last_scan_at = (await session.execute(
         text(
             "SELECT MAX(finished_at) FROM public.ingestion_runs "
@@ -547,6 +562,8 @@ async def list_storms(
             measured_day=measured_day,
             measured_lga_count=measured_lga_count,
             baseline_days=baseline_days,
+            rateable_lgas=int(coverage["rateable"] or 0),
+            known_lgas=int(coverage["known"] or 0),
             min_baseline_days=STORM_MIN_BASELINE_DAYS,
             last_scan_at=last_scan_at,
         ),

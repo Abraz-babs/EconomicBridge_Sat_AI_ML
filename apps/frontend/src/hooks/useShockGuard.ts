@@ -247,6 +247,8 @@ interface StormListWire {
   measured_day?: string | null;
   measured_lga_count?: number;
   baseline_days?: number;
+  rateable_lgas?: number;
+  known_lgas?: number;
   min_baseline_days?: number;
   last_scan_at?: string | null;
 }
@@ -258,7 +260,14 @@ export interface StormsResult {
   measured: StormMeasurement[];
   measuredDay: string | null;
   measuredLgaCount: number;
+  /** Calendar days of archive. NOT the per-place figure: a place records a
+   *  day only when rain fell there, so a dry district can sit on 4 days of
+   *  its own history while the archive holds 29. */
   baselineDays: number;
+  /** Places with enough of their own rain-day history to be ranked, out of
+   *  every place seen raining at all. This is what actually gates alerting. */
+  rateableLgas: number;
+  knownLgas: number;
   minBaselineDays: number;
   lastScanAt: string | null;
 }
@@ -285,6 +294,8 @@ export function useStorms(params: {
         measuredDay: envelope.data.measured_day ?? null,
         measuredLgaCount: envelope.data.measured_lga_count ?? 0,
         baselineDays: envelope.data.baseline_days ?? 0,
+        rateableLgas: envelope.data.rateable_lgas ?? 0,
+        knownLgas: envelope.data.known_lgas ?? 0,
         minBaselineDays: envelope.data.min_baseline_days ?? 21,
         lastScanAt: envelope.data.last_scan_at ?? null,
       };

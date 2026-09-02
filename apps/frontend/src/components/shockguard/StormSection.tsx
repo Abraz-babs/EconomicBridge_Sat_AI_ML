@@ -63,7 +63,12 @@ export default function StormSection({ tenantId }: { tenantId: string }) {
   }
   if (q.isError || !d) return null;
 
-  const building = d.baselineDays < d.minBaselineDays;
+  // Coverage is governed by PER-PLACE history, not by how many calendar days
+  // of archive we hold. A place records a day only when rain fell there, so a
+  // dry district can sit on 4 days of its own record while the archive holds
+  // 29. Reporting the archive figure alone would read as "record complete"
+  // while most of the territory was still unrankable.
+  const partialCoverage = d.knownLgas > 0 && d.rateableLgas < d.knownLgas;
   const partial = d.measured.filter(
     (m) => m.slices_seen > 0 && m.slices_seen < m.slices_expected,
   ).length;
@@ -87,7 +92,7 @@ export default function StormSection({ tenantId }: { tenantId: string }) {
 
       {/* The record has to be deep enough before a rank means anything. Say so
           rather than rendering an empty list that reads as "no storms". */}
-      {building && (
+      {partialCoverage && (
         <div
           style={{
             padding: '9px 12px', borderRadius: '6px', fontSize: '12.5px',
@@ -98,9 +103,12 @@ export default function StormSection({ tenantId }: { tenantId: string }) {
         >
           <strong>Building the local record</strong>
           {' · '}
-          {d.baselineDays} of {d.minBaselineDays} days. Storms are measured and
-          stored, but none is ranked until each place has enough of its own
-          history to rank against.
+          {d.baselineDays} days of archive.{' '}
+          <strong>{d.rateableLgas}</strong> of {d.knownLgas} areas can be
+          ranked so far. An area becomes rankable once it has{' '}
+          {d.minBaselineDays} days with measurable rain of its own to be
+          judged against, which takes longer in drier districts. Storms
+          elsewhere are still measured and stored, just not ranked.
         </div>
       )}
 

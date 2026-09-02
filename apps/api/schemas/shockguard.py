@@ -249,9 +249,15 @@ class StormListData(BaseModel):
     measured_day: date | None = None
     # LGAs that recorded rain on that day — the scan's actual reach.
     measured_lga_count: int = 0
-    # Days of per-LGA record available. Under min_baseline_days a storm is
-    # measured and stored but never rated, so the UI can explain silence
-    # rather than implying calm.
+    # Calendar days of archive held for this tenant. NOT the same quantity as
+    # StormRow.baseline_days, which counts the days a given LGA actually
+    # recorded rain -- a place gets a row only when something fell there.
     baseline_days: int = 0
+    # Places that have accumulated enough of their OWN rain-day history to be
+    # ranked, out of every place seen raining at all. In a dry district these
+    # diverge for a long time, and a panel reporting only the calendar figure
+    # would imply the whole territory was rankable when most of it was not.
+    rateable_lgas: int = 0
+    known_lgas: int = 0
     min_baseline_days: int = 21
     last_scan_at: datetime | None = None
