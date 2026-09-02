@@ -12,6 +12,7 @@ import {
   type ShockScanData,
 } from '@/hooks/useShockGuard';
 import ShockEventsMap from './ShockEventsMap';
+import StormSection from './StormSection';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -60,6 +61,8 @@ function instrumentLabel(source: string, detector: string): string {
       return 'GPM IMERG rainfall';
     case 'shockguard_scan_v1':
       return 'Sentinel-1 SAR / Sentinel-2 NDVI';
+    case 'storm_scan_v1':
+      return 'GPM IMERG storm intensity (half-hourly)';
     case 'sentinel1_unet_v1':
       return 'Sentinel-1 U-Net';
     case 'historical_v1':
@@ -238,6 +241,11 @@ export default function ShockGuardPanel() {
           })}
         </div>
       )}
+
+      {/* STORMS - reconstructed from half-hourly rate, so a storm that runs
+          through midnight is seen whole. Sits above the scan controls because
+          it is the standing feed; the scan below it is on-demand. */}
+      <StormSection tenantId={activeTenantId} />
 
       {/* STATS */}
       {lastScan && (

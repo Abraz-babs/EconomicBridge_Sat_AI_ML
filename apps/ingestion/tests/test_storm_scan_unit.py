@@ -80,6 +80,38 @@ async def test_percentile_excludes_today() -> None:
     assert (pct, n) == (96.7, 30)
 
 
+class _FakeSession:
+    """Captures what the scan writes, without a database.
+
+    The run-recording path has to be exercised offline: a unit test that
+    reaches the developer's Postgres passes here and reds in CI, and worse,
+    silently writes rows into a real database.
+    """
+
+    def __init__(self, recorded: list[dict]) -> None:
+        self._recorded = recorded
+        self.committed = False
+
+    async def execute(self, stmt, params=None):  # noqa: ANN001, ANN202
+        sql = str(stmt)
+        if "ingestion_runs" in sql:
+            self._recorded.append(dict(params or {}))
+        return None
+
+    async def commit(self) -> None:
+        self.committed = True
+
+    async def __aenter__(self):  # noqa: ANN202
+        return self
+
+    async def __aexit__(self, *exc) -> bool:  # noqa: ANN002
+        return False
+
+
+def _fake_factory(recorded: list[dict]):  # noqa: ANN202
+    return lambda: _FakeSession(recorded)
+
+
 @pytest.mark.asyncio
 async def test_no_slices_is_reported_as_not_scanned(monkeypatch) -> None:
     """An empty window is not a calm day, and must not read as one."""
@@ -90,8 +122,58 @@ async def test_no_slices_is_reported_as_not_scanned(monkeypatch) -> None:
         return [], hours * 2
 
     monkeypatch.setattr(ss, "scan_region", _empty)
+    recorded: list[dict] = []
+    monkeypatch.setattr(ss, "get_session_factory",
+                        lambda: _fake_factory(recorded))
     out = await ss.run_storm_scan(tenants=["fct"])
     assert "not scanned" in out["fct"]
+
+    # And it must be recorded as a FAILED run. A scan that read nothing leaving
+    # the same trace as one that read a dry day is how a blind feed goes on
+    # reporting "continuously monitored".
+    assert len(recorded) == 1
+    assert recorded[0]["source"] == "storm_scan_v1"
+    assert recorded[0]["status"] == "failed"
+    assert recorded[0]["written"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_scanned_day_stamps_a_successful_run(monkeypatch) -> None:
+    """The feed must be visible on the panel even when nothing is rated.
+
+    storm_scan_v1 is listed in the API router's LIVE_SCAN_SOURCES; if the task
+    never stamps public.ingestion_runs, the panel shows the feed as never
+    having run. That is exactly how the IMERG rainfall advisory shipped, ran
+    daily, and stayed invisible for weeks.
+    """
+    monkeypatch.setattr(ss.ImergHalfHourlyClient, "configured",
+                        property(lambda self: True))
+
+    class _Grid:
+        at = None
+
+        def sample_max(self, lon, lat):  # noqa: ANN001, ANN202
+            return 0.0
+
+    async def _dry(client, http, region, *, end, hours):  # noqa: ANN001, ANN202
+        return [_Grid()], hours * 2
+
+    monkeypatch.setattr(ss, "scan_region", _dry)
+    monkeypatch.setattr(ss, "select_lgas", lambda tenant, full=False: [])
+    recorded: list[dict] = []
+    monkeypatch.setattr(ss, "get_session_factory",
+                        lambda: _fake_factory(recorded))
+    monkeypatch.setattr(ss, "set_tenant_schema",
+                        lambda session, tenant: _noop())
+
+    out = await ss.run_storm_scan(tenants=["fct"])
+    assert "0 storm event(s)" in out["fct"]
+    assert len(recorded) == 1
+    assert recorded[0]["status"] == "succeeded"
+
+
+async def _noop() -> None:
+    return None
 
 
 @pytest.mark.asyncio

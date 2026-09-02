@@ -36,6 +36,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from uuid import uuid4
 
 import httpx
 from sqlalchemy import text
@@ -50,6 +51,11 @@ from tasks.rainstorm_scan import REGIONS, TENANT_REGION
 log = logging.getLogger(__name__)
 
 DETECTOR_VERSION = "storm_scan_v1"
+# public.ingestion_runs key. MUST also be listed in the API router's
+# LIVE_SCAN_SOURCES, or this feed runs daily and the dashboard never shows
+# it — the exact way the IMERG rainfall advisory stayed invisible for
+# weeks after it shipped. A feed nobody can see is not a feed.
+SOURCE = DETECTOR_VERSION
 
 # Trailing window fetched each run. 36h covers a full night either side of the
 # scan, so a storm that began yesterday evening and ended after midnight is
@@ -205,6 +211,34 @@ async def _record_event(
     })
 
 
+async def _record_run(
+    session: AsyncSession, *, tenant: str, written: int,
+    started_at: datetime, trigger: str, error: str | None = None,
+) -> None:
+    """Stamp public.ingestion_runs so the panel can prove the scan is live.
+
+    Recorded on EVERY outcome including "no slices retrieved", which is a
+    failure and is written as one. A scan that reads nothing must not leave the
+    same trace as a scan that read a dry day — the panel would report
+    continuous monitoring over a blind feed.
+    """
+    # Columns are records_ingested / error_message / dry_run (migration 0004).
+    await session.execute(text("""
+        INSERT INTO public.ingestion_runs (
+            id, source, tenant_id, trigger, started_at, finished_at,
+            status, records_ingested, error_message, dry_run
+        ) VALUES (
+            :id, :source, :tenant, :trigger, :started_at, NOW(),
+            :status, :written, :error, FALSE
+        )
+    """), {
+        "id": uuid4(), "source": SOURCE, "tenant": tenant, "trigger": trigger,
+        "started_at": started_at, "written": written,
+        "status": "failed" if error else "succeeded",
+        "error": error[:500] if error else None,
+    })
+
+
 async def scan_region(
     client: ImergHalfHourlyClient, http: httpx.AsyncClient, region: str,
     *, end: datetime, hours: int,
@@ -220,6 +254,7 @@ async def scan_region(
 
 async def run_storm_scan(
     tenants: list[str] | None = None, *, hours: int = WINDOW_HOURS,
+    trigger: str = "scheduled",
 ) -> dict[str, str]:
     """Scan every pilot for storms. Failures isolated per tenant.
 
@@ -231,6 +266,7 @@ async def run_storm_scan(
         log.warning("storm scan: no EARTHDATA_TOKEN — skipped")
         return {}
 
+    started_at = datetime.now(timezone.utc)
     target = sorted(tenants if tenants is not None else PILOT_TENANT_IDS)
     end = datetime.now(timezone.utc) - timedelta(hours=LATENCY_HOURS)
     today = end.date()
@@ -261,7 +297,13 @@ async def run_storm_scan(
                 # No slices is NOT a calm day. Say which it was, the same
                 # distinction the other scans draw between "not checked" and
                 # "no signal".
-                out[tenant] = "not scanned (no half-hourly slices retrieved)"
+                msg = "not scanned (no half-hourly slices retrieved)"
+                out[tenant] = msg
+                async with factory() as session:
+                    await _record_run(
+                        session, tenant=tenant, written=0,
+                        started_at=started_at, trigger=trigger, error=msg)
+                    await session.commit()
                 continue
             try:
                 async with factory() as session:
@@ -298,6 +340,9 @@ async def run_storm_scan(
                                 pct_3h=p3, baseline_days=bdays, severity=sev)
                             rated += 1
                         stormy += 1
+                    await _record_run(
+                        session, tenant=tenant, written=stormy,
+                        started_at=started_at, trigger=trigger)
                     await session.commit()
                     out[tenant] = (
                         f"{rated} storm event(s) / {stormy} LGA(s) with rain "
@@ -306,6 +351,18 @@ async def run_storm_scan(
             except Exception as exc:  # noqa: BLE001 — isolate per tenant
                 out[tenant] = f"failed: {exc!r}"
                 log.exception("storm scan failed tenant=%s", tenant)
+                # A fresh session: the one that raised is poisoned, and the
+                # failure has to be recorded or the feed reads as healthy.
+                try:
+                    async with factory() as session:
+                        await _record_run(
+                            session, tenant=tenant, written=0,
+                            started_at=started_at, trigger=trigger,
+                            error=repr(exc))
+                        await session.commit()
+                except Exception:  # noqa: BLE001 — never mask the real failure
+                    log.exception("storm scan: could not record failed run "
+                                  "tenant=%s", tenant)
 
     log.info("storm scan: %s", out)
     return out

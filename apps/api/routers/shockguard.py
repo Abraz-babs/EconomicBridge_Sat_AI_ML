@@ -31,6 +31,9 @@ from schemas.shockguard import (
     ShockEventRow,
     ShockScanData,
     ShockScanRequest,
+    StormListData,
+    StormMeasurement,
+    StormRow,
 )
 from services import lga_geo, shock_detector
 from services.auto_notify import fire_conflict_notification
@@ -49,12 +52,16 @@ router = APIRouter(prefix="/shockguard", tags=["shockguard"])
 # "last scan". A feed nobody can see is not a feed.
 #   shockguard_scan_v1  — Sentinel-1 SAR drop + Sentinel-2 NDVI decline (07:30)
 #   rainstorm_scan_v1   — GPM IMERG exceptional rainfall, flood precursor (08:00)
-LIVE_SCAN_SOURCES: tuple[str, ...] = ("shockguard_scan_v1", "rainstorm_scan_v1")
+#   storm_scan_v1       — GPM IMERG half-hourly storm reconstruction (08:30)
+LIVE_SCAN_SOURCES: tuple[str, ...] = (
+    "shockguard_scan_v1", "rainstorm_scan_v1", "storm_scan_v1",
+)
 
 
 FEED_LABELS: dict[str, str] = {
     "shockguard_scan_v1": "Sentinel-1 SAR / Sentinel-2 NDVI",
     "rainstorm_scan_v1": "GPM IMERG rainfall",
+    "storm_scan_v1": "GPM IMERG storm intensity (half-hourly)",
 }
 
 
@@ -404,6 +411,144 @@ async def list_events(
             last_scan_at=last_scan_at,
             active_shock_count=active_shock_count,
             feeds=feeds,
+        ),
+        meta=ResponseMeta(
+            tenant_id=None, trace_id=_trace_id(request),
+            timestamp=datetime.now(timezone.utc), pagination=None,
+        ),
+    )
+
+
+# ─── Storms ───────────────────────────────────────────────────────────────
+
+# Mirrors tasks/storm_scan.py MIN_BASELINE_DAYS. Under this many days of record
+# for an LGA the scan measures and stores a storm but refuses to rate it, and
+# the UI needs the same number to explain why nothing is rated yet.
+STORM_MIN_BASELINE_DAYS = 21
+
+# How many wettest-LGA rows the "scanned, nothing exceptional" evidence list
+# carries. Enough to show the scan's reach, short enough to read at a glance.
+STORM_MEASURED_LIMIT = 8
+
+
+@router.get(
+    "/storms",
+    response_model=SuccessResponse[StormListData],
+    summary="Recent storms reconstructed from half-hourly rainfall",
+)
+async def list_storms(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    limit: Annotated[
+        int, Query(ge=1, le=100, description="Max storms (default 20).")
+    ] = 20,
+) -> SuccessResponse[StormListData]:
+    """Storms, plus what was measured on the latest scanned day.
+
+    A storm here is a MEASUREMENT — depth, rate, duration, and where that sits
+    in the same LGA's own record. It is not a flood forecast: whether rain
+    floods a place depends on drainage, saturation and how much ground is
+    concrete, none of which this observes.
+
+    The response deliberately carries `measured` alongside `storms` so an empty
+    storms list is legible. "Scanned 142 LGAs, wettest hour 11 mm, nothing
+    above the local 90th percentile" is a finding. An empty panel is not.
+    """
+    tenant_id = _require_tenant(request)
+
+    storms = [
+        StormRow(
+            id=r["id"], tenant_id=r["tenant_id"], lga=r["lga"],
+            location=(
+                LonLat(lon=r["lon"], lat=r["lat"])
+                if r["lon"] is not None and r["lat"] is not None else None
+            ),
+            started_at=r["started_at"], ended_at=r["ended_at"],
+            peak_at=r["peak_at"],
+            crosses_midnight_utc=bool(r["crosses_midnight_utc"]),
+            peak_mm_hr=r["peak_mm_hr"], total_mm=r["total_mm"],
+            max_1h_mm=r["max_1h_mm"], max_3h_mm=r["max_3h_mm"],
+            max_6h_mm=r["max_6h_mm"], duration_h=r["duration_h"],
+            percentile_1h=r["percentile_1h"], percentile_3h=r["percentile_3h"],
+            baseline_days=r["baseline_days"], severity=r["severity"],
+            detector_version=r["detector_version"], detected_at=r["detected_at"],
+        )
+        for r in (await session.execute(
+            text(
+                """
+                SELECT id, tenant_id, lga, lon, lat, started_at, ended_at,
+                       peak_at, crosses_midnight_utc, peak_mm_hr, total_mm,
+                       max_1h_mm, max_3h_mm, max_6h_mm, duration_h,
+                       percentile_1h, percentile_3h, baseline_days, severity,
+                       detector_version, detected_at
+                  FROM storm_events
+                 ORDER BY started_at DESC
+                 LIMIT :limit
+                """
+            ),
+            {"limit": limit},
+        )).mappings().all()
+    ]
+
+    # The most recent day that has ANY measurement, not "yesterday" — the Late
+    # run can lag, and asking for a fixed date would render an empty panel on a
+    # day the feed was merely slow.
+    measured_day = (await session.execute(
+        text("SELECT MAX(day) FROM storm_intensity_daily")
+    )).scalar()
+
+    measured: list[StormMeasurement] = []
+    measured_lga_count = 0
+    if measured_day is not None:
+        measured_lga_count = int((await session.execute(
+            text("SELECT count(*) FROM storm_intensity_daily WHERE day = :d"),
+            {"d": measured_day},
+        )).scalar() or 0)
+        measured = [
+            StormMeasurement(
+                lga=r["lga"], day=r["day"], max_1h_mm=r["max_1h_mm"],
+                max_3h_mm=r["max_3h_mm"], peak_mm_hr=r["peak_mm_hr"],
+                slices_seen=r["slices_seen"],
+                slices_expected=r["slices_expected"],
+            )
+            for r in (await session.execute(
+                text(
+                    """
+                    SELECT lga, day, max_1h_mm, max_3h_mm, peak_mm_hr,
+                           slices_seen, slices_expected
+                      FROM storm_intensity_daily
+                     WHERE day = :d
+                     ORDER BY max_1h_mm DESC NULLS LAST
+                     LIMIT :limit
+                    """
+                ),
+                {"d": measured_day, "limit": STORM_MEASURED_LIMIT},
+            )).mappings().all()
+        ]
+
+    # Distinct days of record, not row count: 400 LGAs on one day is one day of
+    # baseline, and reporting 400 would imply a depth of history we do not have.
+    baseline_days = int((await session.execute(
+        text("SELECT count(DISTINCT day) FROM storm_intensity_daily")
+    )).scalar() or 0)
+
+    last_scan_at = (await session.execute(
+        text(
+            "SELECT MAX(finished_at) FROM public.ingestion_runs "
+            "WHERE source = :s AND tenant_id = :t AND status = 'succeeded'"
+        ),
+        {"s": "storm_scan_v1", "t": tenant_id},
+    )).scalar()
+
+    return SuccessResponse(
+        data=StormListData(
+            storms=storms,
+            measured=measured,
+            measured_day=measured_day,
+            measured_lga_count=measured_lga_count,
+            baseline_days=baseline_days,
+            min_baseline_days=STORM_MIN_BASELINE_DAYS,
+            last_scan_at=last_scan_at,
         ),
         meta=ResponseMeta(
             tenant_id=None, trace_id=_trace_id(request),

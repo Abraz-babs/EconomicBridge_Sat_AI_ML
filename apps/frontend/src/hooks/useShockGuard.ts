@@ -195,3 +195,99 @@ export function useShockEvents(
     },
   });
 }
+
+
+// ─── Storms (half-hourly IMERG) ───────────────────────────────────────────
+//
+// Kept separate from ShockEventRow on purpose. A storm is a MEASUREMENT of
+// what fell — depth, rate, duration — and a shock event is a claim that
+// something went wrong. Folding storms into the events list would have meant
+// labelling them 'flood', which is the conflation that scored 0 of 11 on the
+// Kebbi 2024 backtest.
+
+export interface StormRow {
+  id: string;
+  tenant_id: string;
+  lga: string;
+  location: { lon: number; lat: number } | null;
+  started_at: string;
+  ended_at: string;
+  peak_at: string;
+  /** True when a calendar-day total would have split this storm in two —
+   *  the defect that made the platform miss the 30 Aug Abuja storm. */
+  crosses_midnight_utc: boolean;
+  peak_mm_hr: number;
+  total_mm: number;
+  max_1h_mm: number | null;
+  max_3h_mm: number | null;
+  max_6h_mm: number | null;
+  duration_h: number | null;
+  /** Rank within this LGA's OWN record. Never render without baselineDays. */
+  percentile_1h: number | null;
+  percentile_3h: number | null;
+  baseline_days: number | null;
+  severity: Severity | null;
+  detector_version: string;
+  detected_at: string;
+}
+
+export interface StormMeasurement {
+  lga: string;
+  day: string;
+  max_1h_mm: number | null;
+  max_3h_mm: number | null;
+  peak_mm_hr: number | null;
+  slices_seen: number;
+  slices_expected: number;
+}
+
+interface StormListWire {
+  storms: StormRow[];
+  measured: StormMeasurement[];
+  measured_day?: string | null;
+  measured_lga_count?: number;
+  baseline_days?: number;
+  min_baseline_days?: number;
+  last_scan_at?: string | null;
+}
+
+export interface StormsResult {
+  storms: StormRow[];
+  /** Wettest LGAs on the latest scanned day. Lets an empty storms list read
+   *  as "scanned, nothing exceptional" rather than as a dead feed. */
+  measured: StormMeasurement[];
+  measuredDay: string | null;
+  measuredLgaCount: number;
+  baselineDays: number;
+  minBaselineDays: number;
+  lastScanAt: string | null;
+}
+
+
+export function useStorms(params: {
+  tenantId: string;
+  limit?: number;
+  enabled?: boolean;
+}): UseQueryResult<StormsResult, ApiException> {
+  const limit = params.limit ?? 10;
+  return useQuery<StormsResult, ApiException>({
+    queryKey: ['shockguard-storms', params.tenantId, limit],
+    enabled: params.enabled !== false && Boolean(params.tenantId),
+    queryFn: async ({ signal }) => {
+      const envelope: SuccessEnvelope<StormListWire> =
+        await apiFetch<StormListWire>(
+          `/shockguard/storms?limit=${limit}`,
+          { tenantId: params.tenantId, signal },
+        );
+      return {
+        storms: envelope.data.storms ?? [],
+        measured: envelope.data.measured ?? [],
+        measuredDay: envelope.data.measured_day ?? null,
+        measuredLgaCount: envelope.data.measured_lga_count ?? 0,
+        baselineDays: envelope.data.baseline_days ?? 0,
+        minBaselineDays: envelope.data.min_baseline_days ?? 21,
+        lastScanAt: envelope.data.last_scan_at ?? null,
+      };
+    },
+  });
+}

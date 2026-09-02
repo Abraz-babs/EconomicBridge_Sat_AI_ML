@@ -1,7 +1,7 @@
 """Pydantic schemas for Module 05 — ShockGuard (flood + drought)."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -172,3 +172,86 @@ class ShockEventListData(BaseModel):
     # aggregate above cannot express "rainfall is current but SAR has been
     # blind for a week", which is the state we were actually in.
     feeds: list[FeedStatus] = Field(default_factory=list)
+
+
+# ─── Storms (Module 05, half-hourly IMERG) ────────────────────────────────
+#
+# Deliberately NOT folded into ShockEventRow. A storm is a measurement of what
+# fell — depth, rate, duration — and a shock event is a claim that something
+# went wrong. Merging them would have meant filing storms under event_type
+# 'flood', which is precisely the conflation that scored 0 of 11 on the Kebbi
+# 2024 backtest. They stay separate types because they are separate claims.
+
+
+class StormRow(BaseModel):
+    """One reconstructed storm over one LGA."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    tenant_id: str
+    lga: str
+    location: LonLat | None = None
+
+    # UTC. started_at can sit on the previous calendar day from the peak —
+    # that is the whole reason this table exists.
+    started_at: datetime
+    ended_at: datetime
+    peak_at: datetime
+    # True when a calendar-day total would have split this storm in two. Shown
+    # in the UI, because it is the difference between this feed and the daily
+    # one and a reader should be able to see it happen.
+    crosses_midnight_utc: bool = False
+
+    peak_mm_hr: float
+    total_mm: float
+    max_1h_mm: float | None = None
+    max_3h_mm: float | None = None
+    max_6h_mm: float | None = None
+    duration_h: float | None = None
+
+    # Where this sat in the LGA's OWN record, and how many days of record that
+    # was. Never present the percentile without baseline_days beside it: a 99th
+    # percentile over 21 days is not a 99th percentile.
+    percentile_1h: float | None = None
+    percentile_3h: float | None = None
+    baseline_days: int | None = None
+
+    severity: Severity | None = None
+    detector_version: str
+    detected_at: datetime
+
+
+class StormMeasurement(BaseModel):
+    """The wettest LGAs measured on the most recent scanned day.
+
+    Present so the panel can say "scanned, nothing exceptional" with evidence
+    instead of rendering empty and reading as a dead feed. An empty storms list
+    with a populated measurement list means the scan ran and found ordinary
+    rain — a different state from not having scanned at all.
+    """
+
+    lga: str
+    day: date
+    max_1h_mm: float | None = None
+    max_3h_mm: float | None = None
+    peak_mm_hr: float | None = None
+    # How much of the day was actually observed. IMERG Late occasionally drops
+    # slices; a partly-seen day understates every accumulation on it.
+    slices_seen: int = 0
+    slices_expected: int = 48
+
+
+class StormListData(BaseModel):
+    storms: list[StormRow] = Field(default_factory=list)
+    # Wettest LGAs on the most recent day with any measurement.
+    measured: list[StormMeasurement] = Field(default_factory=list)
+    measured_day: date | None = None
+    # LGAs that recorded rain on that day — the scan's actual reach.
+    measured_lga_count: int = 0
+    # Days of per-LGA record available. Under min_baseline_days a storm is
+    # measured and stored but never rated, so the UI can explain silence
+    # rather than implying calm.
+    baseline_days: int = 0
+    min_baseline_days: int = 21
+    last_scan_at: datetime | None = None

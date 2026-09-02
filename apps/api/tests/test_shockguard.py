@@ -488,3 +488,59 @@ def test_shock_measure_columns_are_nullable() -> None:
     tenants = re.search(r"PILOT_TENANTS.*?\)", src, re.S).group(0)
     for tenant in ("kebbi", "zamfara", "senegal", "ghana", "fct", "nasarawa"):
         assert tenant in tenants
+
+
+# ─── Storms (half-hourly IMERG) ───────────────────────────────────────────
+
+
+def test_storms_without_tenant_header_returns_400():
+    r = client.get("/api/v1/shockguard/storms")
+    assert r.status_code == 400
+
+
+def test_storms_endpoint_declares_limit_constraints():
+    spec = client.get("/api/openapi.json").json()
+    params = spec["paths"]["/api/v1/shockguard/storms"]["get"]["parameters"]
+    limit = next(p for p in params if p["name"] == "limit")
+    assert limit["schema"]["minimum"] == 1
+    assert limit["schema"]["maximum"] == 100
+
+
+def test_every_live_scan_source_has_a_label():
+    """An unlabelled feed renders as a blank row on the panel.
+
+    LIVE_SCAN_SOURCES and FEED_LABELS are two lists a developer has to
+    remember to update together; this is the reminder.
+    """
+    from routers.shockguard import FEED_LABELS, LIVE_SCAN_SOURCES
+
+    missing = [s for s in LIVE_SCAN_SOURCES if s not in FEED_LABELS]
+    assert not missing, f"no FEED_LABELS entry for {missing}"
+
+
+def test_storm_scan_is_registered_as_a_live_feed():
+    """The storm scan runs daily. If it is not listed here the panel shows it
+    as never having run - which is exactly how the IMERG rainfall advisory
+    shipped, ran for weeks, and stayed invisible.
+    """
+    from routers.shockguard import LIVE_SCAN_SOURCES
+
+    assert "storm_scan_v1" in LIVE_SCAN_SOURCES
+
+
+def test_storm_baseline_threshold_matches_the_detector():
+    """The UI explains why nothing is rated yet, quoting a number the detector
+    owns. If they drift, the panel confidently states the wrong threshold.
+    """
+    import re
+    from pathlib import Path
+
+    from routers.shockguard import STORM_MIN_BASELINE_DAYS
+
+    task = (Path(__file__).resolve().parents[2]
+            / "ingestion" / "tasks" / "storm_scan.py")
+    assert task.exists(), f"storm_scan.py not found at {task}"
+    m = re.search(r"^MIN_BASELINE_DAYS\s*=\s*(\d+)",
+                  task.read_text(encoding="utf-8"), re.MULTILINE)
+    assert m, "MIN_BASELINE_DAYS not found in storm_scan.py"
+    assert int(m.group(1)) == STORM_MIN_BASELINE_DAYS
