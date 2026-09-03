@@ -7,6 +7,7 @@ import { hazardIcon, hazardLabel } from './hazard';
 import {
   useShockEvents,
   useShockScan,
+  useStorms,
   type DataSource,
   type ShockEventType,
   type ShockScanData,
@@ -91,6 +92,11 @@ export default function ShockGuardPanel() {
 
   const scanMutation = useShockScan(activeTenantId);
   const eventsQuery = useShockEvents({ tenantId: activeTenantId, limit: 10 });
+  // The alerts column carries two views. Storms are a MEASUREMENT feed and
+  // events are a claim that something went wrong, so they stay separate lists
+  // rather than being merged into one stream.
+  const [sideTab, setSideTab] = useState<'events' | 'storms'>('events');
+  const stormsQuery = useStorms({ tenantId: activeTenantId, limit: 12 });
 
   // Live mode for drought stays a Phase B story (MODIS LST not ingested
   // yet) — flip the switch back when the user picks drought.
@@ -242,11 +248,6 @@ export default function ShockGuardPanel() {
         </div>
       )}
 
-      {/* STORMS - reconstructed from half-hourly rate, so a storm that runs
-          through midnight is seen whole. Sits above the scan controls because
-          it is the standing feed; the scan below it is on-demand. */}
-      <StormSection tenantId={activeTenantId} />
-
       {/* STATS */}
       {lastScan && (
         <div className="fp-grid">
@@ -380,18 +381,46 @@ export default function ShockGuardPanel() {
 
         <div className="fp-alerts">
           <div className="fp-alerts-header">
-            Recent Events — {stateLabel}
-            <span className="fp-alert-count">{events.length}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+              <button
+                type="button"
+                onClick={() => setSideTab('events')}
+                className="fp-alerts-tab"
+                aria-pressed={sideTab === 'events'}
+              >
+                Recent Events
+              </button>
+              <span aria-hidden style={{ opacity: 0.35 }}>·</span>
+              <button
+                type="button"
+                onClick={() => setSideTab('storms')}
+                className="fp-alerts-tab"
+                aria-pressed={sideTab === 'storms'}
+              >
+                Storms
+              </button>
+              <span>— {stateLabel}</span>
+            </span>
+            <span className="fp-alert-count">
+              {sideTab === 'events'
+                ? events.length
+                : stormsQuery.data?.storms.length ?? 0}
+            </span>
           </div>
-          {eventsQuery.isLoading && (
+
+          {sideTab === 'storms' && (
+            <StormSection tenantId={activeTenantId} />
+          )}
+
+          {sideTab === 'events' && eventsQuery.isLoading && (
             <div className="fp-alert-empty">Loading audit log…</div>
           )}
-          {!eventsQuery.isLoading && events.length === 0 && (
+          {sideTab === 'events' && !eventsQuery.isLoading && events.length === 0 && (
             <div className="fp-alert-empty">
               No persisted events yet. Run a scan and click &ldquo;Persist&rdquo; to log it.
             </div>
           )}
-          {events.map((ev) => {
+          {sideTab === 'events' && events.map((ev) => {
             // Live per-LGA scan vs recorded past events — labelled honestly.
             // `historical_v1` rows are DOCUMENTED disasters (see
             // scripts/historical_shocks_data.py); their metrics carry the
