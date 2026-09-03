@@ -30,7 +30,9 @@ def test_thin_history_is_recorded_but_never_rated() -> None:
 
 
 def test_severity_bands_are_relative_to_the_place() -> None:
-    n = ss.MIN_BASELINE_DAYS
+    # Deep enough for every band to be claimable — the bands themselves are
+    # what is under test here, not the resolution cap below.
+    n = ss.MIN_DAYS_FOR_CRITICAL
     assert ss._severity(99.5, None, n) == "critical"
     assert ss._severity(97.5, None, n) == "high"
     assert ss._severity(92.0, None, n) == "medium"
@@ -39,7 +41,7 @@ def test_severity_bands_are_relative_to_the_place() -> None:
 
 def test_severity_uses_the_worse_of_the_two_windows() -> None:
     """A short violent burst and a long soaking are both worth catching."""
-    n = ss.MIN_BASELINE_DAYS
+    n = ss.MIN_DAYS_FOR_CRITICAL
     assert ss._severity(99.5, 40.0, n) == "critical"   # 1h burst
     assert ss._severity(40.0, 99.5, n) == "critical"   # 3h soaking
 
@@ -267,3 +269,40 @@ async def test_intensity_is_filed_under_the_day_the_rain_fell(monkeypatch) -> No
     # Coverage is judged against a DAY (48 slices), never the 72-slice window -
     # otherwise every row would look badly under-observed.
     assert all(r["expected"] == 48 for r in _FakeSession.intensity)
+
+
+def test_severity_is_capped_by_what_the_sample_can_resolve() -> None:
+    """A thin record must not produce a confident label.
+
+    A rank-based percentile over n prior days cannot express anything finer
+    than 1/n, so at 25 days p97 and p99 are the SAME observation — "higher
+    than everything on record here". Measured on the first full backfill the
+    detector returned 67 critical, 58 medium and exactly 0 high across ten
+    pilots: the middle band was unreachable, and "critical" meant "highest in
+    about three weeks" while reading as a 1-in-100 event.
+
+    The storm is still reported. Only the confidence is trimmed to the
+    evidence.
+    """
+    thin = ss.MIN_BASELINE_DAYS                 # rateable, but shallow
+    assert ss._severity(100.0, None, thin) == "medium"
+    assert ss._severity(99.5, None, thin) == "medium"
+
+    mid = ss.MIN_DAYS_FOR_HIGH
+    assert ss._severity(100.0, None, mid) == "high"
+
+    deep = ss.MIN_DAYS_FOR_CRITICAL
+    assert ss._severity(100.0, None, deep) == "critical"
+
+
+def test_resolution_thresholds_actually_resolve_their_band() -> None:
+    """Each gate must be deep enough that 1/n fits inside its band.
+
+    If these ever drift apart the cap becomes decorative: it would keep
+    claiming a percentile the sample cannot distinguish from the next one up.
+    """
+    assert 100.0 / ss.MIN_DAYS_FOR_CRITICAL <= 100.0 - ss.SEV_CRITICAL
+    assert 100.0 / ss.MIN_DAYS_FOR_HIGH <= 100.0 - ss.SEV_HIGH
+    assert 100.0 / ss.MIN_DAYS_FOR_MEDIUM <= 100.0 - ss.SEV_MEDIUM
+    # And the floor for rating at all must permit the weakest band.
+    assert ss.MIN_BASELINE_DAYS >= ss.MIN_DAYS_FOR_MEDIUM

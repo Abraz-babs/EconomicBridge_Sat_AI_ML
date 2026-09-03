@@ -84,6 +84,23 @@ SEV_CRITICAL = 99.0
 SEV_HIGH = 97.0
 SEV_MEDIUM = 90.0
 
+# A rank-based percentile over n prior observations cannot express anything
+# finer than 1/n. With 25 days of record the steps are 4 percentage points
+# apart, so p97 and p99 are the SAME observation - "higher than everything I
+# have seen" - and the band between them is not merely rare, it is
+# unreachable. Measured on the first full backfill: 67 critical, 58 medium,
+# and exactly 0 high across all ten pilots. A band that can never be assigned
+# is a label that means nothing.
+#
+# So a band is only offered when the sample can resolve it. Below that the
+# severity is capped, not suppressed: the storm is still reported, and
+# reported as what the evidence supports. "The heaviest hour in the 25 days on
+# record here" is a true and useful statement. "Critical, 99th percentile" is
+# not, on 25 days.
+MIN_DAYS_FOR_CRITICAL = 100   # 1/100 = 1% resolves p99
+MIN_DAYS_FOR_HIGH = 34        # 1/34  ~ 2.9% resolves p97
+MIN_DAYS_FOR_MEDIUM = 10      # 1/10  = 10% resolves p90
+
 
 def _degrees(region: str) -> tuple[float, float, float, float]:
     """Region grid indices -> degree bounds, padded by one cell.
@@ -118,17 +135,21 @@ def _severity(pct_1h: float | None, pct_3h: float | None,
     None means "recorded, not rated" — either too little history, or the storm
     is unremarkable for this place. A storm that is ordinary here is still worth
     keeping in the intensity record; it is not worth alerting on.
+
+    Severity is also CAPPED by what the sample can resolve, so a shallow record
+    yields "medium" rather than a "critical" the evidence cannot support. The
+    cap loosens by itself as the record deepens; nothing has to be re-tuned.
     """
     if baseline_days < MIN_BASELINE_DAYS:
         return None
     best = max([p for p in (pct_1h, pct_3h) if p is not None], default=None)
     if best is None:
         return None
-    if best >= SEV_CRITICAL:
+    if best >= SEV_CRITICAL and baseline_days >= MIN_DAYS_FOR_CRITICAL:
         return "critical"
-    if best >= SEV_HIGH:
+    if best >= SEV_HIGH and baseline_days >= MIN_DAYS_FOR_HIGH:
         return "high"
-    if best >= SEV_MEDIUM:
+    if best >= SEV_MEDIUM and baseline_days >= MIN_DAYS_FOR_MEDIUM:
         return "medium"
     return None
 

@@ -251,7 +251,9 @@ export default function StormSection({ tenantId }: { tenantId: string }) {
         depends on drainage, ground saturation and paved area, which satellite
         rainfall does not observe. Satellite rainfall averages over roughly
         11&nbsp;km, so intense local downpours read lower than a rain gauge
-        would record.
+        would record. Severity is limited by how much history a place has: a
+        rank over 25 days cannot separate a 1-in-30 storm from a 1-in-100 one,
+        so the stronger labels are withheld until the record supports them.
       </p>
     </section>
   );
