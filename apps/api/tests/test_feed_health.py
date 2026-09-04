@@ -83,7 +83,7 @@ def test_price_probe_excludes_seeds() -> None:
 
 def test_every_daily_feed_has_a_staleness_budget() -> None:
     for source in ("encroachment_detector_v1", "shockguard_scan_v1",
-                   "rainstorm_scan_v1"):
+                   "rainstorm_scan_v1", "storm_scan_v1"):
         assert source in FEED_MAX_AGE_HOURS
         # generous enough that one missed run is not an alarm...
         assert FEED_MAX_AGE_HOURS[source] >= 48
@@ -199,3 +199,21 @@ def test_the_default_ops_address_is_the_company_domain() -> None:
     default = Settings.model_fields["ops_alert_email"].default
     assert default.endswith("@economicbridge.org"), default
     assert "gmail" not in default.lower()
+
+
+def test_every_live_shockguard_feed_is_watched_for_staleness() -> None:
+    """A feed the panel presents as live must also have a staleness budget.
+
+    These are two hand-kept lists in two files: LIVE_SCAN_SOURCES decides what
+    the dashboard calls a live feed, FEED_MAX_AGE_HOURS decides what the
+    watchdog will complain about. storm_scan_v1 was added to the first and not
+    the second, and the gap only surfaced in production the next morning —
+    from the watchdog's own unmonitored-feed check, which is the backstop, not
+    the guard. This is the guard.
+    """
+    from routers.shockguard import LIVE_SCAN_SOURCES
+
+    unwatched = [s for s in LIVE_SCAN_SOURCES if s not in FEED_MAX_AGE_HOURS]
+    assert not unwatched, (
+        f"live on the panel but nothing watches staleness: {unwatched}"
+    )

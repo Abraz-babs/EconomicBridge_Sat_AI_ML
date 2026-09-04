@@ -60,6 +60,7 @@ FEED_MAX_AGE_HOURS: dict[str, int] = {
     "encroachment_detector_v1": 72,     # daily 07:00
     "shockguard_scan_v1": 72,           # daily 07:30
     "rainstorm_scan_v1": 72,            # daily 08:00
+    "storm_scan_v1": 72,                # daily 08:30 — half-hourly IMERG
     "MODIS_NRT": 72,                    # daily 06:00 — NASA FIRMS fire ingest
     "conflict_pipeline_v1": 72,         # daily 06:30
     "food_prices_v1": 24 * 45,          # monthly on the 5th
