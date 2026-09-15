@@ -116,6 +116,11 @@ def _open_cog(url: str) -> Iterator[rasterio.io.DatasetReader]:
             ds.close()
 
 
+# Public name for windowed readers (sources/open_archive.py). The underscored
+# original stays so existing callers are untouched.
+open_cog = _open_cog
+
+
 def sample_points(
     url: str,
     points: Iterable[tuple[float, float]],

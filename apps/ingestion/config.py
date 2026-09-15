@@ -171,6 +171,24 @@ class Settings(BaseSettings):
     # ~2 years behind; 2024 layers are stable as of 2026-Q1.
     worldpop_default_year: int = 2024
 
+    # ─── Open Sentinel archive (whole-LGA change detection, no PUs) ─────────
+    # Sentinel-1 RTC + Sentinel-2 L2A read as image windows from a public STAC
+    # catalogue instead of Copernicus's metered Statistical API. Planetary
+    # Computer by default; Earth Search or CDSE work by changing these two
+    # settings, no code change — a free service with no SLA must be swappable.
+    open_archive_stac_url: str = "https://planetarycomputer.microsoft.com/api/stac/v1"
+    # "planetary_computer" signs asset URLs via its public SAS endpoint;
+    # "none" for catalogues whose assets are already public.
+    open_archive_signing: str = "planetary_computer"
+    open_archive_sas_url: str = "https://planetarycomputer.microsoft.com/api/sas/v1"
+    # Pilots allowed to consume reads. NIGERIA FIRST. Ghana and Senegal are
+    # configured (their boundaries ship in data/lga_boundaries.geojson) but HELD
+    # until the Nigerian results are proven; append them here to enable.
+    open_archive_tenants: str = "kebbi,benue,plateau,kaduna,niger,zamfara,nasarawa,fct"
+    # Analysis resolution. 30 m averages 3x3 native 10 m pixels, suppressing
+    # radar speckle, and still resolves a 2 ha clearing as ~20 pixels.
+    open_archive_resolution_m: int = 30
+
     # NBS — Nigeria National Bureau of Statistics (cost-of-living / CPI +
     # household income). Drives Module 06 (Economic Mobility Compass)
     # live data. Empty key = mock mode: the client returns deterministic

@@ -289,11 +289,38 @@ VIIRS/WorldPop *at* those points — names then come free with the geometry.
 Investigation was cut short by a session limit; three angles remain
 (existing geo assets, sibling patterns, external gazetteers).
 
+### Farmland + ShockGuard — the 0.56% problem (found 2026-09-15, fix IN PROGRESS)
+Every "per-LGA" sweep measures ONE 3 x 3 km box at the LGA centroid: 4,023 km²
+of the 715,731 km² the 447 pilot LGAs cover (0.56%). That is why the same
+places kept resurfacing — they were the only places looked at. Enlarging the
+box cannot fix it (the Copernicus Statistical API returns one average per box,
+and whole LGAs are ~178x the Processing Units).
+
+**Approved fix:** pixel-level change detection over whole LGAs, read from the
+open Sentinel archive (no PU meter). Step 1 shipped: `data/lga_boundaries.geojson`,
+`sources/lga_boundaries.py`, `sources/open_archive.py`, `sources/cog_window.py`.
+Operator constraints: Nigeria first; Ghana + Senegal configured but held via
+`OPEN_ARCHIVE_TENANTS`; existing feeds untouched; no UI change — new detections
+go to a shadow table until proven, then into `alert_events` the map already reads.
+
+Facts a successor must not re-derive: Sentinel-1 RTC on Planetary Computer is
+**linear** gamma0 (convert with `cog_window.to_db`); radar must only be compared
+within one orbit (`Scene.orbit_key`); a whole LGA reads in ~1.5 s at 30 m from
+eu-west-1; optical is 55-93% cloud in the wet season.
+
+**Live defect found on the way:** 6 concave LGAs (Bungudu, Buruku, 4 in Ghana)
+have a centroid OUTSIDE the LGA, 8-11 km into a neighbour, so every
+centroid-sampled feed reads the neighbour there. Listed in the boundary file's
+`concave_lgas`. Correcting `lga_centroids.json` shifts those LGAs' baselines —
+an operator decision.
+
 ---
 
 ## 7. Open items
 
 **Code, unblocked:**
+0. **Whole-LGA change detection, steps 2-3** (§6 above) — detector in parallel
+   with the current feed into a shadow table, walk-forward check, then switch.
 1. Poverty module honesty fix (§6) — the largest outstanding correctness issue.
 2. Storm seasonality — per-LGA monthly climatology once the record deepens.
 3. Farmland panel still renders "48–72HR CONFLICT-RISK WINDOW" + per-alert ETA.
