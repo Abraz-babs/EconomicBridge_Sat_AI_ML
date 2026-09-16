@@ -58,6 +58,11 @@ from sources.cog_sampler import CogSamplerError
 
 log = logging.getLogger(__name__)
 
+# GDAL announces a harmless nodata remap on every Sentinel-2 band it warps —
+# about a thousand lines per LGA, which buries the per-LGA results a reviewer
+# actually needs to read. See cog_window._fill_for for why the remap is safe.
+logging.getLogger("rasterio._env").setLevel(logging.ERROR)
+
 DETECTOR_VERSION = "land_change_v1"
 # public.ingestion_runs key. MUST also carry a staleness budget in the API's
 # FEED_MAX_AGE_HOURS, or the watchdog reports an unmonitored feed. It is NOT in

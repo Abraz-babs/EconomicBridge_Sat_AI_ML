@@ -45,7 +45,19 @@ def _fill_for(dtype: str) -> float:
     GDAL refuses a warp whose nodata falls outside the band's range, so an
     8-bit raster given -32768 fails the read outright — found on Sentinel-2's
     uint8 `visual` asset. Unsigned bands use 0, which is what those products
-    declare as empty anyway; everything else keeps the sentinel.
+    treat as empty anyway; everything else keeps the sentinel.
+
+    Sentinel-2 L2A declares NO nodata on B04, B08 or SCL, so this supplies it,
+    and GDAL then says so, loudly, about a thousand times per LGA:
+
+        "Value 0 in the source dataset has been changed to 1 ... to avoid
+         being treated as NoData"
+
+    That remap is harmless here and the noise is not worth a wrong nodata.
+    On B04/B08 a DN of 0 is Sentinel-2's own empty marker; remapped to 1 it
+    becomes a reflectance of -0.0999, which the caller clips to 0. On SCL,
+    class 0 is "no data" and class 1 is "saturated/defective" — both are
+    already masked, so the remap moves a pixel between two rejected classes.
     """
     return 0.0 if np.dtype(dtype).kind == "u" else _WARP_NODATA
 
