@@ -187,10 +187,28 @@ def test_a_run_before_the_rains_still_gets_a_usable_window():
 
 
 def test_dates_are_spread_across_the_season_not_clustered():
-    days = [date(2026, 7, 1 + i) for i in range(30)]
-    picked = lcs._spread(days, 5)
+    """Picking purely by cloud would cluster the sample in one fine week and
+    miss the peak the whole method rests on."""
+    days = {date(2026, 7, 1 + i): 10.0 for i in range(30)}
+    picked = lcs._pick_dates(days, 5)
     assert len(picked) == 5
-    assert picked[0] == days[0] and picked[-1] == days[-1]
+    assert max((b - a).days for a, b in zip(picked, picked[1:])) <= 8
+
+
+def test_the_clearest_day_in_each_stretch_wins():
+    days = {date(2026, 7, 1 + i): 90.0 for i in range(30)}
+    days[date(2026, 7, 3)] = 5.0
+    days[date(2026, 7, 27)] = 4.0
+    picked = lcs._pick_dates(days, 5)
+    assert date(2026, 7, 3) in picked and date(2026, 7, 27) in picked
+
+
+def test_a_cloudy_season_is_still_sampled_not_skipped():
+    """A 60% scene gate left Makurdi with ZERO usable dates in the 2025 rains
+    and FCT with one. An LGA the clouds sat on must still be looked at — and
+    then reported as poorly observed, never as calm."""
+    days = {date(2026, 7, 1 + i * 5): 97.0 for i in range(6)}
+    assert len(lcs._pick_dates(days, 12)) == 6
 
 
 # ─── Surviving a free archive with no SLA ─────────────────────────────────

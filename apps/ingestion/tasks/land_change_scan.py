@@ -67,12 +67,10 @@ SOURCE = DETECTOR_VERSION
 WET_START_MD = (7, 1)
 WET_END_CAP_MD = (10, 15)
 
-# Dates sampled per season. Peak greenness needs several cloud-free looks;
-# beyond a dozen the peak stops moving and the reads are wasted.
+# Dates sampled per season. The window is split into this many equal stretches
+# and the clearest day in each is read, so the sample is spread across the
+# season AND as cloud-free as the season allows.
 MAX_DATES = 12
-# Scene-level cloud gate. Pixel-level cloud is masked from SCL regardless, so
-# this only avoids spending reads on scenes that are almost entirely cloud.
-CLOUD_LT = 60
 # Concurrent date-reads. Reads are network-bound; this is the main lever on
 # wall-clock. Each in-flight date holds three arrays, so it also bounds memory.
 CONCURRENCY = 6
@@ -98,11 +96,33 @@ def wet_window(year: int, end: date) -> tuple[datetime, datetime]:
             datetime.combine(stop, time.max, timezone.utc))
 
 
-def _spread(days: list[date], n: int) -> list[date]:
-    days = sorted(days)
+def _pick_dates(cloud_by_day: dict[date, float], n: int) -> list[date]:
+    """The clearest day in each of `n` equal stretches of the window.
+
+    There is NO scene-level cloud gate, and that is deliberate. A fixed gate of
+    60% left Makurdi with ZERO usable dates in the 2025 rains and FCT with one
+    — the detector would have reported those LGAs calm while seeing nothing,
+    which is the failure this whole rebuild exists to end. Per-pixel SCL
+    masking already removes cloud properly; a cloudy scene still contributes
+    its clear corner, and `usable()` refuses to judge pixels that never got
+    enough clear looks.
+
+    Picking purely by cloud would cluster the sample in one fine week and miss
+    the peak; picking purely by date would take a solid overcast when a clear
+    day sat beside it. Binning by time and choosing the clearest in each bin
+    gets both.
+    """
+    days = sorted(cloud_by_day)
     if len(days) <= n:
         return days
-    return [days[i] for i in np.linspace(0, len(days) - 1, n).round().astype(int)]
+    first, last = days[0], days[-1]
+    span = max((last - first).days, 1)
+    picked: dict[int, date] = {}
+    for d in days:
+        b = min(int((d - first).days * n / span), n - 1)
+        if b not in picked or cloud_by_day[d] < cloud_by_day[picked[b]]:
+            picked[b] = d
+    return sorted(picked.values())
 
 
 async def _read_once(href, grid, rs):
@@ -168,12 +188,15 @@ async def peak_greenness(bbox, grid, start: datetime, end: datetime):
     A running maximum, so memory does not grow with the number of dates — the
     naive stack-then-median ran a 6.6M-pixel LGA out of 1 GB.
     """
-    scenes = await oa.search(oa.S2_L2A, bbox, start, end,
-                             query={"eo:cloud_cover": {"lt": CLOUD_LT}})
+    scenes = await oa.search(oa.S2_L2A, bbox, start, end)
     by_day: dict[date, list] = {}
+    cloud: dict[date, float] = {}
     for s in scenes:
-        by_day.setdefault(s.datetime.date(), []).append(s)
-    days = _spread(list(by_day), MAX_DATES)
+        d = s.datetime.date()
+        by_day.setdefault(d, []).append(s)
+        cc = s.cloud_cover if s.cloud_cover is not None else 100.0
+        cloud[d] = min(cloud.get(d, 100.0), cc)
+    days = _pick_dates(cloud, MAX_DATES)
 
     shape = (grid.height, grid.width)
     peak = np.full(shape, np.nan, dtype="float32")
