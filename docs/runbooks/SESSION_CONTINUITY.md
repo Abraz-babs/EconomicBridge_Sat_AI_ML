@@ -224,6 +224,26 @@ POST /ingestion/api/v1/scheduler/jobs/{id}/run
 GET  /ingestion/api/v1/scheduler/runs/recent
 ```
 
+**Whole-LGA land-change scan — MANUAL, seasonal, not scheduled.** It is not in
+APScheduler and must not be: a pass takes hours and would starve the live feeds
+that share the ingestion service. Run it as a one-shot Fargate task:
+
+```sh
+python -m scripts.run_land_change --tenant kebbi            # writes
+python -m scripts.run_land_change --tenant kebbi --no-write # rehearse, no DB needed
+```
+with `"cpu":"1024","memory":"4096"` in the run-task overrides. It writes to
+`land_change_hotspots` only — a shadow table nothing reads — and stamps
+`land_change_v1` in `ingestion_runs`. That source has a staleness budget in
+`FEED_MAX_AGE_HOURS` but is deliberately ABSENT from `LIVE_SCAN_SOURCES`, so it
+never appears on the panel. Run it AFTER the rains, when October is available
+to both years: in mid-September the 2025 baseline over Benue averages 0.39
+clear looks per pixel and the LGA honestly reports 0% observed.
+
+> **On Windows the AWS CLI cannot read `--overrides file:///tmp/...`** — it is a
+> Windows binary and `/tmp` is not a Windows path. Write the JSON into the
+> scratchpad and pass its Windows path.
+
 **Feed-health watchdog** (`apps/api/services/feed_health.py`) emails a digest at
 09:30 UTC. It polices two things: staleness (`FEED_MAX_AGE_HOURS`) and real-row
 stock (`STOCK_PROBES`). It exists because a bug once deleted real satellite
