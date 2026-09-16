@@ -181,3 +181,18 @@ def test_outline_mask_marks_only_pixels_inside_the_lga():
     assert 0.45 < m.mean() < 0.55
     assert m[:, :45].all() and not m[:, 55:].any()
 
+
+
+def test_a_byte_raster_can_be_warped_onto_a_grid(tmp_path):
+    """GDAL refuses a nodata the band cannot hold, so an 8-bit source given the
+    -32768 sentinel failed the read outright — Sentinel-2's uint8 `visual`
+    asset did exactly that."""
+    tf = from_origin(500_000.0, 1_340_000.0, 10.0, 10.0)
+    path = tmp_path / "byte.tif"
+    with rasterio.open(path, "w", driver="GTiff", height=32, width=32, count=1,
+                       dtype="uint8", crs="EPSG:32631", transform=tf) as ds:
+        ds.write(np.full((32, 32), 200, dtype="uint8"), 1)
+
+    out = cw.read_on_grid(str(path), cw.Grid("EPSG:32631", tf, 32, 32))
+    assert out.shape == (32, 32)
+    assert np.nanmax(out) == 200.0

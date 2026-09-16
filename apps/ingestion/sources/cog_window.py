@@ -34,8 +34,20 @@ from sources.cog_sampler import open_cog
 SENTINEL_NODATA = -9999.0
 
 # Destination nodata for warps from sources that declare none (below the
-# sentinel, so it is always masked).
+# sentinel, so it is always masked). Only valid for signed and floating
+# rasters — see _fill_for.
 _WARP_NODATA = -32768.0
+
+
+def _fill_for(dtype: str) -> float:
+    """A nodata value the source dtype can actually hold.
+
+    GDAL refuses a warp whose nodata falls outside the band's range, so an
+    8-bit raster given -32768 fails the read outright — found on Sentinel-2's
+    uint8 `visual` asset. Unsigned bands use 0, which is what those products
+    declare as empty anyway; everything else keeps the sentinel.
+    """
+    return 0.0 if np.dtype(dtype).kind == "u" else _WARP_NODATA
 
 # Metres per degree, for rasters stored in geographic coordinates.
 _M_PER_DEG_LAT = 110_574.0
@@ -179,7 +191,7 @@ def read_on_grid(href: str, grid: Grid, *, band: int = 1,
     with open_cog(href) as ds:
         # A source without declared nodata would otherwise fill uncovered
         # pixels with 0 — a valid-looking value. Give the warp one to use.
-        dst_nodata = ds.nodata if ds.nodata is not None else _WARP_NODATA
+        dst_nodata = ds.nodata if ds.nodata is not None else _fill_for(ds.dtypes[band - 1])
         with WarpedVRT(ds, crs=grid.crs, transform=grid.transform,
                        width=grid.width, height=grid.height, resampling=resampling,
                        src_nodata=ds.nodata, nodata=dst_nodata) as vrt:

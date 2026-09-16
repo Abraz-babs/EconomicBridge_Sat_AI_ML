@@ -41,6 +41,7 @@ DESIGN RULES
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -66,6 +67,11 @@ PAGE_LIMIT = 1000
 TOKEN_SKEW_S = 300.0
 
 _TOKENS: dict[str, tuple[str, float]] = {}   # collection -> (token, valid_until)
+# One refresh at a time per collection. Whole-LGA scans read many assets at
+# once, so without this every concurrent reader misses the cache together and
+# stampedes the signing endpoint — measured as 8 token requests in 100 ms
+# against a free service with no SLA.
+_TOKEN_LOCKS: dict[str, asyncio.Lock] = {}
 
 
 class OpenArchiveError(RuntimeError):
@@ -166,10 +172,19 @@ async def search(
 
 
 async def _token(collection: str, client: httpx.AsyncClient | None) -> str:
-    now = time.time()
     hit = _TOKENS.get(collection)
-    if hit and hit[1] > now:
+    if hit and hit[1] > time.time():
         return hit[0]
+    async with _TOKEN_LOCKS.setdefault(collection, asyncio.Lock()):
+        # Re-check: whoever held the lock has probably just refreshed it.
+        hit = _TOKENS.get(collection)
+        if hit and hit[1] > time.time():
+            return hit[0]
+        return await _refresh_token(collection, client)
+
+
+async def _refresh_token(collection: str, client: httpx.AsyncClient | None) -> str:
+    now = time.time()
     url = f"{get_settings().open_archive_sas_url.rstrip('/')}/token/{collection}"
     owns = client is None
     client = client or httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=20.0))

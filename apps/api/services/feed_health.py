@@ -64,6 +64,11 @@ FEED_MAX_AGE_HOURS: dict[str, int] = {
     "MODIS_NRT": 72,                    # daily 06:00 — NASA FIRMS fire ingest
     "conflict_pipeline_v1": 72,         # daily 06:30
     "food_prices_v1": 24 * 45,          # monthly on the 5th
+    # Whole-LGA land-change scan. SEASONAL, not daily: it compares peak
+    # rainy-season greenness with the same window a year earlier, so it is run
+    # late in the rains. Deliberately absent from LIVE_SCAN_SOURCES — it writes
+    # to a shadow table and must not appear on the panel while it is evaluated.
+    "land_change_v1": 24 * 60,
 }
 
 # Tables whose REAL row count must not fall. `real_predicate` is the SQL that

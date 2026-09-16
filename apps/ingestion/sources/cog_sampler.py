@@ -46,9 +46,24 @@ log = logging.getLogger(__name__)
 # PROJ_DATA at rasterio's own bundled DB so import order doesn't matter.
 _RASTERIO_PROJ = os.path.join(os.path.dirname(rasterio.__file__), "proj_data")
 if os.path.isdir(_RASTERIO_PROJ):
-    os.environ.setdefault("PROJ_DATA", _RASTERIO_PROJ)
+    # OVERRIDE, not setdefault. The PostgreSQL/PostGIS installer sets PROJ_LIB
+    # machine-wide, so setdefault left it pointing at PostGIS's older PROJ and
+    # every CRS lookup failed on a dev machine while passing in the container,
+    # where neither variable is set. The bundled directory is the database that
+    # matches rasterio's own PROJ build, so it always wins.
+    os.environ["PROJ_DATA"] = _RASTERIO_PROJ
     # Older GDAL/PROJ still honour PROJ_LIB even though it's deprecated.
-    os.environ.setdefault("PROJ_LIB", _RASTERIO_PROJ)
+    os.environ["PROJ_LIB"] = _RASTERIO_PROJ
+    # PROJ reads its search path once, when the library initialises — which
+    # `import rasterio` above has already done. Setting the variables alone is
+    # therefore too late to help THIS process (it only fixes child processes),
+    # so point the live PROJ at the bundled database as well.
+    try:
+        from rasterio._env import set_proj_data_search_path
+
+        set_proj_data_search_path(_RASTERIO_PROJ)
+    except ImportError:  # pragma: no cover — private API; env vars still stand
+        pass
 
 
 # rasterio/GDAL env tuned for ranged COG reads. Disabling directory listing
