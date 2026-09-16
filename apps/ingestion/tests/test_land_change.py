@@ -258,3 +258,65 @@ async def test_a_date_the_archive_will_not_serve_is_dropped_not_fatal(monkeypatc
     monkeypatch.setattr(lcs.oa, "signed_href", href)
     got = await lcs._ndvi_for_day([_Scene()], None, __import__("asyncio").Semaphore(1))
     assert got is None
+
+
+def test_cropland_that_became_water_is_not_a_change():
+    """Kaduna's only detection in the first Nigeria-wide pass was peak
+    0.68 -> -0.18: a field that became open water. Given this platform's
+    history with floods, that must never be filed as land conversion."""
+    inside, n = _grids()
+    prev = np.full((20, 20), 0.68, "float32")
+    now = np.full((20, 20), -0.18, "float32")
+    ok = lc.usable(inside, prev, now, n, n)
+    assert not lc.stopped_greening(prev, now, ok).any()
+    assert not lc.became_bare(prev, now, ok).any()
+
+
+def test_a_whole_lga_having_a_poorer_year_is_not_a_whole_lga_being_cleared():
+    """Fewer clear looks, or a weaker rains, moves every pixel down together.
+    Uncorrected that produced 1,370 false clusters over Bungudu."""
+    inside, n = _grids()
+    prev = np.full((40, 40), 0.70, "float32")
+    now = np.full((40, 40), 0.28, "float32")     # the WHOLE LGA is down 0.42
+    inside = np.ones((40, 40), dtype=bool)
+    n = np.full((40, 40), lc.MIN_OBSERVATIONS, dtype="uint8")
+    ok = lc.usable(inside, prev, now, n, n)
+
+    assert lc.stopped_greening(prev, now, ok).all(), "uncorrected, everything fires"
+    shift = lc.season_shift(prev, now, ok)
+    assert shift == pytest.approx(-0.42, abs=1e-3)
+    assert not lc.stopped_greening(prev, lc.corrected(now, shift), ok).any()
+
+
+def test_a_patch_that_fell_further_than_its_lga_still_fires():
+    """The correction must remove the season, not the signal."""
+    inside = np.ones((40, 40), dtype=bool)
+    n = np.full((40, 40), lc.MIN_OBSERVATIONS, dtype="uint8")
+    prev = np.full((40, 40), 0.70, "float32")
+    now = np.full((40, 40), 0.55, "float32")     # LGA-wide dip of 0.15
+    now[10:20, 10:20] = 0.05                     # this patch collapsed
+    ok = lc.usable(inside, prev, now, n, n)
+    fired = lc.stopped_greening(prev, lc.corrected(now, lc.season_shift(prev, now, ok)), ok)
+    assert fired[10:20, 10:20].all()
+    assert fired.sum() == 100, "and nothing else"
+
+
+def test_a_greener_season_is_never_corrected_for():
+    """Correcting a GREENER season would manufacture detections."""
+    inside = np.ones((40, 40), dtype=bool)
+    n = np.full((40, 40), lc.MIN_OBSERVATIONS, dtype="uint8")
+    prev = np.full((40, 40), 0.55, "float32")
+    now = np.full((40, 40), 0.75, "float32")
+    ok = lc.usable(inside, prev, now, n, n)
+    assert lc.season_shift(prev, now, ok) == 0.0
+
+
+def test_too_few_vegetated_pixels_means_no_correction():
+    """An LGA that cannot state its own typical season is not guessed at."""
+    inside = np.zeros((40, 40), dtype=bool)
+    inside[:5, :5] = True
+    n = np.full((40, 40), lc.MIN_OBSERVATIONS, dtype="uint8")
+    prev = np.full((40, 40), 0.70, "float32")
+    now = np.full((40, 40), 0.20, "float32")
+    ok = lc.usable(inside, prev, now, n, n)
+    assert lc.season_shift(prev, now, ok) == 0.0

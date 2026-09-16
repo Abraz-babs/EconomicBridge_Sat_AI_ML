@@ -51,20 +51,49 @@ GREEN_PREV = 0.50
 # Peak greenness this season below which it counts as no longer greening.
 BARE_NOW = 0.30
 
+# At its seasonal PEAK, land reads above zero. A pixel whose highest greenness
+# all season is still negative is open water. Cropland that became a pond, or a
+# reservoir that rose, is not encroachment — and given this platform's history
+# with floods it must never be filed as though it were. Both rules carry this
+# floor; only became_bare did at first, and Kaduna's single detection in the
+# first Nigeria-wide pass was exactly this: peak 0.68 -> -0.18.
+WATER_PEAK_MAX = 0.0
+
 # The stricter pair: ground that greened at all last season and is now
-# effectively non-vegetated. The lower bound excludes water, which goes
-# negative — a reservoir edge that dried is not a new building.
+# effectively non-vegetated.
 SPARSE_PREV = 0.30
-NONVEG_MIN = 0.0
 NONVEG_MAX = 0.12
 
 # A pixel needs this many cloud-free looks in BOTH seasons before its peak is
 # comparable. Fewer and "not green this year" may just mean "not seen".
 MIN_OBSERVATIONS = 3
 
+# ...and a floor is not a balance. A seasonal peak is a MAXIMUM OVER A SAMPLE
+# and the expected maximum rises with sample size, so a pixel seen four times
+# this year and five times last year has a peak biased DOWN for no reason on
+# the ground. Measured over Aleiro: usable pixels averaged 4.76 clear looks
+# last season against 3.92 this one.
+#
+# Requiring n_now >= n_prev per pixel was tried and REJECTED. The imbalance is
+# a property of the whole LGA, not of the pixels that fire — flagged pixels sat
+# only 0.35 looks below the LGA's own average — so the rule discarded 60% of
+# Aleiro and every one of its detections, including ones confirmed against
+# imagery. It also fights the ground truth: bright bare soil is routinely
+# misread as cloud by Sentinel-2's scene classifier, so a REAL change lowers
+# this year's look count as a consequence of having happened.
+#
+# A uniform, LGA-wide downward shift is what this is, and it is the same shape
+# as a weaker rainy season — which produced 1,370 false clusters over Bungudu
+# in earlier prototyping. The instrument for it is a shift correction, below,
+# not a filter.
+
 # Smallest cluster reported. Below ~1 ha at 30 m (about 11 pixels) speckle and
 # field-edge slivers dominate.
 MIN_HA = 1.0
+
+# Below this many vegetated pixels an LGA cannot state its own typical season,
+# and no shift correction is applied rather than trusting a handful.
+MIN_SHIFT_PIXELS = 1000
 
 KIND_STOPPED = "stopped_greening"
 KIND_BARE = "became_bare"
@@ -89,14 +118,41 @@ def usable(inside: np.ndarray, prev: np.ndarray, now: np.ndarray,
             & (n_prev >= MIN_OBSERVATIONS) & (n_now >= MIN_OBSERVATIONS))
 
 
+def season_shift(prev: np.ndarray, now: np.ndarray, ok: np.ndarray) -> float:
+    """How much LOWER this season's peak runs across the whole LGA.
+
+    Returns a value at or below zero: the median drop in peak greenness over
+    ground that was vegetated last season. A weaker rains, or simply fewer
+    clear looks this year, moves every pixel down together, and without this
+    the detector reads a whole LGA having a poorer year as a whole LGA being
+    cleared.
+
+    The median, not the mean, so genuine conversion in part of the LGA cannot
+    drag the correction. Only downward shifts are returned: if this season ran
+    GREENER, correcting for it would manufacture detections rather than
+    prevent them, and the bias must never point that way.
+    """
+    veg = ok & (prev >= SPARSE_PREV)
+    if int(veg.sum()) < MIN_SHIFT_PIXELS:
+        return 0.0
+    return float(min(np.median(now[veg] - prev[veg]), 0.0))
+
+
+def corrected(now: np.ndarray, shift: float) -> np.ndarray:
+    """This season's peak with the LGA-wide shift taken back out."""
+    return now - shift
+
+
 def stopped_greening(prev: np.ndarray, now: np.ndarray, ok: np.ndarray) -> np.ndarray:
-    """Was green at last season's peak, is not at this one's."""
-    return ok & (prev >= GREEN_PREV) & (now <= BARE_NOW)
+    """Was green at last season's peak, is not at this one's — and is not water."""
+    return (ok & (prev >= GREEN_PREV) & (now <= BARE_NOW)
+            & (now >= WATER_PEAK_MAX))
 
 
 def became_bare(prev: np.ndarray, now: np.ndarray, ok: np.ndarray) -> np.ndarray:
     """Greened at all last season, now effectively non-vegetated (not water)."""
-    return ok & (prev >= SPARSE_PREV) & (now >= NONVEG_MIN) & (now <= NONVEG_MAX)
+    return (ok & (prev >= SPARSE_PREV) & (now >= WATER_PEAK_MAX)
+            & (now <= NONVEG_MAX))
 
 
 def _ring_area(ring: list) -> float:

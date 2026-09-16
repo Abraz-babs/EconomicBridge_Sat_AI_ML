@@ -45,7 +45,9 @@ from processors.land_change import (
     KIND_STOPPED,
     Hotspot,
     became_bare,
+    corrected,
     find_hotspots,
+    season_shift,
     stopped_greening,
     usable,
 )
@@ -228,16 +230,22 @@ async def scan_lga(boundary, end: date, year: int) -> tuple[list[Hotspot], float
     inside_n = int(inside.sum())
     observed = float(ok.sum()) / inside_n if inside_n else 0.0
 
+    # Take the whole LGA's own season out before asking about any one pixel.
+    shift = season_shift(prev, now, ok)
+    now_fair = corrected(now, shift)
+
     def to_lonlat(x: float, y: float) -> tuple[float, float]:
         lon, lat = rio_transform(grid.crs, "EPSG:4326", [x], [y])
         return lon[0], lat[0]
 
     hotspots: list[Hotspot] = []
-    for kind, mask in ((KIND_STOPPED, stopped_greening(prev, now, ok)),
-                       (KIND_BARE, became_bare(prev, now, ok))):
+    for kind, mask in ((KIND_STOPPED, stopped_greening(prev, now_fair, ok)),
+                       (KIND_BARE, became_bare(prev, now_fair, ok))):
+        # The RAW peak is reported, not the corrected one: the row must say
+        # what was measured, and `season_shift` says what was taken out.
         hotspots += find_hotspots(mask, kind=kind, transform=grid.transform,
                                   to_lonlat=to_lonlat, prev=prev, now=now)
-    meta = {"prev_dates": prev_dates, "now_dates": now_dates,
+    meta = {"prev_dates": prev_dates, "now_dates": now_dates, "shift": shift,
             "window": (now_win[0].date(), now_win[1].date())}
     return hotspots, observed, meta
 
@@ -297,6 +305,14 @@ async def _persist(factory, *, tenant: str, lga: str, year: int,
     """
     async with factory() as session:
         await set_tenant_schema(session, tenant)
+        # A re-run must SUPERSEDE the last one, not accumulate beside it. The
+        # unique key includes lon/lat, so a changed rule writes new coordinates
+        # and the old rows would otherwise survive as evidence of a detector
+        # that no longer exists.
+        await session.execute(text("""
+            DELETE FROM land_change_hotspots
+            WHERE lga = :lga AND season_year = :yr AND detector_version = :dv
+        """), {"lga": lga, "yr": year, "dv": DETECTOR_VERSION})
         await _write(session, tenant=tenant, lga=lga, year=year,
                      hotspots=hotspots, observed=observed, window=window)
         await session.commit()
@@ -361,8 +377,9 @@ async def run_land_change_scan(
                                    window=meta["window"])
                 found += len(hotspots)
                 log.info("land change: %s/%s %d hotspot(s), %.0f%% observed "
-                         "(%d prev / %d now dates)", tenant, b.lga, len(hotspots),
-                         100 * observed, len(meta["prev_dates"]), len(meta["now_dates"]))
+                         "(%d prev / %d now dates, season shift %+.3f)",
+                         tenant, b.lga, len(hotspots), 100 * observed,
+                         len(meta["prev_dates"]), len(meta["now_dates"]), meta["shift"])
                 for h in hotspots:
                     # Coordinates in the log, so a run can be checked against
                     # imagery without a database — including a dry rehearsal
