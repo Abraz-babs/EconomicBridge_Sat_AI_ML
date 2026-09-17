@@ -46,6 +46,7 @@ from processors.land_change import (
     Hotspot,
     became_bare,
     corrected,
+    dry_land,
     find_hotspots,
     season_shift,
     stopped_greening,
@@ -87,6 +88,7 @@ READ_ATTEMPTS = 4
 READ_BACKOFF_S = 2.0
 
 BAD_SCL = (0, 1, 3, 6, 8, 9, 10, 11)   # nodata, saturated, shadow, water, clouds, cirrus, snow
+SCL_WATER = 6
 S2_RED, S2_NIR, S2_SCL = "B04", "B08", "SCL"
 # Sentinel-2 L2A carries a +1000 offset from processing baseline 04.00 (2022).
 BOA_OFFSET = 1000.0
@@ -184,13 +186,15 @@ async def _ndvi_for_day(scenes, grid, sem: asyncio.Semaphore):
     r = np.clip((red - BOA_OFFSET) / 1e4, 0, None)
     n = np.clip((nir - BOA_OFFSET) / 1e4, 0, None)
     ndvi = (n - r) / np.maximum(n + r, 1e-6)
+    water = np.zeros(ndvi.shape, dtype=bool)
     if scl is not None:
         ndvi[np.isin(scl, BAD_SCL)] = np.nan
-    return ndvi.astype("float32")
+        water = scl == SCL_WATER
+    return ndvi.astype("float32"), water
 
 
 async def peak_greenness(bbox, grid, start: datetime, end: datetime):
-    """Highest NDVI each pixel reached in the window, and how often it was seen.
+    """Highest NDVI each pixel reached, how often it was seen, how often wet.
 
     A running maximum, so memory does not grow with the number of dates — the
     naive stack-then-median ran a 6.6M-pixel LGA out of 1 GB.
@@ -208,18 +212,21 @@ async def peak_greenness(bbox, grid, start: datetime, end: datetime):
     shape = (grid.height, grid.width)
     peak = np.full(shape, np.nan, dtype="float32")
     seen = np.zeros(shape, dtype="uint8")
+    wet = np.zeros(shape, dtype="uint8")
     if not days:
-        return peak, seen, []
+        return peak, seen, wet, []
 
     sem = asyncio.Semaphore(CONCURRENCY)
     tasks = [asyncio.create_task(_ndvi_for_day(by_day[d], grid, sem)) for d in days]
     for done in asyncio.as_completed(tasks):
-        ndvi = await done
-        if ndvi is None:
+        got = await done
+        if got is None:
             continue
+        ndvi, water = got
         seen += np.isfinite(ndvi).astype("uint8")
+        wet += water.astype("uint8")
         peak = np.fmax(peak, ndvi)
-    return peak, seen, [str(d) for d in days]
+    return peak, seen, wet, [str(d) for d in days]
 
 
 async def scan_lga(boundary, end: date, year: int) -> tuple[list[Hotspot], float, dict]:
@@ -228,8 +235,8 @@ async def scan_lga(boundary, end: date, year: int) -> tuple[list[Hotspot], float
     inside = cw.outline_mask(grid, boundary.geometry)
     prev_win = wet_window(year - 1, end)
     now_win = wet_window(year, end)
-    prev, n_prev, prev_dates = await peak_greenness(boundary.bbox, grid, *prev_win)
-    now, n_now, now_dates = await peak_greenness(boundary.bbox, grid, *now_win)
+    prev, n_prev, wet_prev, prev_dates = await peak_greenness(boundary.bbox, grid, *prev_win)
+    now, n_now, wet_now, now_dates = await peak_greenness(boundary.bbox, grid, *now_win)
 
     ok = usable(inside, prev, now, n_prev, n_now)
     inside_n = int(inside.sum())
@@ -238,19 +245,23 @@ async def scan_lga(boundary, end: date, year: int) -> tuple[list[Hotspot], float
     # Take the whole LGA's own season out before asking about any one pixel.
     shift = season_shift(prev, now, ok)
     now_fair = corrected(now, shift)
+    # River channels, sandbanks and ponds are not land conversion, and their
+    # bars move year to year. Judged on the RAW peak, never the corrected one.
+    land = ok & dry_land(wet_prev + wet_now, now)
 
     def to_lonlat(x: float, y: float) -> tuple[float, float]:
         lon, lat = rio_transform(grid.crs, "EPSG:4326", [x], [y])
         return lon[0], lat[0]
 
     hotspots: list[Hotspot] = []
-    for kind, mask in ((KIND_STOPPED, stopped_greening(prev, now_fair, ok)),
-                       (KIND_BARE, became_bare(prev, now_fair, ok))):
+    for kind, mask in ((KIND_STOPPED, stopped_greening(prev, now_fair, land)),
+                       (KIND_BARE, became_bare(prev, now_fair, land))):
         # The RAW peak is reported, not the corrected one: the row must say
         # what was measured, and `season_shift` says what was taken out.
         hotspots += find_hotspots(mask, kind=kind, transform=grid.transform,
                                   to_lonlat=to_lonlat, prev=prev, now=now)
     meta = {"prev_dates": prev_dates, "now_dates": now_dates, "shift": shift,
+            "water_excluded": float((ok & ~dry_land(wet_prev + wet_now, now)).sum()) / max(inside_n, 1),
             "window": (now_win[0].date(), now_win[1].date())}
     return hotspots, observed, meta
 
@@ -382,9 +393,10 @@ async def run_land_change_scan(
                                    window=meta["window"])
                 found += len(hotspots)
                 log.info("land change: %s/%s %d hotspot(s), %.0f%% observed "
-                         "(%d prev / %d now dates, season shift %+.3f)",
+                         "(%d prev / %d now dates, shift %+.3f, %.1f%% water)",
                          tenant, b.lga, len(hotspots), 100 * observed,
-                         len(meta["prev_dates"]), len(meta["now_dates"]), meta["shift"])
+                         len(meta["prev_dates"]), len(meta["now_dates"]),
+                         meta["shift"], 100 * meta["water_excluded"])
                 for h in hotspots:
                     # Coordinates in the log, so a run can be checked against
                     # imagery without a database — including a dry rehearsal

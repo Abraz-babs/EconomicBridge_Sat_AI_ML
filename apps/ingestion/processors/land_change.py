@@ -95,6 +95,18 @@ MIN_HA = 1.0
 # and no shift correction is applied rather than trusting a handful.
 MIN_SHIFT_PIXELS = 1000
 
+# Ground seen as water even ONCE across either season's observations is a river
+# channel, a sandbank or a floodplain, and its bars move from year to year. In
+# the first measured sample that was the single largest false positive: ten of
+# thirteen errors, seven of them the same river through Shinkafi. A road is
+# never classified as water on any date, so the cost of this exclusion falls
+# almost entirely on the errors.
+MAX_WATER_OBSERVATIONS = 0
+
+# Bars and banks sit just OUTSIDE the wetted channel, so the exclusion is grown
+# by this many pixels (at 30 m, ~90 m) to cover them.
+WATER_BUFFER_PX = 3
+
 KIND_STOPPED = "stopped_greening"
 KIND_BARE = "became_bare"
 
@@ -116,6 +128,34 @@ def usable(inside: np.ndarray, prev: np.ndarray, now: np.ndarray,
     """Pixels inside the LGA that both seasons actually saw often enough."""
     return (inside & np.isfinite(prev) & np.isfinite(now)
             & (n_prev >= MIN_OBSERVATIONS) & (n_now >= MIN_OBSERVATIONS))
+
+
+def grow(mask: np.ndarray, px: int) -> np.ndarray:
+    """Dilate a boolean mask by `px` pixels — numpy only, no scipy in the image."""
+    out = mask.copy()
+    for _ in range(px):
+        g = out.copy()
+        g[1:, :] |= out[:-1, :]
+        g[:-1, :] |= out[1:, :]
+        g[:, 1:] |= out[:, :-1]
+        g[:, :-1] |= out[:, 1:]
+        out = g
+    return out
+
+
+def dry_land(n_water: np.ndarray, now_raw: np.ndarray) -> np.ndarray:
+    """Ground that is not river, sandbank, floodplain or pond.
+
+    Two tests, because they catch different things. The observation count
+    catches a channel that held water on any date we looked. The raw peak
+    catches standing water on ground the classifier missed: land reads above
+    zero at its seasonal peak, and this must use the RAW peak, not the
+    season-corrected one — a shift correction could otherwise lift genuinely
+    negative water back over the line, which is exactly how two ponds reached
+    the first measured sample.
+    """
+    wet = (n_water > MAX_WATER_OBSERVATIONS) | (now_raw < WATER_PEAK_MAX)
+    return ~grow(wet, WATER_BUFFER_PX)
 
 
 def season_shift(prev: np.ndarray, now: np.ndarray, ok: np.ndarray) -> float:

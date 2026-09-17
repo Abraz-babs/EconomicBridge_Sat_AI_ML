@@ -320,3 +320,39 @@ def test_too_few_vegetated_pixels_means_no_correction():
     now = np.full((40, 40), 0.20, "float32")
     ok = lc.usable(inside, prev, now, n, n)
     assert lc.season_shift(prev, now, ok) == 0.0
+
+
+# ─── Rivers, sandbanks and ponds are not land conversion ──────────────────
+
+
+def test_ground_ever_seen_as_water_is_excluded():
+    """Ten of thirteen errors in the first measured sample were river channel
+    or sandbank — seven of them the same river through Shinkafi."""
+    n_water = np.zeros((20, 20), dtype="uint8")
+    n_water[10, 10] = 1                       # wet on exactly one date
+    now = np.full((20, 20), 0.08, "float32")
+    assert not lc.dry_land(n_water, now)[10, 10]
+
+
+def test_the_bank_beside_a_channel_goes_too():
+    """Bars sit just outside the wetted channel and move year to year."""
+    n_water = np.zeros((40, 40), dtype="uint8")
+    n_water[20, 20] = 2
+    now = np.full((40, 40), 0.08, "float32")
+    land = lc.dry_land(n_water, now)
+    assert not land[20, 20 + lc.WATER_BUFFER_PX], "within the buffer"
+    assert land[20, 20 + lc.WATER_BUFFER_PX + 2], "and not beyond it"
+
+
+def test_water_is_judged_on_the_raw_peak_not_the_corrected_one():
+    """A shift correction could otherwise lift genuinely negative water back
+    over the line — which is how two ponds reached the first sample."""
+    n_water = np.zeros((20, 20), dtype="uint8")
+    raw = np.full((20, 20), -0.067, "float32")      # a pond, as measured
+    assert not lc.dry_land(n_water, raw).any()
+
+
+def test_dry_ground_is_kept():
+    n_water = np.zeros((20, 20), dtype="uint8")
+    now = np.full((20, 20), 0.06, "float32")        # a bare road surface
+    assert lc.dry_land(n_water, now).all()

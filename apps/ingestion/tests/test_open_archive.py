@@ -213,3 +213,18 @@ def test_an_unknown_tenant_is_ignored_and_reported(monkeypatch, caplog):
     monkeypatch.setattr(get_settings(), "open_archive_tenants", "kebbi,atlantis")
     assert oa.active_tenants() == ["kebbi"]
     assert "atlantis" in caplog.text
+
+
+def test_an_item_dated_by_a_range_is_not_dropped():
+    """ESA WorldCover and JRC surface water carry a null `datetime` and a
+    start/end pair. Requiring a plain datetime made those collections come
+    back empty, as though the area were not covered at all."""
+    scene = oa._parse_scene({
+        "id": "ESA_WorldCover_10m_2021_v200_N12E006",
+        "collection": "esa-worldcover",
+        "properties": {"datetime": None, "start_datetime": "2021-01-01T00:00:00Z"},
+        "assets": {"map": {"href": "https://example.invalid/map.tif"}},
+    })
+    assert scene is not None
+    assert scene.datetime.year == 2021
+    assert scene.assets["map"].endswith("map.tif")

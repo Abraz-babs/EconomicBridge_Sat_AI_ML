@@ -106,13 +106,18 @@ def _utc(d: datetime) -> str:
 
 def _parse_scene(feature: dict) -> Scene | None:
     p = feature.get("properties") or {}
-    if not p.get("datetime") or not feature.get("id"):
+    # Mosaics and annual products (ESA WorldCover, JRC surface water) carry a
+    # null `datetime` and a start/end pair instead. Requiring a plain datetime
+    # silently dropped every one of them, so a search against those collections
+    # came back empty as though the area were not covered.
+    when = p.get("datetime") or p.get("start_datetime") or p.get("end_datetime")
+    if not when or not feature.get("id"):
         return None
     ro, cc = p.get("sat:relative_orbit"), p.get("eo:cloud_cover")
     return Scene(
         id=str(feature["id"]),
         collection=str(feature.get("collection") or ""),
-        datetime=datetime.fromisoformat(str(p["datetime"]).replace("Z", "+00:00")),
+        datetime=datetime.fromisoformat(str(when).replace("Z", "+00:00")),
         assets={k: v["href"] for k, v in (feature.get("assets") or {}).items()
                 if isinstance(v, dict) and v.get("href")},
         orbit_state=p.get("sat:orbit_state"),
