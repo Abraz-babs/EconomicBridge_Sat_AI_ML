@@ -107,6 +107,12 @@ MAX_WATER_OBSERVATIONS = 0
 # by this many pixels (at 30 m, ~90 m) to cover them.
 WATER_BUFFER_PX = 3
 
+# Peak greenness two seasons back for ground to count as having greened then.
+# Lower than GREEN_PREV because a third season is corroboration, not the test:
+# measured over the labelled points, confirmed conversions sat around 0.48 two
+# years back and errors around 0.35.
+PRIOR_GREEN = 0.40
+
 KIND_STOPPED = "stopped_greening"
 KIND_BARE = "became_bare"
 
@@ -121,6 +127,27 @@ class Hotspot:
     area_ha: float
     peak_prev: float
     peak_now: float
+    # Peak greenness TWO seasons back, and whether the ground greened in both
+    # prior years. Recorded, never used to filter — see `persistent`.
+    peak_prior: float = float("nan")
+
+    @property
+    def persistent(self) -> bool:
+        """Did this ground green in BOTH prior seasons?
+
+        A road goes green -> bare once and stays; a sandbar alternates as the
+        channel scours and revegetates, and a field alternates with rotation.
+        On the labelled points this held for 62% of confirmed conversions and
+        only 20% of errors.
+
+        It is REPORTED, not enforced. As a filter it would have halved the
+        errors and also discarded three of eight confirmed detections — the
+        Zamfara road and the Aleiro construction pad among them. On eighteen
+        points that trade is not solid enough to impose on every reader, so the
+        evidence is stored and whoever needs the stricter set can ask for it.
+        """
+        return (self.peak_prior >= PRIOR_GREEN
+                and self.peak_prev >= PRIOR_GREEN)
 
 
 def usable(inside: np.ndarray, prev: np.ndarray, now: np.ndarray,
@@ -236,6 +263,7 @@ def find_hotspots(
     to_lonlat: Callable[[float, float], tuple[float, float]],
     prev: np.ndarray,
     now: np.ndarray,
+    prior: np.ndarray | None = None,
     min_ha: float = MIN_HA,
 ) -> list[Hotspot]:
     """Contiguous patches of `mask`, largest first, each with its own position.
@@ -258,5 +286,7 @@ def find_hotspots(
             area_ha=round(area_ha, 2),
             peak_prev=round(_median_in(prev[r0:r1, c0:c1], sub), 3),
             peak_now=round(_median_in(now[r0:r1, c0:c1], sub), 3),
+            peak_prior=(round(_median_in(prior[r0:r1, c0:c1], sub), 3)
+                        if prior is not None else float("nan")),
         ))
     return sorted(out, key=lambda h: h.area_ha, reverse=True)

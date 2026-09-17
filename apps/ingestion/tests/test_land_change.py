@@ -356,3 +356,49 @@ def test_dry_ground_is_kept():
     n_water = np.zeros((20, 20), dtype="uint8")
     now = np.full((20, 20), 0.06, "float32")        # a bare road surface
     assert lc.dry_land(n_water, now).all()
+
+
+# ─── The third season: recorded, never enforced ───────────────────────────
+
+
+def _spot(prior, prev, now):
+    return lc.Hotspot(kind=lc.KIND_BARE, lon=4.0, lat=12.0, area_ha=2.0,
+                      peak_prev=prev, peak_now=now, peak_prior=prior)
+
+
+def test_ground_that_greened_two_years_running_is_marked_persistent():
+    """A road goes green -> bare once and stays; a sandbar alternates."""
+    assert _spot(0.55, 0.60, 0.05).persistent
+
+
+def test_ground_that_only_greened_last_year_is_not():
+    """The Shinkafi sandbars: bare two years back, green last year, bare now."""
+    assert not _spot(0.32, 0.56, 0.11).persistent
+
+
+def test_a_hotspot_with_no_third_season_is_not_claimed_persistent():
+    """NaN means the archive gave us nothing, not that the ground was bare."""
+    assert not _spot(float("nan"), 0.60, 0.05).persistent
+
+
+def test_the_third_season_does_not_filter_anything():
+    """It is evidence on the row, not a gate. Enforcing it would have discarded
+    three of eight confirmed detections, the Aleiro construction pad included."""
+    inside, n = _grids()
+    prev = np.full((20, 20), 0.70, "float32")
+    now = np.full((20, 20), 0.05, "float32")
+    ok = lc.usable(inside, prev, now, n, n)
+    assert lc.became_bare(prev, now, ok).all(), "fires regardless of prior years"
+
+
+def test_the_prior_peak_is_measured_over_the_patch():
+    mask = np.zeros((40, 40), dtype=bool)
+    mask[0:10, 0:10] = True
+    prev = np.full((40, 40), 0.70, "float32")
+    now = np.full((40, 40), 0.05, "float32")
+    prior = np.full((40, 40), np.nan, "float32")
+    prior[0:10, 0:10] = 0.61
+    spot = lc.find_hotspots(mask, kind=lc.KIND_BARE, transform=TF,
+                            to_lonlat=_identity, prev=prev, now=now, prior=prior)[0]
+    assert spot.peak_prior == pytest.approx(0.61, abs=1e-3)
+    assert spot.persistent

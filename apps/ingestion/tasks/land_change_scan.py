@@ -237,6 +237,12 @@ async def scan_lga(boundary, end: date, year: int) -> tuple[list[Hotspot], float
     now_win = wet_window(year, end)
     prev, n_prev, wet_prev, prev_dates = await peak_greenness(boundary.bbox, grid, *prev_win)
     now, n_now, wet_now, now_dates = await peak_greenness(boundary.bbox, grid, *now_win)
+    # A THIRD season, two years back. Corroboration only: a road goes green ->
+    # bare once and stays, while a sandbar alternates as its channel scours and
+    # a field alternates with rotation. Recorded on each hotspot, never used to
+    # filter — see Hotspot.persistent for why.
+    prior, _n_prior, _w_prior, prior_dates = await peak_greenness(
+        boundary.bbox, grid, *wet_window(year - 2, end))
 
     ok = usable(inside, prev, now, n_prev, n_now)
     inside_n = int(inside.sum())
@@ -259,8 +265,10 @@ async def scan_lga(boundary, end: date, year: int) -> tuple[list[Hotspot], float
         # The RAW peak is reported, not the corrected one: the row must say
         # what was measured, and `season_shift` says what was taken out.
         hotspots += find_hotspots(mask, kind=kind, transform=grid.transform,
-                                  to_lonlat=to_lonlat, prev=prev, now=now)
+                                  to_lonlat=to_lonlat, prev=prev, now=now,
+                                  prior=prior)
     meta = {"prev_dates": prev_dates, "now_dates": now_dates, "shift": shift,
+            "prior_dates": prior_dates,
             "water_excluded": float((ok & ~dry_land(wet_prev + wet_now, now)).sum()) / max(inside_n, 1),
             "window": (now_win[0].date(), now_win[1].date())}
     return hotspots, observed, meta
@@ -272,21 +280,26 @@ async def _write(session: AsyncSession, *, tenant: str, lga: str, year: int,
         await session.execute(text("""
             INSERT INTO land_change_hotspots (
                 tenant_id, lga, kind, location, lon, lat, area_ha,
-                peak_prev, peak_now, season_year, prev_season_year,
+                peak_prev, peak_now, peak_prior, persistent,
+                season_year, prev_season_year,
                 window_start, window_end, lga_observed_fraction, detector_version
             ) VALUES (
                 :t, :lga, :kind, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :lon, :lat,
-                :area, :prev, :now, :yr, :pyr, :ws, :we, :obs, :dv
+                :area, :prev, :now, :prior, :persistent, :yr, :pyr, :ws, :we, :obs, :dv
             )
             ON CONFLICT (lga, season_year, kind, lon, lat) DO UPDATE SET
                 area_ha = EXCLUDED.area_ha,
                 peak_prev = EXCLUDED.peak_prev,
                 peak_now = EXCLUDED.peak_now,
+                peak_prior = EXCLUDED.peak_prior,
+                persistent = EXCLUDED.persistent,
                 lga_observed_fraction = EXCLUDED.lga_observed_fraction,
                 detected_at = NOW()
         """), {
             "t": tenant, "lga": lga, "kind": h.kind, "lon": h.lon, "lat": h.lat,
             "area": h.area_ha, "prev": h.peak_prev, "now": h.peak_now,
+            "prior": None if h.peak_prior != h.peak_prior else h.peak_prior,
+            "persistent": h.persistent,
             "yr": year, "pyr": year - 1, "ws": window[0], "we": window[1],
             "obs": round(observed, 4), "dv": DETECTOR_VERSION,
         })
@@ -403,8 +416,9 @@ async def run_land_change_scan(
                     # and a one-shot task read back from CloudWatch. These are
                     # land patches of a hectare or more, not people.
                     log.info("land change:   %-16s %8.5f,%8.5f %7.1f ha "
-                             "peak %.2f -> %.2f", h.kind, h.lat, h.lon,
-                             h.area_ha, h.peak_prev, h.peak_now)
+                             "peak %.2f/%.2f -> %.2f%s", h.kind, h.lat, h.lon,
+                             h.area_ha, h.peak_prior, h.peak_prev, h.peak_now,
+                             "  [greened 2 yrs]" if h.persistent else "")
             if write:
                 await _record(factory, tenant=tenant, written=found,
                               started_at=started_at, trigger=trigger)
