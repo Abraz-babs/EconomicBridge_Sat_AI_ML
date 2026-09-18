@@ -232,7 +232,7 @@ that share the ingestion service. Run it as a one-shot Fargate task:
 python -m scripts.run_land_change --tenant kebbi            # writes
 python -m scripts.run_land_change --tenant kebbi --no-write # rehearse, no DB needed
 ```
-with `"cpu":"1024","memory":"4096"` in the run-task overrides. It writes to
+with `"cpu":"1024","memory":"8192"` in the run-task overrides — **not 4096**. The scan reads three seasons and each holds its own accumulators; at 4 GB the kernel killed both the Niger and the zamfara/plateau/fct runs on their largest LGAs, and the only evidence is a bare `Killed` in the log. It writes to
 `land_change_hotspots` only — a shadow table nothing reads — and stamps
 `land_change_v1` in `ingestion_runs`. That source has a staleness budget in
 `FEED_MAX_AGE_HOURS` but is deliberately ABSENT from `LIVE_SCAN_SOURCES`, so it

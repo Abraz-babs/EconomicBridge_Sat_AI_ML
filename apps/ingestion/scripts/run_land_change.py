@@ -12,7 +12,12 @@ COST + RUNTIME (measured 2026-09-15, 1 vCPU, sequential reads)
     ~79 min for 3 LGAs (11.3M pixels). All 8 Nigerian pilots are ~309M pixels,
     so budget hours, not minutes, and roughly US$2 of Fargate per full run.
     This runner reads dates concurrently, which should cut that materially.
-    Give the task 4 GB: the largest LGAs need it.
+
+GIVE THE TASK 8 GB, NOT 4
+    Each season holds its own accumulators, and the scan now reads THREE. At
+    4 GB the kernel killed the zamfara/plateau/fct run outright (the log just
+    says "Killed"), and Niger before it, both on their largest LGAs. 8 GB with
+    1 vCPU completed Niger's 25 LGAs.
 """
 from __future__ import annotations
 
