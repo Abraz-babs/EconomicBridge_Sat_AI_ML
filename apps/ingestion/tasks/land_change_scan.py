@@ -44,11 +44,15 @@ from processors.land_change import (
     KIND_BARE,
     KIND_STOPPED,
     Hotspot,
+    SeasonComparison,
+    SeasonVegetation,
     became_bare,
     corrected,
     dry_land,
     find_hotspots,
+    like_for_like,
     season_shift,
+    season_vegetation,
     stopped_greening,
     usable,
 )
@@ -244,6 +248,21 @@ async def scan_lga(boundary, end: date, year: int) -> tuple[list[Hotspot], float
     prior, _n_prior, _w_prior, prior_dates = await peak_greenness(
         boundary.bbox, grid, *wet_window(year - 2, end))
 
+    # THE FARMLAND MEASURE. Computed for every season independently, so an LGA
+    # whose baseline year was clouded out still returns a figure — that is what
+    # makes FCT report land instead of 0%.
+    pixel_ha = (grid.resolution_m ** 2) / 10_000.0
+    veg = [season_vegetation(pk, sn, inside, season_year=yr, pixel_ha=pixel_ha,
+                             n_dates=len(ds))
+           for pk, sn, yr, ds in ((prior, _n_prior, year - 2, prior_dates),
+                                  (prev, n_prev, year - 1, prev_dates),
+                                  (now, n_now, year, now_dates))]
+
+    # A change is only ever quoted over the ground BOTH seasons saw.
+    cmp_prev = like_for_like(prev, n_prev, prior, _n_prior, inside, pixel_ha=pixel_ha)
+    cmp_now = like_for_like(now, n_now, prev, n_prev, inside, pixel_ha=pixel_ha)
+    comparisons = {year - 1: cmp_prev, year: cmp_now}
+
     ok = usable(inside, prev, now, n_prev, n_now)
     inside_n = int(inside.sum())
     observed = float(ok.sum()) / inside_n if inside_n else 0.0
@@ -268,10 +287,51 @@ async def scan_lga(boundary, end: date, year: int) -> tuple[list[Hotspot], float
                                   to_lonlat=to_lonlat, prev=prev, now=now,
                                   prior=prior)
     meta = {"prev_dates": prev_dates, "now_dates": now_dates, "shift": shift,
-            "prior_dates": prior_dates,
+            "prior_dates": prior_dates, "vegetation": veg,
+            "comparisons": comparisons,
             "water_excluded": float((ok & ~dry_land(wet_prev + wet_now, now)).sum()) / max(inside_n, 1),
             "window": (now_win[0].date(), now_win[1].date())}
     return hotspots, observed, meta
+
+
+async def _write_vegetation(session: AsyncSession, *, tenant: str, lga: str,
+                            veg: list[SeasonVegetation],
+                            comparisons: dict[int, SeasonComparison],
+                            end: date) -> None:
+    """Store the farmland measure — one row per LGA per season."""
+    for v in veg:
+        c = comparisons.get(v.season_year)
+        win = wet_window(v.season_year, end)
+        await session.execute(text("""
+            INSERT INTO lga_season_vegetation (
+                tenant_id, lga, season_year, window_start, window_end,
+                lga_ha, observed_ha, greened_ha, median_peak, n_dates,
+                common_observed_ha, greened_ha_common, prev_greened_ha_common,
+                detector_version
+            ) VALUES (
+                :t, :lga, :yr, :ws, :we, :lga_ha, :obs, :green, :peak, :n,
+                :common, :green_c, :prev_c, :dv
+            )
+            ON CONFLICT (lga, season_year, detector_version) DO UPDATE SET
+                lga_ha = EXCLUDED.lga_ha,
+                observed_ha = EXCLUDED.observed_ha,
+                greened_ha = EXCLUDED.greened_ha,
+                median_peak = EXCLUDED.median_peak,
+                n_dates = EXCLUDED.n_dates,
+                common_observed_ha = EXCLUDED.common_observed_ha,
+                greened_ha_common = EXCLUDED.greened_ha_common,
+                prev_greened_ha_common = EXCLUDED.prev_greened_ha_common,
+                measured_at = NOW()
+        """), {
+            "t": tenant, "lga": lga, "yr": v.season_year,
+            "ws": win[0].date(), "we": win[1].date(),
+            "lga_ha": v.lga_ha, "obs": v.observed_ha, "green": v.greened_ha,
+            "peak": None if v.median_peak != v.median_peak else v.median_peak,
+            "n": v.n_dates, "dv": DETECTOR_VERSION,
+            "common": c.common_observed_ha if c else None,
+            "green_c": c.greened_ha if c else None,
+            "prev_c": c.prev_greened_ha if c else None,
+        })
 
 
 async def _write(session: AsyncSession, *, tenant: str, lga: str, year: int,
@@ -325,7 +385,9 @@ async def _record_run(session: AsyncSession, *, tenant: str, written: int,
 
 
 async def _persist(factory, *, tenant: str, lga: str, year: int,
-                   hotspots: list[Hotspot], observed: float, window) -> None:
+                   hotspots: list[Hotspot], observed: float, window,
+                   veg: list[SeasonVegetation],
+                   comparisons: dict[int, SeasonComparison], end: date) -> None:
     """Store one LGA's hotspots in a session of its own.
 
     A whole-Nigeria pass runs for hours. Holding one connection open across it
@@ -338,12 +400,19 @@ async def _persist(factory, *, tenant: str, lga: str, year: int,
         # unique key includes lon/lat, so a changed rule writes new coordinates
         # and the old rows would otherwise survive as evidence of a detector
         # that no longer exists.
+        # The farmland measure is written for EVERY LGA, whether or not any
+        # change was detected. An LGA with no hotspots still farmed land, and
+        # an LGA whose baseline year was clouded out still has this season's
+        # figure — that is what makes Abuja report land rather than nothing.
+        await _write_vegetation(session, tenant=tenant, lga=lga, veg=veg,
+                                comparisons=comparisons, end=end)
         await session.execute(text("""
             DELETE FROM land_change_hotspots
             WHERE lga = :lga AND season_year = :yr AND detector_version = :dv
         """), {"lga": lga, "yr": year, "dv": DETECTOR_VERSION})
-        await _write(session, tenant=tenant, lga=lga, year=year,
-                     hotspots=hotspots, observed=observed, window=window)
+        if hotspots:
+            await _write(session, tenant=tenant, lga=lga, year=year,
+                         hotspots=hotspots, observed=observed, window=window)
         await session.commit()
 
 
@@ -400,16 +469,22 @@ async def run_land_change_scan(
                     # Say so rather than reporting "nothing found" for an LGA
                     # the clouds hid.
                     thin.append("%s %.0f%%" % (b.lga, 100 * observed))
-                if write and hotspots:
+                if write:
                     await _persist(factory, tenant=tenant, lga=b.lga, year=year,
                                    hotspots=hotspots, observed=observed,
-                                   window=meta["window"])
+                                   window=meta["window"], veg=meta["vegetation"],
+                                   comparisons=meta["comparisons"], end=end)
                 found += len(hotspots)
-                log.info("land change: %s/%s %d hotspot(s), %.0f%% observed "
-                         "(%d prev / %d now dates, shift %+.3f, %.1f%% water)",
-                         tenant, b.lga, len(hotspots), 100 * observed,
-                         len(meta["prev_dates"]), len(meta["now_dates"]),
-                         meta["shift"], 100 * meta["water_excluded"])
+                this = meta["vegetation"][-1]
+                c = meta["comparisons"][year]
+                log.info("land change: %s/%s FARMLAND greened %s ha (%.0f%% of "
+                         "LGA seen) | like-for-like on %s ha both years saw: "
+                         "%s -> %s ha (%+.1f%%) | %d hotspot(s)",
+                         tenant, b.lga, f"{this.greened_ha:,.0f}",
+                         100 * this.observed_fraction,
+                         f"{c.common_observed_ha:,.0f}",
+                         f"{c.prev_greened_ha:,.0f}", f"{c.greened_ha:,.0f}",
+                         100 * c.change_fraction, len(hotspots))
                 for h in hotspots:
                     # Coordinates in the log, so a run can be checked against
                     # imagery without a database — including a dry rehearsal

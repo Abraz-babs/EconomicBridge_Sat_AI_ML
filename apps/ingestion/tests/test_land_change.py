@@ -402,3 +402,124 @@ def test_the_prior_peak_is_measured_over_the_patch():
                             to_lonlat=_identity, prev=prev, now=now, prior=prior)[0]
     assert spot.peak_prior == pytest.approx(0.61, abs=1e-3)
     assert spot.persistent
+
+
+# ─── The farmland measure ─────────────────────────────────────────────────
+
+
+def _veg(peak_val, seen_val, shape=(100, 100), inside_all=True):
+    inside = np.ones(shape, dtype=bool)
+    if not inside_all:
+        inside[:, 50:] = False
+    peak = np.full(shape, peak_val, "float32")
+    seen = np.full(shape, seen_val, dtype="uint8")
+    return lc.season_vegetation(peak, seen, inside, season_year=2026,
+                                pixel_ha=0.09, n_dates=12)
+
+
+def test_land_that_greened_is_counted_in_hectares():
+    v = _veg(0.65, 3)
+    assert v.greened_ha == pytest.approx(900.0)      # 10,000 px x 0.09 ha
+    assert v.observed_ha == pytest.approx(900.0)
+    assert v.greened_fraction == pytest.approx(1.0)
+
+
+def test_ground_that_never_greened_is_not_counted():
+    assert _veg(0.12, 3).greened_ha == 0.0
+
+
+def test_ONE_clear_look_is_enough_to_count_green():
+    """This is what makes Abuja report farmland at all. The change detector
+    needs three looks in BOTH seasons and stayed silent over FCT; seeing a
+    pixel green once is positive evidence on its own."""
+    v = _veg(0.65, 1)
+    assert v.greened_ha > 0
+
+
+def test_a_pixel_never_seen_is_not_counted_either_way():
+    v = _veg(0.65, 0)
+    assert v.observed_ha == 0.0
+    assert v.greened_ha == 0.0
+    assert v.greened_fraction == 0.0, "no division by zero when nothing was seen"
+
+
+def test_greened_share_is_measured_against_what_was_SEEN():
+    """Cloud must not be counted as bare ground — the LGA's full area is the
+    wrong denominator and would understate farming wherever it was cloudy."""
+    shape = (100, 100)
+    inside = np.ones(shape, dtype=bool)
+    peak = np.full(shape, 0.65, "float32")
+    seen = np.zeros(shape, dtype="uint8")
+    seen[:, :25] = 3                                  # only a quarter seen
+    v = lc.season_vegetation(peak, seen, inside, season_year=2026,
+                             pixel_ha=0.09, n_dates=12)
+    assert v.observed_fraction == pytest.approx(0.25)
+    assert v.greened_fraction == pytest.approx(1.0), "all of what was seen"
+
+
+def test_only_land_inside_the_lga_counts():
+    v = _veg(0.65, 3, inside_all=False)
+    assert v.lga_ha == pytest.approx(450.0)
+
+
+def test_cloud_can_only_push_the_figure_down_never_up():
+    """The whole point of the one-sided test: it is a LOWER bound."""
+    full = _veg(0.65, 3).greened_ha
+    shape = (100, 100)
+    inside = np.ones(shape, dtype=bool)
+    peak = np.full(shape, 0.65, "float32")
+    peak[:, 50:] = np.nan                             # half hidden by cloud
+    seen = np.full(shape, 3, dtype="uint8")
+    seen[:, 50:] = 0
+    partial = lc.season_vegetation(peak, seen, inside, season_year=2026,
+                                   pixel_ha=0.09, n_dates=12)
+    assert partial.greened_ha < full
+
+
+def test_change_is_measured_only_where_BOTH_seasons_were_seen():
+    """Subtracting one lower bound from another measures the weather. Over
+    FCT's Municipal Area Council the raw figures were 43,264 ha last season
+    against 83,395 ha this one — which reads as farmland doubling and is very
+    largely the 2025 rains having been clouded out."""
+    shape = (100, 100)
+    inside = np.ones(shape, dtype=bool)
+    peak_now = np.full(shape, 0.65, "float32")
+    peak_prev = np.full(shape, 0.65, "float32")      # identical farming
+    seen_now = np.full(shape, 3, dtype="uint8")
+    seen_prev = np.zeros(shape, dtype="uint8")
+    seen_prev[:, :50] = 3                            # last year, half clouded
+
+    raw_now = lc.season_vegetation(peak_now, seen_now, inside, season_year=2026,
+                                   pixel_ha=0.09, n_dates=12)
+    raw_prev = lc.season_vegetation(peak_prev, seen_prev, inside, season_year=2025,
+                                    pixel_ha=0.09, n_dates=12)
+    assert raw_now.greened_ha > raw_prev.greened_ha, "the misleading comparison"
+
+    c = lc.like_for_like(peak_now, seen_now, peak_prev, seen_prev, inside,
+                         pixel_ha=0.09)
+    assert c.change_ha == 0.0, "like-for-like sees no change, because there is none"
+    assert c.common_observed_ha == pytest.approx(450.0)
+
+
+def test_real_farmland_loss_still_shows_like_for_like():
+    """The correction must remove the cloud, not the signal."""
+    shape = (100, 100)
+    inside = np.ones(shape, dtype=bool)
+    seen = np.full(shape, 3, dtype="uint8")
+    peak_prev = np.full(shape, 0.65, "float32")
+    peak_now = np.full(shape, 0.65, "float32")
+    peak_now[:20, :] = 0.10                          # a fifth stopped greening
+    c = lc.like_for_like(peak_now, seen, peak_prev, seen, inside, pixel_ha=0.09)
+    assert c.change_ha == pytest.approx(-180.0)
+    assert c.change_fraction == pytest.approx(-0.20, abs=1e-6)
+
+
+def test_no_change_quoted_against_a_season_with_nothing_in_common():
+    shape = (50, 50)
+    inside = np.ones(shape, dtype=bool)
+    peak = np.full(shape, 0.65, "float32")
+    seen_now = np.full(shape, 3, dtype="uint8")
+    seen_prev = np.zeros(shape, dtype="uint8")
+    c = lc.like_for_like(peak, seen_now, peak, seen_prev, inside, pixel_ha=0.09)
+    assert c.common_observed_ha == 0.0
+    assert c.change_fraction == 0.0, "no division by zero"

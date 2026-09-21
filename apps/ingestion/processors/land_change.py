@@ -117,6 +117,108 @@ KIND_STOPPED = "stopped_greening"
 KIND_BARE = "became_bare"
 
 
+# Greenness at which ground counts as having carried a crop or dense vegetation
+# through the rains. Rain-fed farmland here peaks 0.40-0.80; bare and built
+# ground stays under 0.15; sparse rangeland sits 0.20-0.35.
+#
+# NDVI CANNOT TELL A CROP FROM A TREE. What this measures is land that GREENED,
+# which is an upper bound on cultivation, never a cropland map. Say "land that
+# greened", never "cropland", unless something else establishes cultivation.
+GREENED_NDVI = 0.40
+
+
+@dataclass(frozen=True, slots=True)
+class SeasonVegetation:
+    """What one LGA's land did in one rainy season.
+
+    This is the agricultural measure, and it is deliberately NOT the change
+    detector. The detector asks whether a patch was converted and needs a
+    trustworthy baseline in BOTH seasons; where the clouds hid one of them it
+    can say nothing, which is why FCT's LGAs reported 0% and looked calm.
+
+    This asks a one-sided question instead — did this pixel reach greenness at
+    any point we could see? — so a SINGLE clear look showing green is positive
+    evidence. Cloud can only ever make the answer too LOW, so the figure is an
+    honest lower bound and every LGA returns one, Abuja included.
+    """
+
+    season_year: int
+    observed_ha: float      # ground seen clear at least once
+    greened_ha: float       # of that, ground that reached GREENED_NDVI
+    lga_ha: float           # the whole LGA, for context
+    median_peak: float      # typical peak greenness of the greened ground
+    n_dates: int
+
+    @property
+    def observed_fraction(self) -> float:
+        return self.observed_ha / self.lga_ha if self.lga_ha else 0.0
+
+    @property
+    def greened_fraction(self) -> float:
+        """Share OF WHAT WAS SEEN, not of the LGA — the only fair denominator
+        when cloud hid part of it."""
+        return self.greened_ha / self.observed_ha if self.observed_ha else 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class SeasonComparison:
+    """Two seasons measured on the SAME ground, so the change means something.
+
+    Each season's `greened_ha` is a lower bound set by how much cloud let us
+    see, and the two seasons are never hidden equally. Over FCT's Municipal
+    Area Council the raw figures were 43,264 ha last season against 83,395 ha
+    this one — which reads as farmland doubling and is very largely the 2025
+    rains having been clouded out. Subtracting one lower bound from another
+    measures the weather, not the farming.
+
+    So a change is only ever quoted over the footprint BOTH seasons saw.
+    """
+
+    common_observed_ha: float
+    greened_ha: float           # this season, on the common footprint
+    prev_greened_ha: float      # last season, on that same footprint
+
+    @property
+    def change_ha(self) -> float:
+        return round(self.greened_ha - self.prev_greened_ha, 1)
+
+    @property
+    def change_fraction(self) -> float:
+        if not self.prev_greened_ha:
+            return 0.0
+        return self.change_ha / self.prev_greened_ha
+
+
+def like_for_like(peak_now: np.ndarray, seen_now: np.ndarray,
+                  peak_prev: np.ndarray, seen_prev: np.ndarray,
+                  inside: np.ndarray, *, pixel_ha: float) -> SeasonComparison:
+    """Compare two seasons only where both were actually seen."""
+    common = (inside & (seen_now >= 1) & (seen_prev >= 1)
+              & np.isfinite(peak_now) & np.isfinite(peak_prev))
+    return SeasonComparison(
+        common_observed_ha=round(float(common.sum()) * pixel_ha, 1),
+        greened_ha=round(float((common & (peak_now >= GREENED_NDVI)).sum()) * pixel_ha, 1),
+        prev_greened_ha=round(float((common & (peak_prev >= GREENED_NDVI)).sum()) * pixel_ha, 1),
+    )
+
+
+def season_vegetation(peak: np.ndarray, seen: np.ndarray, inside: np.ndarray,
+                      *, season_year: int, pixel_ha: float,
+                      n_dates: int) -> SeasonVegetation:
+    """Hectares of an LGA that greened this season, as a lower bound."""
+    observed = inside & (seen >= 1) & np.isfinite(peak)
+    greened = observed & (peak >= GREENED_NDVI)
+    vals = peak[greened]
+    return SeasonVegetation(
+        season_year=season_year,
+        observed_ha=round(float(observed.sum()) * pixel_ha, 1),
+        greened_ha=round(float(greened.sum()) * pixel_ha, 1),
+        lga_ha=round(float(inside.sum()) * pixel_ha, 1),
+        median_peak=round(float(np.median(vals)), 3) if vals.size else float("nan"),
+        n_dates=n_dates,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Hotspot:
     """One contiguous patch of ground that stopped greening."""
