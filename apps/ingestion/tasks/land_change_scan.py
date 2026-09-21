@@ -57,6 +57,7 @@ from processors.land_change import (
     usable,
 )
 from sources import cog_window as cw
+from sources import land_cover as lc_map
 from sources import lga_boundaries as lb
 from sources import open_archive as oa
 from sources.cog_sampler import CogSamplerError
@@ -252,8 +253,18 @@ async def scan_lga(boundary, end: date, year: int) -> tuple[list[Hotspot], float
     # whose baseline year was clouded out still returns a figure — that is what
     # makes FCT report land instead of 0%.
     pixel_ha = (grid.resolution_m ** 2) / 10_000.0
+    # WHAT KIND of land this is. One extra read per LGA, and it is what lets a
+    # farmland reader tell a crop from a tree instead of counting both as green.
+    try:
+        classes, lc_year = await lc_map.classes_on_grid(boundary.bbox, grid)
+    except Exception as exc:  # noqa: BLE001 — never lose an LGA over context
+        log.warning("land change: no land cover for %s (%s); reporting land "
+                    "without a breakdown", boundary.lga, type(exc).__name__)
+        classes, lc_year = None, None
+
     veg = [season_vegetation(pk, sn, inside, season_year=yr, pixel_ha=pixel_ha,
-                             n_dates=len(ds))
+                             n_dates=len(ds), classes=classes,
+                             land_cover_year=lc_year)
            for pk, sn, yr, ds in ((prior, _n_prior, year - 2, prior_dates),
                                   (prev, n_prev, year - 1, prev_dates),
                                   (now, n_now, year, now_dates))]
@@ -285,7 +296,7 @@ async def scan_lga(boundary, end: date, year: int) -> tuple[list[Hotspot], float
         # what was measured, and `season_shift` says what was taken out.
         hotspots += find_hotspots(mask, kind=kind, transform=grid.transform,
                                   to_lonlat=to_lonlat, prev=prev, now=now,
-                                  prior=prior)
+                                  prior=prior, classes=classes)
     meta = {"prev_dates": prev_dates, "now_dates": now_dates, "shift": shift,
             "prior_dates": prior_dates, "vegetation": veg,
             "comparisons": comparisons,
@@ -339,6 +350,75 @@ async def _write_vegetation(session: AsyncSession, *, tenant: str, lga: str,
             "plooks": c.prev_looks if c else None,
             "cmpble": bool(c.comparable) if c else False,
         })
+
+
+# ── Promoting a detection into the LIVE feed ──────────────────────────────
+#
+# The complaint this answers: the encroachment feed reports every LGA's
+# detection at the SAME point, because it samples one 3 km box at the LGA
+# centroid. Other ground in that LGA changes too and was never looked at.
+# These rows carry each patch's OWN coordinates.
+#
+# It writes to the EXISTING alert_events table with the EXISTING column shape —
+# no new table, no migration — and the encroachment detector is untouched and
+# still writes its own rows. Everything here is tagged model_version
+# 'land_change_v1', so it can be filtered or removed in one statement without
+# disturbing anything else.
+#
+# Only a narrow, earned subset is promoted, because this reaches the live map:
+PROMOTE_KIND = KIND_BARE          # the strict class: 64% on a random sample
+PROMOTE_PERSISTENT_ONLY = True    # ...and greened in BOTH prior years
+# Farmland only. Trees and built-up are what the land-cover map gets reliably
+# right, and a new road through scrub is not what this platform is for.
+PROMOTE_LAND_COVER = ("crops", "rangeland")
+PROMOTE_MIN_OBSERVED = 0.50
+# Measured precision of exactly this subset — the share of a random sample that
+# survived checking against imagery. NOT a confidence the model produced.
+PROMOTE_CONFIDENCE = 0.64
+
+
+def promotable(h: Hotspot, observed: float) -> bool:
+    """Is this detection good enough to put in front of an operator?"""
+    return (h.kind == PROMOTE_KIND
+            and (h.persistent or not PROMOTE_PERSISTENT_ONLY)
+            and h.land_cover in PROMOTE_LAND_COVER
+            and observed >= PROMOTE_MIN_OBSERVED)
+
+
+async def _promote(session: AsyncSession, *, tenant: str, lga: str, year: int,
+                   hotspots: list[Hotspot], observed: float) -> int:
+    """Write qualifying detections into the live feed, at their OWN locations."""
+    picked = [h for h in hotspots if promotable(h, observed)]
+    # Idempotent: a re-run replaces this LGA's rows rather than stacking a
+    # second copy of the same ground on the map. Scoped to this detector's own
+    # model_version, so nothing another detector wrote is ever touched.
+    await session.execute(text("""
+        DELETE FROM alert_events
+        WHERE lga = :lga AND model_version = :dv
+          AND created_at >= make_date(:yr, 1, 1)
+    """), {"lga": lga, "dv": DETECTOR_VERSION, "yr": year})
+    for h in picked:
+        await session.execute(text("""
+            INSERT INTO alert_events (
+                id, tenant_id, alert_type, severity, status, zone_name, lga,
+                location, confidence_score, affected_area_ha,
+                satellite_source, satellite_pass_time,
+                model_name, model_version, human_review_required,
+                created_at, updated_at
+            ) VALUES (
+                :id, :tenant, 'conflict', :severity, 'pending_review', :zone, :lga,
+                ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :conf, :area,
+                'Sentinel-2 peak-season NDVI, whole-LGA, with Esri/IO annual land cover',
+                NOW(), 'land_change', :dv, TRUE, NOW(), NOW()
+            )
+        """), {
+            "id": uuid4(), "tenant": tenant, "lga": lga,
+            "zone": f"{lga} - {h.land_cover}",
+            "severity": "medium" if h.area_ha >= 5.0 else "low",
+            "lon": h.lon, "lat": h.lat, "conf": PROMOTE_CONFIDENCE,
+            "area": h.area_ha, "dv": DETECTOR_VERSION,
+        })
+    return len(picked)
 
 
 async def _write(session: AsyncSession, *, tenant: str, lga: str, year: int,
@@ -420,7 +500,12 @@ async def _persist(factory, *, tenant: str, lga: str, year: int,
         if hotspots:
             await _write(session, tenant=tenant, lga=lga, year=year,
                          hotspots=hotspots, observed=observed, window=window)
+        promoted = await _promote(session, tenant=tenant, lga=lga, year=year,
+                                  hotspots=hotspots, observed=observed)
         await session.commit()
+        if promoted:
+            log.info("land change: %s/%s promoted %d detection(s) to the live "
+                     "feed at their own coordinates", tenant, lga, promoted)
 
 
 async def _record(factory, **kw) -> None:

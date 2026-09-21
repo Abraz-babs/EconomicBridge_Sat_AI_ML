@@ -150,6 +150,27 @@ class SeasonVegetation:
     median_looks: float     # clear looks the typical observed pixel got
     n_dates: int
 
+    # WHAT KIND of land greened. Greenness alone cannot tell a crop from a
+    # tree, and for a farmland platform that is the whole point — so the
+    # answer comes from the Esri / Impact Observatory annual land-cover map,
+    # not from NDVI. See sources/land_cover.py, including the measured warning
+    # that it calls most Sahelian smallholder farming "rangeland".
+    greened_on_crops_ha: float = 0.0
+    greened_on_rangeland_ha: float = 0.0
+    greened_on_trees_ha: float = 0.0
+    greened_on_built_ha: float = 0.0
+    land_cover_year: int | None = None
+
+    @property
+    def farmland_ha(self) -> float:
+        """Greened ground that could be farmed — crops OR rangeland.
+
+        Reported alongside `greened_on_crops_ha`, never instead of it: crops
+        alone is a LOWER bound on farmland here and this sum an UPPER one.
+        Never present either as "cropland" on its own.
+        """
+        return round(self.greened_on_crops_ha + self.greened_on_rangeland_ha, 1)
+
     @property
     def observed_fraction(self) -> float:
         return self.observed_ha / self.lga_ha if self.lga_ha else 0.0
@@ -226,12 +247,23 @@ def like_for_like(peak_now: np.ndarray, seen_now: np.ndarray,
 
 
 def season_vegetation(peak: np.ndarray, seen: np.ndarray, inside: np.ndarray,
-                      *, season_year: int, pixel_ha: float,
-                      n_dates: int) -> SeasonVegetation:
-    """Hectares of an LGA that greened this season, as a lower bound."""
+                      *, season_year: int, pixel_ha: float, n_dates: int,
+                      classes: np.ndarray | None = None,
+                      land_cover_year: int | None = None) -> SeasonVegetation:
+    """Hectares of an LGA that greened this season, as a lower bound.
+
+    With `classes` from sources/land_cover, the greened ground is also split by
+    what KIND of land it is, so trees and built-up can be told apart from
+    farmland instead of all counting as "green".
+    """
     observed = inside & (seen >= 1) & np.isfinite(peak)
     greened = observed & (peak >= GREENED_NDVI)
     vals = peak[greened]
+    by_class: dict[int, float] = {}
+    if classes is not None:
+        for code in (5, 11, 2, 7):       # crops, rangeland, trees, built
+            by_class[code] = round(
+                float((greened & (classes == code)).sum()) * pixel_ha, 1)
     return SeasonVegetation(
         season_year=season_year,
         observed_ha=round(float(observed.sum()) * pixel_ha, 1),
@@ -241,6 +273,11 @@ def season_vegetation(peak: np.ndarray, seen: np.ndarray, inside: np.ndarray,
         median_looks=(round(float(np.median(seen[observed])), 1)
                       if observed.any() else 0.0),
         n_dates=n_dates,
+        greened_on_crops_ha=by_class.get(5, 0.0),
+        greened_on_rangeland_ha=by_class.get(11, 0.0),
+        greened_on_trees_ha=by_class.get(2, 0.0),
+        greened_on_built_ha=by_class.get(7, 0.0),
+        land_cover_year=land_cover_year,
     )
 
 
@@ -257,6 +294,10 @@ class Hotspot:
     # Peak greenness TWO seasons back, and whether the ground greened in both
     # prior years. Recorded, never used to filter — see `persistent`.
     peak_prior: float = float("nan")
+    # What KIND of land this patch is, from the land-cover map. This is what
+    # lets a farmland reader ignore a new road through scrub and keep a
+    # building put up on cropland.
+    land_cover: str | None = None
 
     @property
     def persistent(self) -> bool:
@@ -377,6 +418,17 @@ def _window(transform, geom: dict, shape: tuple[int, int]) -> tuple[int, int, in
     return r0, max(r1, r0 + 1), c0, max(c1, c0 + 1)
 
 
+def _dominant_class(classes: np.ndarray, sub: np.ndarray) -> str | None:
+    """The land-cover class most of this patch sits on."""
+    from sources.land_cover import NAMES
+
+    vals = classes[sub & np.isfinite(classes)]
+    if not vals.size:
+        return None
+    codes, counts = np.unique(vals.astype(int), return_counts=True)
+    return NAMES.get(int(codes[counts.argmax()]))
+
+
 def _median_in(values: np.ndarray, sub: np.ndarray) -> float:
     picked = values[sub & np.isfinite(values)]
     return float(np.median(picked)) if picked.size else float("nan")
@@ -391,6 +443,7 @@ def find_hotspots(
     prev: np.ndarray,
     now: np.ndarray,
     prior: np.ndarray | None = None,
+    classes: np.ndarray | None = None,
     min_ha: float = MIN_HA,
 ) -> list[Hotspot]:
     """Contiguous patches of `mask`, largest first, each with its own position.
@@ -415,5 +468,7 @@ def find_hotspots(
             peak_now=round(_median_in(now[r0:r1, c0:c1], sub), 3),
             peak_prior=(round(_median_in(prior[r0:r1, c0:c1], sub), 3)
                         if prior is not None else float("nan")),
+            land_cover=(_dominant_class(classes[r0:r1, c0:c1], sub)
+                        if classes is not None else None),
         ))
     return sorted(out, key=lambda h: h.area_ha, reverse=True)

@@ -545,3 +545,49 @@ def test_a_change_IS_quoted_when_both_seasons_were_seen_properly():
     peak = np.full(shape, 0.65, "float32")
     seen = np.full(shape, lc.MIN_OBSERVATIONS, dtype="uint8")
     assert lc.like_for_like(peak, seen, peak, seen, inside, pixel_ha=0.09).comparable
+
+
+# ─── Promotion into the live feed ─────────────────────────────────────────
+
+
+def _cand(**kw):
+    base = dict(kind=lc.KIND_BARE, lon=4.3, lat=12.1, area_ha=2.0,
+                peak_prev=0.60, peak_now=0.05, peak_prior=0.55,
+                land_cover="crops")
+    base.update(kw)
+    return lc.Hotspot(**base)
+
+
+def test_a_farmland_detection_that_greened_two_years_is_promoted():
+    assert lcs.promotable(_cand(), observed=0.9)
+
+
+def test_a_road_through_scrub_is_NOT_promoted():
+    """The platform is for farmland. Trees and built-up are what the land-cover
+    map gets reliably right, so excluding them is sound."""
+    assert not lcs.promotable(_cand(land_cover="trees"), observed=0.9)
+    assert not lcs.promotable(_cand(land_cover="built"), observed=0.9)
+    assert not lcs.promotable(_cand(land_cover="water"), observed=0.9)
+
+
+def test_the_weaker_class_is_NOT_promoted():
+    """stopped_greening measured 2 real in 55 random points — crop rotation."""
+    assert not lcs.promotable(_cand(kind=lc.KIND_STOPPED), observed=0.9)
+
+
+def test_ground_that_did_not_green_two_years_running_is_NOT_promoted():
+    """20% precision without persistence against 64% with it."""
+    assert not lcs.promotable(_cand(peak_prior=0.10), observed=0.9)
+
+
+def test_nothing_is_promoted_from_an_lga_the_clouds_hid():
+    assert not lcs.promotable(_cand(), observed=0.2)
+
+
+def test_each_promoted_detection_keeps_its_OWN_position():
+    """The whole point: the old feed pinned every alert in an LGA to the same
+    centroid, so the same place surfaced pass after pass."""
+    spots = [_cand(lon=4.30, lat=12.10), _cand(lon=4.51, lat=12.44),
+             _cand(lon=4.62, lat=12.03)]
+    assert all(lcs.promotable(h, 0.9) for h in spots)
+    assert len({(h.lon, h.lat) for h in spots}) == 3
