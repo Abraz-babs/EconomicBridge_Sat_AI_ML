@@ -33,6 +33,15 @@ WHAT THE NUMBERS MEAN, EXACTLY
                  out. These three columns measure both seasons over the
                  footprint BOTH of them saw. Quote change from these; never
                  subtract one `greened_ha` from another.
+`change_comparable`
+                 and even the common footprint is not enough. It fixes "seen
+                 versus not seen"; it does NOT fix "seen twice versus seen
+                 eight times". A peak is a MAXIMUM OVER A SAMPLE, so the
+                 season with fewer clear looks reports a lower peak for no
+                 reason on the ground. FCT's Municipal Area Council ran raw
+                 +93%, then +38.9% like-for-like, on a 2025 season that was
+                 still barely seen. WHERE THIS IS FALSE, REPORT THE AREA AND
+                 SAY THE CHANGE CANNOT BE ESTABLISHED.
 
 Revision ID: 0049
 Revises: 0048
@@ -77,6 +86,11 @@ def upgrade() -> None:
                 common_observed_ha     DOUBLE PRECISION,
                 greened_ha_common      DOUBLE PRECISION,
                 prev_greened_ha_common DOUBLE PRECISION,
+                -- Clear looks the typical pixel got, and whether the two
+                -- seasons were seen well enough to compare at all.
+                median_looks           DOUBLE PRECISION,
+                prev_median_looks      DOUBLE PRECISION,
+                change_comparable      BOOLEAN NOT NULL DEFAULT FALSE,
 
                 detector_version VARCHAR(50) NOT NULL,
                 measured_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -147,6 +147,7 @@ class SeasonVegetation:
     greened_ha: float       # of that, ground that reached GREENED_NDVI
     lga_ha: float           # the whole LGA, for context
     median_peak: float      # typical peak greenness of the greened ground
+    median_looks: float     # clear looks the typical observed pixel got
     n_dates: int
 
     @property
@@ -177,6 +178,26 @@ class SeasonComparison:
     common_observed_ha: float
     greened_ha: float           # this season, on the common footprint
     prev_greened_ha: float      # last season, on that same footprint
+    looks: float                # clear looks the typical pixel got this season
+    prev_looks: float           # ...and last season
+
+    @property
+    def comparable(self) -> bool:
+        """Is the change worth quoting at all?
+
+        A common footprint fixes "seen versus not seen". It does NOT fix "seen
+        twice versus seen eight times": a peak is a MAXIMUM OVER A SAMPLE, so
+        the season with fewer clear looks reports a lower peak for no reason on
+        the ground, and fewer of its pixels clear the greenness bar.
+
+        FCT's Municipal Area Council shows this exactly — raw +93%, +38.9%
+        like-for-like, and its 2025 rains were still barely seen. Both seasons
+        must have reached MIN_OBSERVATIONS typically before a change figure
+        means anything; where this is False, report the area and say the change
+        cannot be established.
+        """
+        return (self.looks >= MIN_OBSERVATIONS
+                and self.prev_looks >= MIN_OBSERVATIONS)
 
     @property
     def change_ha(self) -> float:
@@ -199,6 +220,8 @@ def like_for_like(peak_now: np.ndarray, seen_now: np.ndarray,
         common_observed_ha=round(float(common.sum()) * pixel_ha, 1),
         greened_ha=round(float((common & (peak_now >= GREENED_NDVI)).sum()) * pixel_ha, 1),
         prev_greened_ha=round(float((common & (peak_prev >= GREENED_NDVI)).sum()) * pixel_ha, 1),
+        looks=round(float(np.median(seen_now[common])), 1) if common.any() else 0.0,
+        prev_looks=round(float(np.median(seen_prev[common])), 1) if common.any() else 0.0,
     )
 
 
@@ -215,6 +238,8 @@ def season_vegetation(peak: np.ndarray, seen: np.ndarray, inside: np.ndarray,
         greened_ha=round(float(greened.sum()) * pixel_ha, 1),
         lga_ha=round(float(inside.sum()) * pixel_ha, 1),
         median_peak=round(float(np.median(vals)), 3) if vals.size else float("nan"),
+        median_looks=(round(float(np.median(seen[observed])), 1)
+                      if observed.any() else 0.0),
         n_dates=n_dates,
     )
 

@@ -523,3 +523,25 @@ def test_no_change_quoted_against_a_season_with_nothing_in_common():
     c = lc.like_for_like(peak, seen_now, peak, seen_prev, inside, pixel_ha=0.09)
     assert c.common_observed_ha == 0.0
     assert c.change_fraction == 0.0, "no division by zero"
+
+
+def test_a_change_is_not_quoted_when_one_season_was_barely_seen():
+    """A common footprint fixes 'seen vs not seen', not 'seen twice vs seen
+    eight times'. FCT ran raw +93%, then +38.9% like-for-like, on a 2025
+    season that was still barely looked at."""
+    shape = (60, 60)
+    inside = np.ones(shape, dtype=bool)
+    peak = np.full(shape, 0.65, "float32")
+    seen_now = np.full(shape, 8, dtype="uint8")
+    seen_prev = np.ones(shape, dtype="uint8")        # seen once
+    c = lc.like_for_like(peak, seen_now, peak, seen_prev, inside, pixel_ha=0.09)
+    assert c.common_observed_ha > 0, "the area is still measured"
+    assert not c.comparable, "but the change must not be quoted"
+
+
+def test_a_change_IS_quoted_when_both_seasons_were_seen_properly():
+    shape = (60, 60)
+    inside = np.ones(shape, dtype=bool)
+    peak = np.full(shape, 0.65, "float32")
+    seen = np.full(shape, lc.MIN_OBSERVATIONS, dtype="uint8")
+    assert lc.like_for_like(peak, seen, peak, seen, inside, pixel_ha=0.09).comparable

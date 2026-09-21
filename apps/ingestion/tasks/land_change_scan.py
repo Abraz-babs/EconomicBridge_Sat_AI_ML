@@ -307,10 +307,11 @@ async def _write_vegetation(session: AsyncSession, *, tenant: str, lga: str,
                 tenant_id, lga, season_year, window_start, window_end,
                 lga_ha, observed_ha, greened_ha, median_peak, n_dates,
                 common_observed_ha, greened_ha_common, prev_greened_ha_common,
+                median_looks, prev_median_looks, change_comparable,
                 detector_version
             ) VALUES (
                 :t, :lga, :yr, :ws, :we, :lga_ha, :obs, :green, :peak, :n,
-                :common, :green_c, :prev_c, :dv
+                :common, :green_c, :prev_c, :looks, :plooks, :cmpble, :dv
             )
             ON CONFLICT (lga, season_year, detector_version) DO UPDATE SET
                 lga_ha = EXCLUDED.lga_ha,
@@ -321,6 +322,9 @@ async def _write_vegetation(session: AsyncSession, *, tenant: str, lga: str,
                 common_observed_ha = EXCLUDED.common_observed_ha,
                 greened_ha_common = EXCLUDED.greened_ha_common,
                 prev_greened_ha_common = EXCLUDED.prev_greened_ha_common,
+                median_looks = EXCLUDED.median_looks,
+                prev_median_looks = EXCLUDED.prev_median_looks,
+                change_comparable = EXCLUDED.change_comparable,
                 measured_at = NOW()
         """), {
             "t": tenant, "lga": lga, "yr": v.season_year,
@@ -331,6 +335,9 @@ async def _write_vegetation(session: AsyncSession, *, tenant: str, lga: str,
             "common": c.common_observed_ha if c else None,
             "green_c": c.greened_ha if c else None,
             "prev_c": c.prev_greened_ha if c else None,
+            "looks": c.looks if c else None,
+            "plooks": c.prev_looks if c else None,
+            "cmpble": bool(c.comparable) if c else False,
         })
 
 
@@ -479,12 +486,15 @@ async def run_land_change_scan(
                 c = meta["comparisons"][year]
                 log.info("land change: %s/%s FARMLAND greened %s ha (%.0f%% of "
                          "LGA seen) | like-for-like on %s ha both years saw: "
-                         "%s -> %s ha (%+.1f%%) | %d hotspot(s)",
+                         "%s -> %s ha (%+.1f%%)%s | %d hotspot(s)",
                          tenant, b.lga, f"{this.greened_ha:,.0f}",
                          100 * this.observed_fraction,
                          f"{c.common_observed_ha:,.0f}",
                          f"{c.prev_greened_ha:,.0f}", f"{c.greened_ha:,.0f}",
-                         100 * c.change_fraction, len(hotspots))
+                         100 * c.change_fraction,
+                         "" if c.comparable else "  NOT COMPARABLE (looks %.1f vs %.1f)"
+                         % (c.prev_looks, c.looks),
+                         len(hotspots))
                 for h in hotspots:
                     # Coordinates in the log, so a run can be checked against
                     # imagery without a database — including a dry rehearsal
