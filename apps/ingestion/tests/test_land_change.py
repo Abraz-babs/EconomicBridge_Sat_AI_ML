@@ -591,3 +591,22 @@ def test_each_promoted_detection_keeps_its_OWN_position():
              _cand(lon=4.62, lat=12.03)]
     assert all(lcs.promotable(h, 0.9) for h in spots)
     assert len({(h.lon, h.lat) for h in spots}) == 3
+
+
+def test_the_alert_card_explains_itself():
+    """The old card read 'Land-surface change risk (LGA-level) near Suru:
+    radar land-surface change 1.5σ'. A card that just says 'Augie - rangeland'
+    tells an operator nothing."""
+    h = _cand(land_cover="rangeland", peak_prev=0.60, peak_now=0.05)
+    text = lcs.alert_text(h, "Augie", 2026)
+    assert text.startswith("Land-surface change risk (patch-level) near Augie:")
+    assert "rangeland" in text
+    assert "2024 and 2025" in text
+    assert "0.60 to 0.05" in text
+
+
+def test_the_impact_figures_rest_on_the_MEASURED_patch():
+    """Our area is the real patch, not an extent inferred from a severity
+    band — so the livelihood figure is anchored to something measured."""
+    assert round(12.0 * lcs.LIVELIHOODS_PER_HA) == 55
+    assert round(12.0 * lcs.CROP_VALUE_NGN_PER_HA) == 2_400_000
