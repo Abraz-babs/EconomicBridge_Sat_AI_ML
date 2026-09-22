@@ -66,6 +66,15 @@ PAGE_LIMIT = 1000
 # never starts on a token that dies halfway through.
 TOKEN_SKEW_S = 300.0
 
+# A search is one request and it was not retried, so a single connection blip
+# killed the whole LGA. On 2026-09-21 the service served a certificate for the
+# wrong hostname for a few hours and 64 of 142 LGAs came back UNREAD — every
+# one of them on the FIRST search, before a single image had been read.
+# Reads already retried; searches did not. They do now, over ~2 minutes, which
+# absorbs a blip without pretending a long outage is survivable.
+SEARCH_ATTEMPTS = 5
+SEARCH_BACKOFF_S = 4.0
+
 _TOKENS: dict[str, tuple[str, float]] = {}   # collection -> (token, valid_until)
 # One refresh at a time per collection. Whole-LGA scans read many assets at
 # once, so without this every concurrent reader misses the cache together and
@@ -146,11 +155,30 @@ async def search(
     raw: list[dict] = []
     owns = client is None
     client = client or httpx.AsyncClient(timeout=httpx.Timeout(90.0, connect=20.0))
+    async def _fetch(u: str, meth: str, payload: dict):
+        """One page, retried through transient network and 5xx failures."""
+        for attempt in range(1, SEARCH_ATTEMPTS + 1):
+            try:
+                r = (await client.post(u, json=payload) if meth == "POST"
+                     else await client.get(u))
+                if r.status_code >= 500 and attempt < SEARCH_ATTEMPTS:
+                    raise httpx.HTTPStatusError(
+                        f"server error {r.status_code}", request=r.request, response=r)
+                r.raise_for_status()
+                return r
+            except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+                if attempt == SEARCH_ATTEMPTS:
+                    raise
+                wait = SEARCH_BACKOFF_S * 2 ** (attempt - 1)
+                log.warning("open_archive: %s search failed (%s), retry %d/%d "
+                            "in %.0fs", collection, type(exc).__name__,
+                            attempt, SEARCH_ATTEMPTS, wait)
+                await asyncio.sleep(wait)
+        raise OpenArchiveError("unreachable")
+
     try:
         for _ in range(MAX_PAGES):
-            resp = (await client.post(url, json=body) if method == "POST"
-                    else await client.get(url))
-            resp.raise_for_status()
+            resp = await _fetch(url, method, body)
             page = resp.json()
             raw.extend(page.get("features") or [])
             nxt = next((link for link in page.get("links") or []

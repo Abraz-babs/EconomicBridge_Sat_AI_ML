@@ -113,11 +113,50 @@ async def test_scenes_without_a_date_are_skipped_not_invented():
     assert [s.id for s in scenes] == ["a"]
 
 
-async def test_a_failing_catalogue_raises_one_clear_error():
+async def test_a_failing_catalogue_raises_one_clear_error(monkeypatch):
+    monkeypatch.setattr(oa, "SEARCH_BACKOFF_S", 0.0)
     transport = httpx.MockTransport(lambda r: httpx.Response(503, text="down"))
     async with httpx.AsyncClient(transport=transport) as c:
         with pytest.raises(oa.OpenArchiveError):
             await oa.search(oa.S1_RTC, BOX, T0, T1, client=c)
+
+
+async def test_a_search_survives_a_transient_network_failure(monkeypatch):
+    """A single connection blip used to kill the whole LGA. On 2026-09-21 the
+    archive served a certificate for the wrong hostname for a few hours and 64
+    of 142 LGAs came back UNREAD — every one on the FIRST search, before any
+    image had been read. Reads retried; searches did not."""
+    monkeypatch.setattr(oa, "SEARCH_BACKOFF_S", 0.0)
+    calls = {"n": 0}
+
+    def flaky(request):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise httpx.ConnectError("certificate verify failed", request=request)
+        return httpx.Response(200, json={"features": [
+            {"id": "a", "collection": oa.S1_RTC,
+             "properties": {"datetime": "2026-09-01T00:00:00Z"}, "assets": {}}]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(flaky)) as c:
+        scenes = await oa.search(oa.S1_RTC, BOX, T0, T1, client=c)
+    assert calls["n"] == 3
+    assert [s.id for s in scenes] == ["a"]
+
+
+async def test_a_search_gives_up_rather_than_retrying_forever(monkeypatch):
+    """A long outage is not survivable and must be reported as UNREAD, not
+    retried until the task is killed."""
+    monkeypatch.setattr(oa, "SEARCH_BACKOFF_S", 0.0)
+    calls = {"n": 0}
+
+    def always_down(request):
+        calls["n"] += 1
+        raise httpx.ConnectError("down", request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(always_down)) as c:
+        with pytest.raises(oa.OpenArchiveError):
+            await oa.search(oa.S1_RTC, BOX, T0, T1, client=c)
+    assert calls["n"] == oa.SEARCH_ATTEMPTS
 
 
 def test_optical_scenes_carry_no_orbit_key():
