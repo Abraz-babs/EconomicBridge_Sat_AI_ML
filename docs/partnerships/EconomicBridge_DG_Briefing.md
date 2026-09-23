@@ -68,7 +68,7 @@ So we rebuilt it on the **open Sentinel archive** (STAC catalogue, cloud-optimis
 
 ### Economic Visibility, Aid Coordination, Economic Mobility, SkillsBridge
 - **Economic Visibility:** VIIRS Black Marble night-light radiance per pixel, with WorldPop population.
-- **Aid Coordination:** OCHA HDX operational-presence coverage.
+- **Aid Coordination:** connected to OCHA HDX operational-presence data, which today covers only north-east Nigeria (Borno, Yobe, Adamawa), so it holds no records for the pilot states yet.
 - **Mobility:** World Bank income and employment indicators, Nigeria NLSS calibration.
 - **SkillsBridge:** UNICEF GIGA school access and connectivity.
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import sys
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -18,25 +19,25 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
-    HRFlowable, Image, KeepTogether, ListFlowable, ListItem, Paragraph,
+    HRFlowable, KeepTogether, ListFlowable, ListItem, Paragraph,
     SimpleDocTemplate, Spacer, Table, TableStyle,
+)
+
+sys.path.insert(0, str(Path(__file__).parent))
+from _letterhead import (  # noqa: E402
+    BOTTOM_MARGIN, DGREEN, SERIF, SERIF_B, SERIF_I, draw_footer, letterhead,
 )
 
 HERE = Path(__file__).parent
 DOWNLOADS = Path(r"C:\Users\HP\Downloads")
-LOGO = DOWNLOADS / "Company Logo.jpg"
 
-GREEN = colors.HexColor("#1f8a3b")
-DGREEN = colors.HexColor("#0a5c2e")
-BROWN = colors.HexColor("#6e2b2b")
 INK = colors.HexColor("#222222")
 GREY = colors.HexColor("#555555")
 LIGHT = colors.HexColor("#eef6f0")
 RULE = colors.HexColor("#c9d6cd")
 
 ss = getSampleStyleSheet()
-SERIF, SERIF_B, SERIF_I = "Times-Roman", "Times-Bold", "Times-Italic"
-title = ParagraphStyle("t", fontName=SERIF_B, fontSize=16, leading=20,
+title =ParagraphStyle("t", fontName=SERIF_B, fontSize=16, leading=20,
                        textColor=DGREEN, spaceAfter=4)
 h2 = ParagraphStyle("h2", fontName=SERIF_B, fontSize=12.5, leading=16,
                     textColor=DGREEN, spaceBefore=10, spaceAfter=4,
@@ -50,8 +51,6 @@ quote = ParagraphStyle("q", parent=body, fontName=SERIF_I, leftIndent=12,
                        textColor=GREY, borderPadding=(0, 0, 0, 6))
 cell = ParagraphStyle("c", fontName=SERIF, fontSize=9, leading=11.5, textColor=INK)
 cellh = ParagraphStyle("ch", parent=cell, fontName=SERIF_B, textColor=colors.white)
-small = ParagraphStyle("s", fontName=SERIF, fontSize=8.5, leading=11,
-                       textColor=GREY, alignment=1)
 
 
 def inline(text: str) -> str:
@@ -80,16 +79,7 @@ def table(rows: list[list[str]]) -> Table:
 
 
 def render(md: str) -> list:
-    story: list = [
-        Image(str(LOGO), width=260, height=260 * 390 / 1024, hAlign="CENTER"),
-        Spacer(1, 3),
-        HRFlowable(width="100%", thickness=1.4, color=GREEN, spaceAfter=1),
-        HRFlowable(width="100%", thickness=0.5, color=BROWN, spaceAfter=4),
-        Paragraph("BIZRA FARMS INTEGRATED NIGERIA LIMITED (RC 1929412)",
-                  ParagraphStyle("lh", parent=small, fontName=SERIF_B,
-                                 textColor=DGREEN)),
-        Spacer(1, 10),
-    ]
+    story: list = letterhead() + [Spacer(1, 12)]
     lines = md.splitlines()
     i, bullets, tbl = 0, [], []
 
@@ -136,14 +126,7 @@ def render(md: str) -> list:
                 story.append(Paragraph(inline(s), body))
         i += 1
     flush()
-    story = _bind_headings(story)
-    story += [
-        Spacer(1, 10),
-        HRFlowable(width="100%", thickness=0.8, color=GREEN, spaceAfter=4),
-        Paragraph("bizra@economicbridge.org &nbsp;·&nbsp; economicbridge.org "
-                  "&nbsp;·&nbsp; +234 703 791 9465", small),
-    ]
-    return story
+    return _bind_headings(story)
 
 
 def _bind_headings(story: list) -> list:
@@ -171,9 +154,9 @@ def build(src: str, out: str) -> Path:
     path = HERE / out
     doc = SimpleDocTemplate(str(path), pagesize=A4, leftMargin=18 * mm,
                             rightMargin=18 * mm, topMargin=12 * mm,
-                            bottomMargin=14 * mm, title=out.replace(".pdf", ""),
+                            bottomMargin=BOTTOM_MARGIN, title=out.replace(".pdf", ""),
                             author="Bizra Farms Integrated Nigeria Limited")
-    doc.build(render(md))
+    doc.build(render(md), onFirstPage=draw_footer, onLaterPages=draw_footer)
     shutil.copy2(path, DOWNLOADS / out)
     return path
 
