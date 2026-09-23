@@ -159,6 +159,12 @@ class SeasonVegetation:
     greened_on_rangeland_ha: float = 0.0
     greened_on_trees_ha: float = 0.0
     greened_on_built_ha: float = 0.0
+    # Ground the land-cover map calls BARE that is now greening is cultivation
+    # EXPANDING, the opposite of the loss this detector chases. Flooded
+    # vegetation is fadama — dry-season irrigated farming, significant in Kebbi
+    # and wrong to bundle into "not farmland".
+    greened_on_bare_ha: float = 0.0
+    greened_on_flooded_veg_ha: float = 0.0
     land_cover_year: int | None = None
 
     @property
@@ -261,7 +267,7 @@ def season_vegetation(peak: np.ndarray, seen: np.ndarray, inside: np.ndarray,
     vals = peak[greened]
     by_class: dict[int, float] = {}
     if classes is not None:
-        for code in (5, 11, 2, 7):       # crops, rangeland, trees, built
+        for code in (5, 11, 2, 7, 8, 4):  # crops, rangeland, trees, built, bare, fadama
             by_class[code] = round(
                 float((greened & (classes == code)).sum()) * pixel_ha, 1)
     return SeasonVegetation(
@@ -277,6 +283,8 @@ def season_vegetation(peak: np.ndarray, seen: np.ndarray, inside: np.ndarray,
         greened_on_rangeland_ha=by_class.get(11, 0.0),
         greened_on_trees_ha=by_class.get(2, 0.0),
         greened_on_built_ha=by_class.get(7, 0.0),
+        greened_on_bare_ha=by_class.get(8, 0.0),
+        greened_on_flooded_veg_ha=by_class.get(4, 0.0),
         land_cover_year=land_cover_year,
     )
 

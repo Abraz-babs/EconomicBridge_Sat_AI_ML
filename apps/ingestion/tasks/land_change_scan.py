@@ -319,10 +319,14 @@ async def _write_vegetation(session: AsyncSession, *, tenant: str, lga: str,
                 lga_ha, observed_ha, greened_ha, median_peak, n_dates,
                 common_observed_ha, greened_ha_common, prev_greened_ha_common,
                 median_looks, prev_median_looks, change_comparable,
+                greened_on_crops_ha, greened_on_rangeland_ha,
+                greened_on_trees_ha, greened_on_built_ha,
+                greened_on_bare_ha, greened_on_flooded_veg_ha, land_cover_year,
                 detector_version
             ) VALUES (
                 :t, :lga, :yr, :ws, :we, :lga_ha, :obs, :green, :peak, :n,
-                :common, :green_c, :prev_c, :looks, :plooks, :cmpble, :dv
+                :common, :green_c, :prev_c, :looks, :plooks, :cmpble,
+                :crops, :range, :trees, :built, :bare, :fadama, :lcyear, :dv
             )
             ON CONFLICT (lga, season_year, detector_version) DO UPDATE SET
                 lga_ha = EXCLUDED.lga_ha,
@@ -336,6 +340,13 @@ async def _write_vegetation(session: AsyncSession, *, tenant: str, lga: str,
                 median_looks = EXCLUDED.median_looks,
                 prev_median_looks = EXCLUDED.prev_median_looks,
                 change_comparable = EXCLUDED.change_comparable,
+                greened_on_crops_ha = EXCLUDED.greened_on_crops_ha,
+                greened_on_rangeland_ha = EXCLUDED.greened_on_rangeland_ha,
+                greened_on_trees_ha = EXCLUDED.greened_on_trees_ha,
+                greened_on_built_ha = EXCLUDED.greened_on_built_ha,
+                greened_on_bare_ha = EXCLUDED.greened_on_bare_ha,
+                greened_on_flooded_veg_ha = EXCLUDED.greened_on_flooded_veg_ha,
+                land_cover_year = EXCLUDED.land_cover_year,
                 measured_at = NOW()
         """), {
             "t": tenant, "lga": lga, "yr": v.season_year,
@@ -349,6 +360,10 @@ async def _write_vegetation(session: AsyncSession, *, tenant: str, lga: str,
             "looks": c.looks if c else None,
             "plooks": c.prev_looks if c else None,
             "cmpble": bool(c.comparable) if c else False,
+            "crops": v.greened_on_crops_ha, "range": v.greened_on_rangeland_ha,
+            "trees": v.greened_on_trees_ha, "built": v.greened_on_built_ha,
+            "bare": v.greened_on_bare_ha, "fadama": v.greened_on_flooded_veg_ha,
+            "lcyear": v.land_cover_year,
         })
 
 

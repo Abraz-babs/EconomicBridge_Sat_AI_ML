@@ -610,3 +610,44 @@ def test_the_impact_figures_rest_on_the_MEASURED_patch():
     band — so the livelihood figure is anchored to something measured."""
     assert round(12.0 * lcs.LIVELIHOODS_PER_HA) == 55
     assert round(12.0 * lcs.CROP_VALUE_NGN_PER_HA) == 2_400_000
+
+
+def test_the_land_cover_split_covers_expansion_and_fadama_too():
+    """Bare ground that is now greening is cultivation EXPANDING, and flooded
+    vegetation is fadama — dry-season irrigated farming. Neither belongs in
+    'not farmland'."""
+    shape = (40, 40)
+    inside = np.ones(shape, dtype=bool)
+    peak = np.full(shape, 0.66, "float32")
+    seen = np.full(shape, 3, dtype="uint8")
+    classes = np.full(shape, 11, dtype="float32")   # rangeland
+    classes[:10, :] = 5                             # crops
+    classes[10:20, :] = 2                           # trees
+    classes[20:25, :] = 7                           # built
+    classes[25:30, :] = 8                           # bare
+    classes[30:35, :] = 4                           # flooded vegetation
+    v = lc.season_vegetation(peak, seen, inside, season_year=2026,
+                             pixel_ha=0.09, n_dates=12, classes=classes,
+                             land_cover_year=2023)
+    assert v.greened_on_crops_ha == pytest.approx(36.0)
+    assert v.greened_on_trees_ha == pytest.approx(36.0)
+    assert v.greened_on_built_ha == pytest.approx(18.0)
+    assert v.greened_on_bare_ha == pytest.approx(18.0)
+    assert v.greened_on_flooded_veg_ha == pytest.approx(18.0)
+    assert v.greened_on_rangeland_ha == pytest.approx(18.0)
+    assert v.land_cover_year == 2023
+
+
+def test_farmland_excludes_trees_and_buildings():
+    """The whole point of bringing land cover in."""
+    shape = (40, 40)
+    inside = np.ones(shape, dtype=bool)
+    peak = np.full(shape, 0.66, "float32")
+    seen = np.full(shape, 3, dtype="uint8")
+    classes = np.full(shape, 2, dtype="float32")    # all tree canopy
+    classes[:10, :] = 5                             # a quarter is cropland
+    v = lc.season_vegetation(peak, seen, inside, season_year=2026,
+                             pixel_ha=0.09, n_dates=12, classes=classes,
+                             land_cover_year=2023)
+    assert v.farmland_ha == pytest.approx(36.0)
+    assert v.greened_ha == pytest.approx(144.0), "total still counts everything"
