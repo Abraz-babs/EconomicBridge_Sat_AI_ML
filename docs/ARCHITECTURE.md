@@ -10,7 +10,7 @@
 
 ## 1. What EconomicBridge Is
 
-A multi-tenant satellite intelligence platform. It serves 52 tenants — 36 Nigerian states + FCT + 15 ECOWAS countries — with seven aid-and-economy modules. The platform turns raw satellite feeds (Sentinel-1, Sentinel-2, NASA FIRMS, VIIRS, MODIS) into agency-ready alerts and dashboards.
+A multi-tenant satellite intelligence platform. It serves 52 tenants — 36 Nigerian states + FCT + 15 other West African countries — with seven aid-and-economy modules. The platform turns raw satellite feeds (Sentinel-1, Sentinel-2, NASA FIRMS, VIIRS, MODIS) into agency-ready alerts and dashboards.
 
 The seven modules:
 
@@ -115,7 +115,7 @@ All four apps (`api`, `ingestion`, `ml`, `frontend`) are independent services th
 
 ### AI / ML — `apps/ml/`
 - **PyTorch 2.0** — U-Net (flood), ResNet-50 (crop disease)
-- **scikit-learn** — Random Forest conflict predictor (proven in Citadel Kebbi)
+- **scikit-learn** — Random Forest conflict predictor (pattern from the Citadel prototype, which was never deployed or validated)
 - **SHAP** — required on every prediction
 - **Hugging Face** transformers for NLP
 - **Claude API** for natural-language alert summarisation

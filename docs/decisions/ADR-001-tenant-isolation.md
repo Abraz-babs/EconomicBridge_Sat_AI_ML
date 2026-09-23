@@ -9,7 +9,7 @@
 
 ## Context
 
-EconomicBridge serves 52 tenants: 36 Nigerian states, the FCT, and 15 ECOWAS
+EconomicBridge serves 52 tenants: 36 Nigerian states, the FCT, and 15 other West African
 countries. Each tenant is a sovereign government entity or international
 organisation with strict data sovereignty requirements. A government in Kebbi State
 must be physically incapable of accessing data belonging to Kaduna State, and vice

@@ -15,9 +15,15 @@
 **One-sentence description:**
 EconomicBridge is a multi-tenant satellite intelligence platform serving NGOs,
 governments, international bodies, and research institutions across 52 West African
-administrative units (36 Nigerian states + FCT + 15 ECOWAS countries), providing
+administrative units (36 Nigerian states + FCT + 15 other West African countries), providing
 actionable economic intelligence across poverty mapping, farmland protection,
 agricultural monitoring, and disaster relief.
+
+> **Do not call these 15 countries "ECOWAS".** ECOWAS has had 12 members since
+> January 2025: Mali, Burkina Faso and Niger withdrew, and Mauritania left in 2000,
+> yet all four sit in `tenants.yaml` under `type: ecowas_country`. The count of 52
+> administrative units is right; the label was not, and it reached the NASRDA
+> Director-General's briefing before it was caught (corrected 2026-09-23).
 
 ---
 
@@ -102,7 +108,8 @@ agricultural monitoring, and disaster relief.
 
 ### AI / ML
 - PyTorch 2.0 for deep learning (U-Net flood, ResNet-50 crop disease)
-- Scikit-learn for Random Forest conflict prediction (proven in Citadel)
+- Scikit-learn for Random Forest conflict prediction (pattern from the Citadel
+  prototype, which was never deployed or validated — see section 2)
 - SHAP for model explainability (required on ALL predictions)
 - Hugging Face transformers for NLP
 - Claude API for natural language alert summarisation
@@ -241,7 +248,7 @@ economicbridge/
 │   ├── ml/                      # ML model serving microservice
 │   │   ├── main.py
 │   │   ├── models/
-│   │   │   ├── conflict_predictor.py   # Random Forest (Citadel-proven)
+│   │   │   ├── conflict_predictor.py   # Random Forest (Citadel pattern, unvalidated)
 │   │   │   ├── flood_detector.py       # U-Net
 │   │   │   ├── crop_classifier.py      # ResNet-50
 │   │   │   └── poverty_mapper.py       # Gradient Boosted Ensemble
