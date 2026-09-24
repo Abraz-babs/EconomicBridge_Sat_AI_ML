@@ -31,3 +31,15 @@ def test_a_failed_lookup_leaves_the_alerts_intact():
             raise RuntimeError("database unavailable")
 
     assert asyncio.run(nearest_places(Broken(), [(4.56, 10.10), None])) == [None, None]
+
+
+def test_point_list_parsing_is_strict():
+    import pytest
+    from fastapi import HTTPException
+
+    from routers.geo import MAX_POINTS, _parse_points
+
+    assert _parse_points("4.5605,10.1023;3.8097,11.8606") == [(4.5605, 10.1023), (3.8097, 11.8606)]
+    for bad in ("", "4.56", "x,y", "200,10", ";".join(["1,1"] * (MAX_POINTS + 1))):
+        with pytest.raises(HTTPException):
+            _parse_points(bad)

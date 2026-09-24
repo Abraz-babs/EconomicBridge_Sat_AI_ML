@@ -30,6 +30,7 @@ from schemas.cropguard import (
 )
 from schemas.envelope import ResponseMeta, SuccessResponse
 from services import lga_geo
+from services.places import nearest_places
 
 
 router = APIRouter(prefix="/cropguard", tags=["cropguard"])
@@ -129,6 +130,15 @@ async def list_predictions(
     rows = result.mappings().all()
 
     predictions = [_row_to_response(dict(r), tenant_id) for r in rows]
+    # Field directions only where the photo carried real GPS — a tagged LGA's
+    # centroid is not the farm.
+    places = await nearest_places(session, [
+        (p.location.lon, p.location.lat)
+        if p.location and p.location_source == "gps" else None
+        for p in predictions
+    ])
+    for p, place in zip(predictions, places):
+        p.nearest_place = place
     return SuccessResponse(
         data=CropPredictionListData(predictions=predictions),
         meta=ResponseMeta(

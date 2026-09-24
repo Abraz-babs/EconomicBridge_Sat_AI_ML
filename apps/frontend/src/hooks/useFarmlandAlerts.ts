@@ -9,6 +9,9 @@ import {
 } from '@tanstack/react-query';
 
 import { ApiException, apiFetch, type SuccessEnvelope } from '@/lib/api';
+import type { NearestPlace } from '@/lib/places';
+
+export type { NearestPlace };
 
 /** Mirrors apps/api/schemas/farmland.py — keep in sync. */
 export type AlertSeverity = 'critical' | 'high' | 'medium' | 'low';
@@ -18,17 +21,6 @@ export type AlertStatus =
   | 'resolved'
   | 'dismissed';
 export type AlertType = 'conflict' | 'flood' | 'crop_disease' | 'drought';
-
-/** The named village nearest an alert (GRID3 settlement names, CC BY 4.0).
- *  `direction` is from the village TO the alert; null when it is at it. */
-export interface NearestPlace {
-  name: string;
-  ward: string | null;
-  lga: string | null;
-  distance_km: number;
-  direction: string | null;
-  location: { lon: number; lat: number };
-}
 
 export interface AlertResponse {
   id: string;

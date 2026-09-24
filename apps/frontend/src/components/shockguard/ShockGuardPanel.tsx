@@ -12,6 +12,7 @@ import {
   type ShockEventType,
   type ShockScanData,
 } from '@/hooks/useShockGuard';
+import FieldDirections, { GRID3_CREDIT } from '@/components/common/FieldDirections';
 import ShockEventsMap from './ShockEventsMap';
 import StormSection from './StormSection';
 
@@ -492,9 +493,15 @@ export default function ShockGuardPanel() {
                   </span>
                 </div>
               )}
+              {ev.location && (
+                <FieldDirections place={ev.nearest_place} lat={ev.location.lat} lon={ev.location.lon} />
+              )}
             </div>
             );
           })}
+          {sideTab === 'events' && events.some((ev) => ev.nearest_place) && (
+            <div className="fp-alert-attrib">{GRID3_CREDIT}</div>
+          )}
         </div>
       </div>
     </div>

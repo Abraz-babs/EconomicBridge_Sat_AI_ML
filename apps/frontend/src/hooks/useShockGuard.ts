@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-query';
 
 import { ApiException, apiFetch, type SuccessEnvelope } from '@/lib/api';
+import type { NearestPlace } from '@/lib/places';
 
 
 export type ShockEventType = 'flood' | 'drought';
@@ -111,6 +112,9 @@ export interface ShockEventRow {
   metrics: Record<string, number>;
   source: string;
   created_at: string;
+  /** Nearest village — only on live satellite detections (a measured box);
+   *  documented disasters and storms are area-level and carry none. */
+  nearest_place?: NearestPlace | null;
 }
 
 interface ShockEventListData {

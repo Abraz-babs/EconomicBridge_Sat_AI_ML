@@ -7,7 +7,7 @@ import {
   type RecordEntry,
   type RecordEntryStatus,
 } from '@/hooks/useFarmlandAlerts';
-import FieldDirections, { GRID3_CREDIT } from './FieldDirections';
+import FieldDirections, { GRID3_CREDIT } from '@/components/common/FieldDirections';
 
 /**
  * Alert record — fills the map column under the Alert Spotlight.

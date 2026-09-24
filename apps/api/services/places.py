@@ -18,7 +18,7 @@ import math
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from schemas.farmland import LonLat, NearestPlace
+from schemas.places import GeoPoint, NearestPlace
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +76,6 @@ async def nearest_places(
         out[i] = NearestPlace(
             name=name, ward=ward, lga=lga, distance_km=round(km, 1),
             direction=None if km < AT_PLACE_KM else compass(v_lon, v_lat, lon, lat),
-            location=LonLat(lon=v_lon, lat=v_lat),
+            location=GeoPoint(lon=v_lon, lat=v_lat),
         )
     return out

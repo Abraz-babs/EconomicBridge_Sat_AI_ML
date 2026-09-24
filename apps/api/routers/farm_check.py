@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.engine import get_session
 from schemas.envelope import ResponseMeta, SuccessResponse
+from services.places import nearest_places
 from schemas.farm_check import (
     FarmCheckRecordListData,
     FarmCheckRecordRow,
@@ -185,6 +186,11 @@ async def list_farm_checks(
     )
     rows = result.mappings().all()
     records = [_row_to_record(dict(r)) for r in rows]
+    # A Farm Check is a plot the officer entered, so every record is a real
+    # point: name the village it sits by, for the revisit.
+    places = await nearest_places(session, [(rec.lon, rec.lat) for rec in records])
+    for rec, place in zip(records, places):
+        rec.nearest_place = place
 
     return SuccessResponse(
         data=FarmCheckRecordListData(records=records),

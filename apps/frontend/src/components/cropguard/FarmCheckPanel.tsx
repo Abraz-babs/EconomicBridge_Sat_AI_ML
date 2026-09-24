@@ -5,7 +5,9 @@ import { PolygonLayer, ScatterplotLayer } from '@deck.gl/layers';
 import type { StyleSpecification } from 'mapbox-gl';
 
 import EBMap from '@/components/map/EBMap';
+import FieldDirections from '@/components/common/FieldDirections';
 import { pilotMismatch, resolvePlace, type ResolvedPlace } from '@/lib/place';
+import { fetchNearestPlaces, type NearestPlace } from '@/lib/places';
 import { useTenant } from '@/context/TenantContext';
 import { useTenantLgas } from '@/hooks/useCropPredictions';
 import {
@@ -128,6 +130,9 @@ export default function FarmCheckPanel() {
   const [focus, setFocus] = useState<{ lng: number; lat: number; zoom: number } | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [place, setPlace] = useState<ResolvedPlace | null>(null);
+  // Nearest GRID3 village for the checked point — confirms the coordinate
+  // was typed right and tells a revisit where to go.
+  const [village, setVillage] = useState<NearestPlace | null>(null);
   const [showRecords, setShowRecords] = useState(true);
   const [recordSearch, setRecordSearch] = useState('');
   const [basemap, setBasemap] = useState<'mapbox' | 'arcgis'>('mapbox');
@@ -161,6 +166,7 @@ export default function FarmCheckPanel() {
     setOwner('');
     setFocus(null);
     setPlace(null);
+    setVillage(null);
     setSelectedDate(null);
   };
 
@@ -225,6 +231,8 @@ export default function FarmCheckPanel() {
           setSelectedDate(data.ndvi_date);
           setPlace(null);
           resolvePlace(data.lon, data.lat).then(setPlace).catch(() => {});
+          setVillage(null);
+          fetchNearestPlaces([{ lon: data.lon, lat: data.lat }]).then(([v]) => setVillage(v));
         },
       },
     );
@@ -379,6 +387,7 @@ export default function FarmCheckPanel() {
               📍 {place.label}
             </div>
           )}
+          <FieldDirections place={village} lat={r.lat} lon={r.lon} />
 
           {pilotMismatch(place, pilot.id) && (
             <div style={{
@@ -553,6 +562,7 @@ export default function FarmCheckPanel() {
                           📍 {[rec.lga, `${rec.lat.toFixed(4)}, ${rec.lon.toFixed(4)}`].filter(Boolean).join(' · ')}
                           {rec.ndvi_date ? ` · ${rec.ndvi_date}` : ''} · saved {rec.created_at.slice(0, 10)}
                         </span>
+                        <FieldDirections place={rec.nearest_place} lat={rec.lat} lon={rec.lon} />
                         <button
                           type="button"
                           onClick={() => {

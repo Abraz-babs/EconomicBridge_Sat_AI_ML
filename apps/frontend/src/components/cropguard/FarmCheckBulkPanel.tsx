@@ -7,6 +7,7 @@ import { useTenant } from '@/context/TenantContext';
 import { type FarmCheckResult, type FarmHealth } from '@/hooks/useFarmCheck';
 import { parseCoord } from './FarmCheckPanel';
 import { pilotMismatch, resolvePlace } from '@/lib/place';
+import { describePlace, fetchNearestPlaces } from '@/lib/places';
 
 // Bulk Farm Check: paste or upload a list of coordinates (e.g. a NASRDA
 // location list) and check them all at once. Drives the SAME per-farm endpoint
@@ -49,6 +50,7 @@ interface BulkRow {
   error?: string;
   saved?: boolean;
   place?: string | null;     // reverse-geocoded place for the checked point
+  village?: string | null;   // nearest GRID3 village: '1.0 km SE of X, Y ward'
   mismatch?: boolean;        // place is outside the selected pilot's state
 }
 
@@ -131,8 +133,11 @@ export default function FarmCheckBulkPanel() {
       // (best-effort; a resolution failure never fails the row).
       let resolved = null;
       try { resolved = await resolvePlace(res.lon, res.lat); } catch { /* best-effort */ }
+      // The village a field team can drive to (never fails the row).
+      const [village] = await fetchNearestPlaces([{ lon: res.lon, lat: res.lat }]);
       patchRow(row.idx, {
         status: 'done', result: res, place: resolved?.label ?? null,
+        village: describePlace(village),
         mismatch: pilotMismatch(resolved, pilot.id), error: undefined,
       });
     } catch (err) {
@@ -193,7 +198,7 @@ export default function FarmCheckBulkPanel() {
       return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
     const header = [
-      'latitude', 'longitude', 'owner', 'crop', 'lga', 'place',
+      'latitude', 'longitude', 'owner', 'crop', 'lga', 'place', 'village',
       'health', 'ndvi', 'ndvi_date', 'sar_db', 'stress_level',
       'area_ha', 'status', 'note',
     ];
@@ -204,6 +209,7 @@ export default function FarmCheckBulkPanel() {
         row.lat ?? row.raw, row.lon ?? '',
         row.owner, row.crop.trim() || 'general', row.lga,
         row.place ?? '',
+        row.village ?? '',
         r?.health ?? '', r?.ndvi ?? '', r?.ndvi_date ?? '',
         r?.sar_db ?? '', r?.stress?.level ?? '',
         r?.area_ha ?? '',
@@ -373,6 +379,12 @@ export default function FarmCheckBulkPanel() {
                         >
                           ⚠ {row.place ? row.place.split(',').slice(-2, -1)[0]?.trim() : 'outside state'}
                         </span>
+                      )}
+                      {row.village && (
+                        <div style={{ color: 'var(--ink2)', fontSize: '10px', marginTop: '2px' }}
+                          title="Nearest named village (GRID3, CC BY 4.0)">
+                          🧭 {row.village}
+                        </div>
                       )}
                     </td>
                     <td style={{ padding: '5px 6px' }}>{row.owner || '—'}</td>

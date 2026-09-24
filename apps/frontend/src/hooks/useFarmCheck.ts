@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-query';
 
 import { ApiException, apiFetch, ingestionFetch } from '@/lib/api';
+import type { NearestPlace } from '@/lib/places';
 
 /** Mirrors apps/ingestion/routers/farm_check.py. */
 export interface FarmCheckRequest {
@@ -108,6 +109,8 @@ export interface FarmCheckRecord {
   source: string;
   note: string | null;
   created_at: string;
+  /** Nearest named village to the checked plot (GRID3). */
+  nearest_place?: NearestPlace | null;
 }
 
 /** POST body: the whole result plus the record tags (state = X-Tenant-Id header). */

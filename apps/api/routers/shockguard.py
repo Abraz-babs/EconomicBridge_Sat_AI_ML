@@ -37,6 +37,7 @@ from schemas.shockguard import (
 )
 from services import lga_geo, shock_detector
 from services.auto_notify import fire_conflict_notification
+from services.places import nearest_places
 from services.live_satellite import LiveDataMissingError, load_flood_series
 from services.shock_detector import to_utc_dt
 from services.tenants import tenant_schema_name
@@ -56,6 +57,10 @@ router = APIRouter(prefix="/shockguard", tags=["shockguard"])
 LIVE_SCAN_SOURCES: tuple[str, ...] = (
     "shockguard_scan_v1", "rainstorm_scan_v1", "storm_scan_v1",
 )
+# The one live source whose point is a measured box on the ground (the per-LGA
+# Sentinel scan) rather than an LGA-wide rainfall reading — the only ShockGuard
+# rows that get field directions.
+SATELLITE_SCAN_SOURCE = "shockguard_scan_v1"
 
 
 FEED_LABELS: dict[str, str] = {
@@ -378,6 +383,19 @@ async def list_events(
 
     fallback = lga_geo.representative_lga(tenant_id)
     events = [_event_row(r, fallback) for r in rows]
+
+    # Field directions only for live satellite detections that carry their own
+    # point (the measured box). Documented disasters, storms and rows plotted
+    # at the state's borrowed point are area-level — a village on those would
+    # send a team to the wrong place.
+    places = await nearest_places(session, [
+        (float(r["lon"]), float(r["lat"]))
+        if r.get("source") == SATELLITE_SCAN_SOURCE and r.get("lga")
+        and r.get("lon") is not None and r.get("lat") is not None else None
+        for r in rows
+    ])
+    for ev, place in zip(events, places):
+        ev.nearest_place = place
 
     # Monitoring status — each scheduled scan stamps public.ingestion_runs, so
     # the panel can show "scanned today, all clear" instead of looking stale

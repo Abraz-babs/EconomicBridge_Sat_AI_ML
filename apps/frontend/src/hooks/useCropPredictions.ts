@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-query';
 
 import { ApiException, apiFetch, mlFetch, type SuccessEnvelope } from '@/lib/api';
+import type { NearestPlace } from '@/lib/places';
 
 /** Mirrors apps/ml/schemas/crop.py — keep in sync. */
 
@@ -93,6 +94,9 @@ export interface CropPredictionRow {
   model_version: string;
   inference_time_ms: number | null;
   created_at: string;
+  /** Nearest village — only when location_source is 'gps' (a centroid is
+   *  not the farm, so it carries none). */
+  nearest_place?: NearestPlace | null;
 }
 
 interface CropPredictionsListData {

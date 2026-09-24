@@ -35,11 +35,15 @@ from datetime import datetime, timezone
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.engine import get_session
 from schemas.envelope import ResponseMeta, SuccessResponse
 from schemas.geo import ResolvedUnit
+from schemas.places import NearestPlacesData
 from services.lga_geo import nearest_unit
+from services.places import nearest_places
 
 router = APIRouter(prefix="/geo", tags=["geo"])
 
@@ -64,6 +68,53 @@ async def resolve(
     )
     return SuccessResponse(
         data=data,
+        meta=ResponseMeta(
+            tenant_id=None,
+            trace_id=getattr(request.state, "trace_id", uuid4()),
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
+
+
+# Lookups ride on GET on purpose: the audit middleware records every POST as a
+# mutation, and a village lookup must not show up as an action in the audit log
+# or inflate a partner's activity figures.
+MAX_POINTS = 100
+
+
+def _parse_points(raw: str) -> list[tuple[float, float]]:
+    """'lon,lat;lon,lat' -> [(lon, lat), ...], range-checked."""
+    out: list[tuple[float, float]] = []
+    for pair in filter(None, (p.strip() for p in raw.split(";"))):
+        try:
+            lon_s, lat_s = pair.split(",")
+            lon, lat = float(lon_s), float(lat_s)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Bad point {pair!r}; use lon,lat") from None
+        if not (-180 <= lon <= 180 and -90 <= lat <= 90):
+            raise HTTPException(status_code=400, detail=f"Point {pair!r} is out of range")
+        out.append((lon, lat))
+    if not 1 <= len(out) <= MAX_POINTS:
+        raise HTTPException(status_code=400, detail=f"Send 1-{MAX_POINTS} points")
+    return out
+
+
+@router.get("/nearest-places", response_model=SuccessResponse[NearestPlacesData])
+async def nearest_places_for(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    points: Annotated[str, Query(max_length=6000, description="lon,lat pairs separated by ';'")],
+) -> SuccessResponse[NearestPlacesData]:
+    """The nearest named village for each point, in request order.
+
+    For coordinates a person entered or checked — a Farm Check point, a bulk
+    sheet — which are real points by construction. Detections carry their
+    village on their own responses instead (services/places.py). GRID3
+    settlement names, CC BY 4.0.
+    """
+    places = await nearest_places(session, _parse_points(points))
+    return SuccessResponse(
+        data=NearestPlacesData(places=places),
         meta=ResponseMeta(
             tenant_id=None,
             trace_id=getattr(request.state, "trace_id", uuid4()),

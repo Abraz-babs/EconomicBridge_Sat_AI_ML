@@ -16,6 +16,7 @@ import {
   type CropTiledPredictionData,
   type TileResult,
 } from '@/hooks/useCropPredictions';
+import FieldDirections, { GRID3_CREDIT } from '@/components/common/FieldDirections';
 import CropGuardMap from './CropGuardMap';
 import CropHealthPanel from './CropHealthPanel';
 import CropMarketPanel from './CropMarketPanel';
@@ -496,6 +497,9 @@ export default function CropGuardPanel() {
               }); }}
             />
           ))}
+          {recent.some((r) => r.nearest_place) && (
+            <div className="fp-alert-attrib">{GRID3_CREDIT}</div>
+          )}
           </>)}
         </div>
       </div>
@@ -707,6 +711,11 @@ function RecentRow({ row, onDelete, deleting }: {
         <div className="cg-recent-meta">
           📍 {[row.zone_name, row.lga].filter(Boolean).join(' · ')}
         </div>
+      )}
+      {/* Directions only for a GPS-tagged photo; the API sends none for an
+          LGA-centroid fallback, which is not the farm. */}
+      {row.location && row.location_source === 'gps' && (
+        <FieldDirections place={row.nearest_place} lat={row.location.lat} lon={row.location.lon} />
       )}
     </div>
   );

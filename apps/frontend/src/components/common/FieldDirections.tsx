@@ -1,10 +1,11 @@
 'use client';
 
-import type { NearestPlace } from '@/hooks/useFarmlandAlerts';
+import type { NearestPlace } from '@/lib/places';
 
 /**
- * Field directions for one alert: the nearest named village, its ward, and
- * how far and which way the alert lies from it — "1.0 km SE of Kurmin Kaya ·
+ * Field directions for one real point (an alert, a detection, a geotagged
+ * photo, a checked plot): the nearest named village, its ward, and how far
+ * and which way the point lies from it — "1.0 km SE of Kurmin Kaya ·
  * Libata ward" — plus a Directions link that navigates a field phone to the
  * alert's exact coordinates (Google Maps; works offline with a downloaded area).
  *

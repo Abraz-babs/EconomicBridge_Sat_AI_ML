@@ -9,6 +9,8 @@ satellite tier keeps a recallable history alongside the leaf-photo tier
 """
 from __future__ import annotations
 
+from schemas.places import NearestPlace
+
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -114,6 +116,9 @@ class FarmCheckRecordRow(BaseModel):
     note: str | None = None
 
     created_at: datetime
+
+    # Nearest named village to the checked plot, so a revisit can find it.
+    nearest_place: NearestPlace | None = None
 
 
 class FarmCheckRecordListData(BaseModel):

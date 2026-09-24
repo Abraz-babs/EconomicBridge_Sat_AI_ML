@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from schemas.places import NearestPlace
+
 
 # What the automated detectors can DETECT — the /scan endpoint's domain.
 DetectableShockType = Literal["flood", "drought"]
@@ -137,6 +139,11 @@ class ShockEventRow(BaseModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
     source: str
     created_at: datetime
+
+    # Nearest named village — ONLY on live satellite detections, whose point is
+    # the box the radar/optical signal was measured in. Documented disasters,
+    # storms and borrowed state points are area-level and get none.
+    nearest_place: NearestPlace | None = None
 
 
 class FeedStatus(BaseModel):

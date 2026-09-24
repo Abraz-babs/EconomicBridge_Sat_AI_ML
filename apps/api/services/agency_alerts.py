@@ -12,6 +12,7 @@ SMS is a separate, deferred channel — this is email-only (via services.email).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -19,7 +20,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_settings
+from schemas.places import NearestPlace
 from services.email import send_alert_email
+from services.places import nearest_places
 from services.tenants import tenant_schema_name
 
 log = logging.getLogger(__name__)
@@ -39,33 +42,62 @@ class AlertLine:
     lga: str | None
     detail: str
     when: datetime
+    # Field directions for a real point: nearest village, ward, and a link a
+    # team can open on a phone. None for area-level lines (crop health).
+    where: str | None = None
+
+
+def directions(place: NearestPlace | None, lon: float, lat: float) -> str | None:
+    """'4.4 km NE of Mahuta, Kyangakwai ward — directions: <maps link>'."""
+    if place is None:
+        return None
+    at = (f"{place.distance_km:.1f} km {place.direction} of {place.name}"
+          if place.direction else f"at {place.name}")
+    ward = f", {place.ward} ward" if place.ward and place.ward != place.name else ""
+    return (f"{at}{ward} — directions: "
+            f"https://www.google.com/maps/dir/?api=1&destination={lat:.5f},{lon:.5f}")
+
+
+async def _with_directions(
+    session: AsyncSession, rows: list[dict], make: Callable[[dict], AlertLine],
+) -> list[AlertLine]:
+    """Build the lines, then attach each one's village in a single lookup."""
+    points = [(float(r["lon"]), float(r["lat"])) if r.get("lon") is not None
+              and r.get("lat") is not None else None for r in rows]
+    places = await nearest_places(session, points)
+    out: list[AlertLine] = []
+    for r, pt, place in zip(rows, points, places):
+        ln = make(r)
+        where = directions(place, *pt) if pt else None
+        out.append(AlertLine(ln.severity, ln.lga, ln.detail, ln.when, where))
+    return out
 
 
 async def _farmland_lines(session: AsyncSession, since: datetime, min_rank: int) -> list[AlertLine]:
     rows = (await session.execute(text(
-        "SELECT severity, lga, zone_name, created_at FROM alert_events "
+        "SELECT severity, lga, zone_name, created_at, "
+        "       ST_X(location) AS lon, ST_Y(location) AS lat FROM alert_events "
         "WHERE model_name = 'encroachment_detector_v1' AND NOT is_deleted "
         "AND created_at > :since ORDER BY created_at DESC LIMIT 100"
     ), {"since": since})).mappings().all()
-    return [
-        AlertLine(r["severity"], r["lga"], r["zone_name"] or "land-disturbance watch", r["created_at"])
-        for r in rows if _SEV_RANK.get(r["severity"], 0) >= min_rank
-    ]
+    kept = [dict(r) for r in rows if _SEV_RANK.get(r["severity"], 0) >= min_rank]
+    return await _with_directions(session, kept, lambda r: AlertLine(
+        r["severity"], r["lga"], r["zone_name"] or "land-disturbance watch", r["created_at"]))
 
 
 async def _shockguard_lines(session: AsyncSession, since: datetime, min_rank: int) -> list[AlertLine]:
+    # Live satellite detections only — their point is the measured box, so
+    # directions to it are real (schemas/places.py).
     rows = (await session.execute(text(
-        "SELECT severity, lga, event_type, zone_name, created_at FROM shock_events "
+        "SELECT severity, lga, event_type, zone_name, created_at, "
+        "       ST_X(location) AS lon, ST_Y(location) AS lat FROM shock_events "
         "WHERE source = 'shockguard_scan_v1' AND created_at > :since "
         "ORDER BY created_at DESC LIMIT 100"
     ), {"since": since})).mappings().all()
-    out: list[AlertLine] = []
-    for r in rows:
-        if _SEV_RANK.get(r["severity"], 0) < min_rank:
-            continue
-        detail = f"{r['event_type']} — {r['zone_name'] or ''}".strip(" —")
-        out.append(AlertLine(r["severity"], r["lga"], detail, r["created_at"]))
-    return out
+    kept = [dict(r) for r in rows if _SEV_RANK.get(r["severity"], 0) >= min_rank]
+    return await _with_directions(session, kept, lambda r: AlertLine(
+        r["severity"], r["lga"],
+        f"{r['event_type']} — {r['zone_name'] or ''}".strip(" —"), r["created_at"]))
 
 
 async def _cropguard_lines(session: AsyncSession, since: datetime, min_rank: int) -> list[AlertLine]:
@@ -108,6 +140,8 @@ def _render(agency: str, tenant_id: str, module: str, lines: list[AlertLine], si
     ]
     for ln in lines[:25]:
         body.append(f"  - {ln.severity.upper()} - {ln.lga or '-'} - {ln.detail} - {ln.when:%Y-%m-%d}")
+        if ln.where:
+            body.append(f"      {ln.where}")
     if n > 25:
         body.append(f"  ...and {n - 25} more.")
     body += [
@@ -116,6 +150,7 @@ def _render(agency: str, tenant_id: str, module: str, lines: list[AlertLine], si
         "",
         "These are model-derived indicators from live Sentinel-2 / Sentinel-1 / "
         "NASA satellite data; human verification is advised before field action.",
+        *(["Village names: GRID3, CC BY 4.0."] if any(ln.where for ln in lines) else []),
         "",
         "- EconomicBridge (operated by Bizra Farms Integrated Nigeria Ltd)",
     ]

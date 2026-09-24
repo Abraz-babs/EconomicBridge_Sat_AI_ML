@@ -6,6 +6,8 @@ happen via the ML service (`apps/ml`, port 8002).
 """
 from __future__ import annotations
 
+from schemas.places import NearestPlace
+
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -71,6 +73,10 @@ class CropPredictionRow(BaseModel):
     inference_time_ms: int | None
 
     created_at: datetime
+
+    # Nearest named village — ONLY when location_source == "gps". A centroid
+    # is not the farm, so it gets no directions (schemas/places.py).
+    nearest_place: NearestPlace | None = None
 
 
 class CropPredictionListData(BaseModel):

@@ -15,7 +15,7 @@ import {
 import AlertRecord from './AlertRecord';
 import AlertSpotlight from './AlertSpotlight';
 import FarmlandMap, { type FarmlandAlertPoint } from './FarmlandMap';
-import FieldDirections, { GRID3_CREDIT } from './FieldDirections';
+import FieldDirections, { GRID3_CREDIT } from '@/components/common/FieldDirections';
 
 /** A record entry in the shape the Spotlight already renders, so a revisited
  *  alert gets the same imagery deep-dive as a live one without the Spotlight

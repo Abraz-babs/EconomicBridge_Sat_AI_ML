@@ -15,6 +15,8 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
+from schemas.places import NearestPlace  # noqa: F401 — re-exported for farmland callers
+
 
 class AlertSeverity(str, Enum):
     CRITICAL = "critical"
@@ -43,22 +45,6 @@ class LonLat(BaseModel):
 
     lon: float = Field(ge=-180, le=180)
     lat: float = Field(ge=-90, le=90)
-
-
-class NearestPlace(BaseModel):
-    """The named village nearest an alert, for field teams (services/places.py).
-
-    Source: GRID3 NGA Settlement Names, CC BY 4.0 — credit it where shown.
-    """
-
-    name: str
-    ward: str | None = None
-    lga: str | None = None
-    distance_km: float
-    # Compass direction FROM the village TO the alert; None when the alert is
-    # at the village itself.
-    direction: str | None = None
-    location: LonLat
 
 
 class AlertResponse(BaseModel):
