@@ -1381,6 +1381,20 @@ footer.app-footer {
 
 .fp-map-overlay__warn { color: #c97d00; }
 
+/* "Back to full map" — bottom-right, the one free corner (legend bottom-left,
+   overlay top-right). Appears only once the map has left the full view. */
+.eb-map-fullview {
+  position: absolute; right: 12px; bottom: 12px; z-index: 3;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: rgba(0,0,0,0.78); color: #f0f4f0;
+  border: 1px solid rgba(255,255,255,0.28); border-radius: 3px;
+  padding: 6px 10px; cursor: pointer;
+  font-family: 'DM Mono', ui-monospace, monospace; font-size: 10px;
+  letter-spacing: 1px; text-transform: uppercase;
+}
+.eb-map-fullview:hover { background: rgba(0,0,0,0.9); border-color: rgba(255,255,255,0.55); }
+.eb-map-fullview:focus-visible { outline: 2px solid #2f855a; outline-offset: 2px; }
+
 .fp-map-tooltip {
   position: absolute;
   pointer-events: none;
@@ -1553,7 +1567,11 @@ footer.app-footer {
 
 /* Field directions line (nearest named village) — under an alert's coords. */
 .fp-directions { color: var(--ink2); }
-.fp-directions-link { color: #2f855a; text-decoration: underline; }
+.fp-directions-link {
+  color: #2f855a; text-decoration: underline;
+  display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
+}
+.fp-directions-link svg { flex: none; }
 .fp-directions-link:focus-visible { outline: 2px solid #2f855a; outline-offset: 1px; }
 .fp-alert-attrib { padding: 8px 16px; font-size: 9px; letter-spacing: .5px; color: var(--muted); }
 

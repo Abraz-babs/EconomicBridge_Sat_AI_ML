@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 
+import { DirectionsLink } from '@/components/common/FieldDirections';
 import { useTenant } from '@/context/TenantContext';
 import { formatLatLon } from '@/lib/display';
 import { useVillageLight, type UnlitVillage } from '@/hooks/useVillageLight';
@@ -160,7 +161,7 @@ export default function EconomicVisibilityPanel() {
                   ))}
                 </div>
               </div>
-              <VillageLightMap tenant={activeTenant} points={data.points} season={season} focus={focus} />
+              <VillageLightMap tenant={activeTenant} points={data.points} season={season} focus={focus} onResetView={() => setFocus(null)} />
               <div className="fp-impact-footnote" style={{ padding: '9px 16px' }}>
                 {season === 'dry' ? `Dry season, nights ${data.dry_window}` : `Wet season, nights ${data.wet_window}`} ·
                 12-night median per village. Unlit rings grow with the number of people living there.
@@ -246,10 +247,7 @@ export default function EconomicVisibilityPanel() {
                       style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: '#2f855a', textDecoration: 'underline' }}>
                       Show on map
                     </button>{' · '}
-                    <a className="fp-directions-link" target="_blank" rel="noopener noreferrer"
-                      href={`https://www.google.com/maps/dir/?api=1&destination=${v.location.lat},${v.location.lon}`}>
-                      Directions ↗
-                    </a>
+                    <DirectionsLink lat={v.location.lat} lon={v.location.lon} />
                   </div>
                 </div>
               ))}

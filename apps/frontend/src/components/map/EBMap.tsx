@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { StyleSpecification } from 'mapbox-gl';
 
+import FullViewButton, { useAwayFromFullView } from '@/components/map/FullViewButton';
 import type { Tenant } from '@/data/tenants';
 
 
@@ -61,6 +62,9 @@ export interface EBMapProps {
   /** When set/changed, fly the map to this point + zoom (e.g. after a Farm
    *  Check, to centre the pin + analysed-area box on the exact coordinate). */
   focus?: { lng: number; lat: number; zoom?: number } | null;
+  /** "Back to full map" was pressed — lets the caller drop its focus, so
+   *  showing the same point again flies there again. */
+  onResetView?: () => void;
 }
 
 
@@ -88,7 +92,7 @@ export default function EBMap(props: EBMapProps) {
     zoom = 6,
     ariaLabel = `Satellite intelligence map — ${tenant.name}`,
     overlay, legend, errorOverlay, getTooltip, onMapClick,
-    mapStyle = MAPBOX_STYLE, focus,
+    mapStyle = MAPBOX_STYLE, focus, onResetView,
   } = props;
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -232,6 +236,16 @@ export default function EBMap(props: EBMapProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus, status]);
 
+  // The way back to the tenant's full view after a focus or a manual zoom.
+  const awayFromFullView = useAwayFromFullView(mapRef, status === 'ready', tenant.centroid, zoom);
+  const backToFullView = () => {
+    const map = mapRef.current as
+      | { flyTo: (o: { center: [number, number]; zoom: number; duration: number }) => void }
+      | null;
+    map?.flyTo({ center: tenant.centroid, zoom, duration: 1200 });
+    onResetView?.();
+  };
+
   // Push layer updates to deck.gl.
   useEffect(() => {
     if (status !== 'ready') return;
@@ -261,6 +275,9 @@ export default function EBMap(props: EBMapProps) {
 
       {legend && <div className="fp-map-legend">{legend}</div>}
       {overlay && <div className="fp-map-overlay">{overlay}</div>}
+      {status === 'ready' && awayFromFullView && (
+        <FullViewButton areaName={tenant.name} onClick={backToFullView} />
+      )}
     </div>
   );
 }

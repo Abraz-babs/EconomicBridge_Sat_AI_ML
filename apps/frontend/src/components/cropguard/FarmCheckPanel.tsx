@@ -355,6 +355,7 @@ export default function FarmCheckPanel() {
         zoom={9}
         mapStyle={basemap === 'arcgis' ? ARCGIS_IMAGERY_STYLE : FARM_MAP_STYLE}
         focus={focus}
+        onResetView={() => setFocus(null)}
         ariaLabel="Farm check map — click to drop a pin"
         onMapClick={onMapClick}
         overlay={<span className="ev-map-meta">Click the map to drop a pin</span>}

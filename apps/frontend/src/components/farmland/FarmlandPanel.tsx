@@ -737,6 +737,7 @@ export default function FarmlandPanel() {
             tenant={activeTenant}
             onAlertClick={(p) => selectManually(p.id)}
             revisit={revisitPoints}
+            onResetView={() => setRevisit(null)}
           />
           {/* Alert Spotlight — fills the column under the map. Idle = state
               briefing (+ tour start); click a halo / card Spotlight → deep-dive. */}

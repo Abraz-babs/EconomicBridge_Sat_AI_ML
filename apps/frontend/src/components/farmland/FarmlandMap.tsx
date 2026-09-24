@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import FullViewButton, { useAwayFromFullView } from '@/components/map/FullViewButton';
 import { haloRadiusPx } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
 import { formatLatLon } from '@/lib/display';
@@ -161,6 +162,8 @@ interface Props {
   /** Points revisited from the Alert record, drawn as hollow white rings.
    *  Pass a memoised array — the reference is the layer's data key. */
   revisit?: FarmlandAlertPoint[];
+  /** "Back to full map" was pressed — the panel drops the revisit rings. */
+  onResetView?: () => void;
 }
 
 interface HoverInfo {
@@ -172,7 +175,7 @@ interface HoverInfo {
 const NO_REVISIT: FarmlandAlertPoint[] = [];
 
 export default function FarmlandMap({
-  alerts, activeLayer, tenant, onAlertClick, revisit = NO_REVISIT,
+  alerts, activeLayer, tenant, onAlertClick, revisit = NO_REVISIT, onResetView,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Latest click handler via ref so the layer-composition effect's deps
@@ -335,6 +338,17 @@ export default function FarmlandMap({
     const lat = revisit.reduce((s, p) => s + p.latitude, 0) / revisit.length;
     map?.flyTo({ center: [lon, lat], zoom: revisit.length === 1 ? 9 : 7, duration: 1200 });
   }, [revisit, mapStatus]);
+
+  // The way back: once the map rests away from the state's full view (a
+  // revisit, or the reader's own zoom/pan), offer to return to it.
+  const awayFromFullView = useAwayFromFullView(mapRef, mapStatus === 'ready', tenant.centroid, 6);
+  const backToFullView = () => {
+    const map = mapRef.current as
+      | { flyTo: (o: { center: [number, number]; zoom: number; duration: number }) => void }
+      | null;
+    map?.flyTo({ center: tenant.centroid, zoom: 6, duration: 1200 });
+    onResetView?.();
+  };
 
   // Sync the dated Esri Wayback imagery in/out as a raster layer on the
   // MAPBOX style itself — not the deck overlay — so the pulse-perf pattern
@@ -786,6 +800,10 @@ export default function FarmlandMap({
           now={now}
         />
       </div>
+
+      {mapStatus === 'ready' && (awayFromFullView || revisit.length > 0) && (
+        <FullViewButton areaName={tenant.name} onClick={backToFullView} />
+      )}
 
       {hover && <HoverTooltip info={hover} />}
     </div>

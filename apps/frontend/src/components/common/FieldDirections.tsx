@@ -35,14 +35,32 @@ export default function FieldDirections({
     <div className="fp-alert-coords fp-directions" title={`${how} ${GRID3_CREDIT}.`}>
       🧭 {where}{ward}
       {' · '}
-      <a
-        href={`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="fp-directions-link"
-      >
-        Directions ↗
-      </a>
+      <DirectionsLink lat={lat} lon={lon} />
     </div>
+  );
+}
+
+/** The Directions link on its own — Google Maps navigation to the exact
+ *  coordinates. The arrow is drawn, not typed: DM Mono has no ↗, so a
+ *  fallback font set it low and apart from the word; the link also never
+ *  wraps, so word and arrow always sit together. */
+export function DirectionsLink({ lat, lon }: { lat: number; lon: number }) {
+  return (
+    <a
+      href={`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="fp-directions-link"
+      title="Turn-by-turn directions in Google Maps"
+    >
+      Directions
+      <svg viewBox="0 0 12 12" width="9" height="9" aria-hidden="true" focusable="false">
+        <path
+          d="M4 2.5h5.5V8M9.5 2.5 2.5 9.5"
+          fill="none" stroke="currentColor" strokeWidth="1.6"
+          strokeLinecap="round" strokeLinejoin="round"
+        />
+      </svg>
+    </a>
   );
 }

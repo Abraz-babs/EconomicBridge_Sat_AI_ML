@@ -31,9 +31,10 @@ interface Props {
   points: VillagePoint[];
   season: Season;
   focus?: { lng: number; lat: number; zoom?: number } | null;
+  onResetView?: () => void;
 }
 
-export default function VillageLightMap({ tenant, points, season, focus }: Props) {
+export default function VillageLightMap({ tenant, points, season, focus, onResetView }: Props) {
   const [layers, setLayers] = useState<unknown[]>([]);
   const col = season === 'dry' ? 2 : 3;
   // Split once per data/season change — the layers key their buffers off these.
@@ -89,6 +90,7 @@ export default function VillageLightMap({ tenant, points, season, focus }: Props
       layers={layers}
       height="460px"
       focus={focus}
+      onResetView={onResetView}
       getTooltip={tooltipFor}
       ariaLabel={`Night map of every named village — ${tenant.name}`}
       legend={
