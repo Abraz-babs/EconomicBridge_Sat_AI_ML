@@ -135,17 +135,32 @@ def _bind_headings(story: list) -> list:
     The keepWithNext style flag was not honoured next to a KeepTogether table,
     and left "3. The satellite base" stranded at the foot of page 1 with its
     table on page 2. Binding the pair explicitly is deterministic.
+
+    Two refinements (joint-projects note, 24 Sep 2026): a run of headings
+    ("4. The projects" then "Project 1") binds as one group with the block
+    under the last, so no heading is left behind; and a table's own
+    KeepTogether is flattened into the group rather than nested — a nested
+    KeepTogether reports an effectively infinite height, which forced every
+    heading-plus-table onto a fresh page and left page 1 half empty.
     """
+    def is_head(f) -> bool:
+        return isinstance(f, Paragraph) and f.style.name in ("h2", "h3")
+
     out, i = [], 0
     while i < len(story):
-        f = story[i]
-        is_head = isinstance(f, Paragraph) and f.style.name in ("h2", "h3")
-        if is_head and i + 1 < len(story):
-            out.append(KeepTogether([f, story[i + 1]]))
-            i += 2
+        group = []
+        while i < len(story) and is_head(story[i]):
+            group.append(story[i])
+            i += 1
+        if not group:
+            out.append(story[i])
+            i += 1
             continue
-        out.append(f)
-        i += 1
+        if i < len(story):
+            nxt = story[i]
+            group += list(nxt._content) if isinstance(nxt, KeepTogether) else [nxt]
+            i += 1
+        out.append(KeepTogether(group))
     return out
 
 
@@ -163,6 +178,7 @@ def build(src: str, out: str) -> Path:
 
 if __name__ == "__main__":
     for src, out in (("EconomicBridge_DG_Briefing.md", "EconomicBridge_DG_Briefing.pdf"),
+                     ("EconomicBridge_Joint_Projects.md", "EconomicBridge_NASRDA_Joint_Projects.pdf"),
                      ("NASRDA_Meeting_Prep.md", "NASRDA_Meeting_Prep.pdf")):
         # The meeting prep is gitignored on purpose — it holds candid internal
         # notes and the repository is public — so it exists only on the
