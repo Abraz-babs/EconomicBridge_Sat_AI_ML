@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_settings
 from schemas.places import NearestPlace
+from services.data_source import NOT_SYNTHETIC
 from services.email import send_alert_email
 from services.places import nearest_places
 from services.tenants import tenant_schema_name
@@ -91,7 +92,7 @@ async def _shockguard_lines(session: AsyncSession, since: datetime, min_rank: in
     rows = (await session.execute(text(
         "SELECT severity, lga, event_type, zone_name, created_at, "
         "       ST_X(location) AS lon, ST_Y(location) AS lat FROM shock_events "
-        "WHERE source = 'shockguard_scan_v1' AND created_at > :since "
+        f"WHERE source = 'shockguard_scan_v1' AND {NOT_SYNTHETIC} AND created_at > :since "
         "ORDER BY created_at DESC LIMIT 100"
     ), {"since": since})).mappings().all()
     kept = [dict(r) for r in rows if _SEV_RANK.get(r["severity"], 0) >= min_rank]

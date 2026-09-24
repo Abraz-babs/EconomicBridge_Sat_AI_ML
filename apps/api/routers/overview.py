@@ -31,6 +31,7 @@ from schemas.overview import (
 )
 from services.lga_geo import all_lgas
 from services.tenants import PILOT_TENANT_IDS, tenant_schema_name
+from services.data_source import NOT_SYNTHETIC
 
 
 router = APIRouter(prefix="/overview", tags=["overview"])
@@ -332,9 +333,10 @@ async def active_response(
         rows = (
             await session.execute(
                 text(
-                    """
+                    f"""
                     SELECT event_type, severity, lga, created_at, source
                       FROM shock_events
+                     WHERE {NOT_SYNTHETIC}
                      ORDER BY created_at DESC
                      LIMIT 3
                     """

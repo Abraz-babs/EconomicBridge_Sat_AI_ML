@@ -29,6 +29,7 @@ from schemas.cropguard import (
 )
 from schemas.envelope import ResponseMeta, SuccessResponse
 from services import ndvi_anomaly as ndvi_service
+from services.data_source import LIVE, NOT_SYNTHETIC, STORED_ONLY_WHEN_LIVE, may_store
 from services.live_satellite import LiveDataMissingError, load_ndvi_series
 from services.tenants import tenant_schema_name
 
@@ -110,7 +111,16 @@ async def scan_ndvi_anomaly(
 
     anomaly_id: UUID | None = None
     persisted = False
-    if body.persist:
+    # Stored only from a live Sentinel-2 series with nothing injected — the
+    # modelled fallback and demo runs are shown, never stored.
+    used_live = body.data_source == "live" and live_notice is None
+    storable = may_store(
+        used_live_data=used_live,
+        demo_injected=body.demo_inject_anomaly and not used_live,
+    )
+    if body.persist and not storable:
+        live_notice = f"{live_notice} {STORED_ONLY_WHEN_LIVE}".strip() if live_notice else STORED_ONLY_WHEN_LIVE
+    if body.persist and storable:
         anomaly_id = await _persist_anomaly(
             session, tenant_id=tenant_id, result=result,
             trace_id=_trace_id(request),
@@ -171,7 +181,8 @@ async def list_ndvi_anomalies(
 ) -> SuccessResponse[NdviAnomalyListData]:
     _require_tenant(request)
 
-    where_clause = "WHERE anomaly = TRUE" if anomalies_only else ""
+    # Proven-synthetic rows stay in the table but never reach a live view.
+    where_clause = f"WHERE {NOT_SYNTHETIC}" + (" AND anomaly = TRUE" if anomalies_only else "")
     result = await session.execute(
         text(
             f"""
@@ -243,13 +254,13 @@ async def _persist_anomaly(
                 window_start, window_end,
                 ndvi_recent_mean, ndvi_baseline_mean, ndvi_baseline_std,
                 z_score, disease_probability, anomaly, confidence_band,
-                crop, trace_id, created_at
+                crop, data_source, trace_id, created_at
             ) VALUES (
                 :id, :tenant_id, :detector_name, :detector_version,
                 :window_start, :window_end,
                 :ndvi_recent_mean, :ndvi_baseline_mean, :ndvi_baseline_std,
                 :z_score, :disease_probability, :anomaly, :confidence_band,
-                :crop, :trace_id, :created_at
+                :crop, :data_source, :trace_id, :created_at
             )
             """
         ),
@@ -268,6 +279,7 @@ async def _persist_anomaly(
             "anomaly": result.anomaly,
             "confidence_band": result.confidence_band,
             "crop": result.crop,
+            "data_source": LIVE,
             "trace_id": trace_id,
             "created_at": datetime.now(timezone.utc),
         },

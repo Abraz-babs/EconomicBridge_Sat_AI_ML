@@ -49,6 +49,7 @@ function recordToAlert(e: RecordEntry, key: string, tenantId: string): AlertResp
     agencies_notified: null,
     created_at: `${e.start}T00:00:00Z`,
     updated_at: `${e.end}T00:00:00Z`,
+    nearest_place: e.nearest_place ?? null,
   };
 }
 

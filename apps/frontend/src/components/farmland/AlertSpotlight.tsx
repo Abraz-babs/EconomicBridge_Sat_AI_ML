@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { resolvePlace } from '@/lib/place';
+import { describePlace } from '@/lib/places';
 import type { AlertResponse, AlertSeverity } from '@/hooks/useFarmlandAlerts';
 import {
   compareLandCover,
@@ -92,7 +93,12 @@ function sigmaOf(a: AlertResponse): string | null {
 function composeSummary(a: AlertResponse, place: string | null): string {
   const parts: string[] = [];
   const sig = sigmaOf(a);
-  const where = place ?? (a.lga ? `${a.lga} LGA` : 'this location');
+  // A village reads naturally in a sentence as "near Mahuta (Kyangakwai
+  // ward)"; the distance-and-bearing form stays on the header line.
+  const np = a.nearest_place;
+  const where = np
+    ? `${np.name}${np.ward && np.ward !== np.name ? ` (${np.ward} ward)` : ''}`
+    : place ?? (a.lga ? `${a.lga} LGA` : 'this location');
   parts.push(
     sig
       ? `Radar detects a ${sig} land-surface change near ${where}.`
@@ -146,13 +152,16 @@ export default function AlertSpotlight(props: Props) {
   const { alerts, selected, stateLabel, onSelect, onClose, touring, onToggleTour } = props;
   const [place, setPlace] = useState<string | null>(null);
 
-  // Name the selected coordinate (same resolver Farm Check uses: our LGA
-  // from /geo/resolve, plus a Mapbox settlement name when one exists).
+  // Name the selected coordinate. The alert's own nearest GRID3 village comes
+  // first — the same "4.4 km NE of Mahuta, Kyangakwai ward" as its card, so a
+  // team reads one answer everywhere. Mapbox (towns, rarely villages) is only
+  // the fallback for a point that carries no village.
+  const village = describePlace(selected?.nearest_place);
   useEffect(() => {
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset stale place for the new selection
-    setPlace(null);
-    if (selected?.location) {
+    setPlace(village);
+    if (!village && selected?.location) {
       resolvePlace(selected.location.lon, selected.location.lat).then((r) => {
         if (!cancelled) setPlace(r.label);
       }).catch(() => { /* label is optional */ });
@@ -161,7 +170,7 @@ export default function AlertSpotlight(props: Props) {
     // Primitive deps (id + coords) — the location OBJECT gets a fresh identity
     // on every feed refetch, which would re-fire the geocode for no reason.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected?.id, selected?.location?.lat, selected?.location?.lon]);
+  }, [selected?.id, selected?.location?.lat, selected?.location?.lon, village]);
 
   const active = useMemo(() => alerts.filter((a) => a.status !== 'resolved'), [alerts]);
   const topWatches = useMemo(

@@ -29,6 +29,7 @@ from typing import Iterable, Literal
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.data_source import NOT_SYNTHETIC
 from services.tenants import PILOT_TENANT_IDS, tenant_schema_name
 
 log = logging.getLogger(__name__)
@@ -156,7 +157,7 @@ async def _gather_tenant_rows(
                z_score AS metric_value,
                '' AS extra
           FROM "{schema}".ndvi_anomalies
-         WHERE created_at >= :cutoff
+         WHERE created_at >= :cutoff AND {NOT_SYNTHETIC}
 
         UNION ALL
 
@@ -169,7 +170,7 @@ async def _gather_tenant_rows(
                affected_area_km2 AS metric_value,
                '' AS extra
           FROM "{schema}".shock_events
-         WHERE created_at >= :cutoff
+         WHERE created_at >= :cutoff AND {NOT_SYNTHETIC}
 
         UNION ALL
 

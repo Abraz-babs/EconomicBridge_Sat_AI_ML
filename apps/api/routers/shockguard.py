@@ -37,6 +37,7 @@ from schemas.shockguard import (
 )
 from services import lga_geo, shock_detector
 from services.auto_notify import fire_conflict_notification
+from services.data_source import LIVE, NOT_SYNTHETIC, STORED_ONLY_WHEN_LIVE, may_store
 from services.places import nearest_places
 from services.live_satellite import LiveDataMissingError, load_flood_series
 from services.shock_detector import to_utc_dt
@@ -263,7 +264,18 @@ async def scan_shock(
 
     event_id: UUID | None = None
     persisted = False
-    if body.persist and detection.triggered:
+    # A detection may be STORED only from live SAR with nothing injected.
+    # Drought is always modelled here and a flood falls back to a synthetic
+    # series when live data is missing — both stay on screen, never in the
+    # table (services/data_source.py). This is also what keeps a demo flood
+    # from reaching the SMS path below.
+    storable = may_store(
+        used_live_data=live_series is not None,
+        demo_injected=body.demo_inject_anomaly and live_series is None,
+    )
+    if body.persist and detection.triggered and not storable:
+        live_notice = f"{live_notice} {STORED_ONLY_WHEN_LIVE}".strip() if live_notice else STORED_ONLY_WHEN_LIVE
+    if body.persist and detection.triggered and storable:
         # Only persist actual triggered events. Negative scans are
         # informative but bloat the audit log if every dashboard load
         # writes "no flood today".
@@ -352,7 +364,8 @@ async def list_events(
 ) -> SuccessResponse[ShockEventListData]:
     tenant_id = _require_tenant(request)
 
-    where_clause = ""
+    # Proven-synthetic rows stay in the table but never reach a live view.
+    where_clause = f"WHERE {NOT_SYNTHETIC}"
     params: dict[str, object] = {"limit": limit}
     if event_type:
         if event_type not in ("flood", "drought"):
@@ -360,7 +373,7 @@ async def list_events(
                 status_code=400,
                 detail=f"Unsupported event_type {event_type!r}",
             )
-        where_clause = "WHERE event_type = :event_type"
+        where_clause += " AND event_type = :event_type"
         params["event_type"] = event_type
 
     result = await session.execute(
@@ -621,13 +634,13 @@ async def _persist_event(
                 severity, confidence, confidence_band, requires_human_review,
                 projected_onset_hours, affected_area_km2, population_at_risk,
                 location, lga, zone_name,
-                metrics, source, trace_id, created_at
+                metrics, source, data_source, trace_id, created_at
             ) VALUES (
                 :id, :tenant_id, :event_type, :detector_name, :detector_version,
                 :severity, :confidence, :confidence_band, :requires_human_review,
                 :projected_onset_hours, :affected_area_km2, :population_at_risk,
                 ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :lga, :zone_name,
-                CAST(:metrics AS JSONB), :source, :trace_id, :created_at
+                CAST(:metrics AS JSONB), :source, :data_source, :trace_id, :created_at
             )
             """
         ),
@@ -647,6 +660,7 @@ async def _persist_event(
             "lon": lon, "lat": lat, "lga": lga, "zone_name": zone_name,
             "metrics": json.dumps(detection.metrics),
             "source": "detector_v1",
+            "data_source": LIVE,
             "trace_id": trace_id,
             "created_at": datetime.now(timezone.utc),
         },
