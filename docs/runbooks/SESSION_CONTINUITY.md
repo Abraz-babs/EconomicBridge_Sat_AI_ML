@@ -232,11 +232,17 @@ that share the ingestion service. Run it as a one-shot Fargate task:
 python -m scripts.run_land_change --tenant kebbi            # writes
 python -m scripts.run_land_change --tenant kebbi --no-write # rehearse, no DB needed
 ```
-with `"cpu":"1024","memory":"8192"` in the run-task overrides — **not 4096**. The scan reads three seasons and each holds its own accumulators; at 4 GB the kernel killed both the Niger and the zamfara/plateau/fct runs on their largest LGAs, and the only evidence is a bare `Killed` in the log. It writes to
-`land_change_hotspots` only — a shadow table nothing reads — and stamps
-`land_change_v1` in `ingestion_runs`. That source has a staleness budget in
-`FEED_MAX_AGE_HOURS` but is deliberately ABSENT from `LIVE_SCAN_SOURCES`, so it
-never appears on the panel. Run it AFTER the rains, when October is available
+with `"cpu":"1024","memory":"8192"` in the run-task overrides — **not 4096**. The scan reads three seasons and each holds its own accumulators; at 4 GB the kernel killed both the Niger and the zamfara/plateau/fct runs on their largest LGAs, and the only evidence is a bare `Killed` in the log. **It is not a
+shadow job any more — a run changes what the live Farmland panel shows.** Per
+LGA it replaces that LGA's rows in `land_change_hotspots`, upserts one
+`lga_season_vegetation` row per season (with the Esri land-cover split since
+migration 0050 — the column must exist before the scan runs, or every write
+fails), and replaces that LGA's `alert_events` rows tagged
+`model_version='land_change_v1'` with the persistent bare-on-farmland patches,
+which the panel reads. It stamps `land_change_v1` in `ingestion_runs`; that
+source has a staleness budget in `FEED_MAX_AGE_HOURS` but is deliberately
+ABSENT from `LIVE_SCAN_SOURCES`. Pass `--end YYYY-MM-DD` so every group reads
+to the same date. Run it AFTER the rains, when October is available
 to both years: in mid-September the 2025 baseline over Benue averages 0.39
 clear looks per pixel and the LGA honestly reports 0% observed.
 

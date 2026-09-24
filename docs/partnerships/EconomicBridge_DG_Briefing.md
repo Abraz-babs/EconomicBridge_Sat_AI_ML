@@ -24,8 +24,9 @@ So we rebuilt it on the **open Sentinel archive** (STAC catalogue, cloud-optimis
 | This season, 2026 | |
 |---|---|
 | LGAs scanned, every pixel | **142** across 8 territories |
-| Land measured as greening in the rains | **22.8 million hectares** |
-| Individual land changes located | **55**, at **55 distinct coordinates** |
+| Farmland (cropland + rangeland) measured as greening in the rains | **18.3 million hectares** |
+| All land greening, including tree canopy and built-up land | 23.9 million hectares |
+| Individual land changes located, on farmland only | **62**, at **62 distinct coordinates** |
 | Measured precision, high-confidence class | **64%**, 95% interval 45–80% |
 | Processing units consumed by the whole-LGA scan | **none** |
 
@@ -50,9 +51,9 @@ So we rebuilt it on the **open Sentinel archive** (STAC catalogue, cloud-optimis
 
 ### Farmland Protection (flagship)
 - **What it does:** compares **peak rainy-season greenness across three consecutive seasons** for every pixel of every pilot LGA. Ground that greened in 2024 and 2025 and stayed bare through the 2026 rains is flagged — crops green again, burn scars regrow, floods recede, but a cleared or built surface does not.
-- **Farmland only:** each detection is classified against annual land cover, so **tree canopy, built-up land and water are excluded**. Of the 55 detections now live, **50 sit on rangeland, 5 on cropland, and none on trees or buildings**.
+- **Farmland only:** each detection is classified against annual land cover, so **tree canopy, built-up land and water are excluded**. Of the 62 detections now live, **55 sit on rangeland, 7 on cropland, and none on trees or buildings**.
 - **Measured, not asserted:** 65 detections were drawn at random, stratified by class, and checked by eye against before-and-after Sentinel-2 imagery. The high-confidence class scored **64%**; a looser class scored **2 real detections in 55 random points** across two samples and is therefore **not shipped**.
-- **Farmland measure:** every LGA also reports the hectares that reached full greenness this season, split by land-cover class — including Abuja, which previously could not be assessed at all.
+- **Farmland measure:** every LGA also reports the hectares that reached full greenness this season, split by land-cover class. This season that is **18.3 million hectares of cropland and rangeland** across the eight territories, out of 23.9 million hectares greening in all; tree canopy (2.5 million) and built-up land (0.3 million) are counted separately and excluded. **Abuja**, which previously could not be assessed at all, reports **433,000 hectares of farmland**. The land-cover map is Esri's 2023 edition, the latest published. It under-maps smallholder farming as rangeland, so cropland alone is a floor on farmland and the two together a ceiling.
 - **Known and unresolved:** sand-bed river channels whose bars shift each year, and one reservoir drawdown in Plateau, still generate false detections. Both are recorded.
 
 ### ShockGuard — storms and extreme rainfall

@@ -160,10 +160,10 @@ def build_one_pager():
             "Limited.", lead),
     ]
     stats = [
-        [Paragraph("142", bignum), Paragraph("22.8M", bignum),
+        [Paragraph("142", bignum), Paragraph("18.3M", bignum),
          Paragraph("64%", bignum), Paragraph("8", bignum)],
         [Paragraph("LGAs read pixel by pixel", numlbl),
-         Paragraph("hectares seen greening, 2026 rains", numlbl),
+         Paragraph("hectares of farmland greening, 2026 rains", numlbl),
          Paragraph("change precision, random sample", numlbl),
          Paragraph("live data feeds", numlbl)],
     ]
@@ -178,10 +178,12 @@ def build_one_pager():
     story += [
         t, Spacer(1, 4),
         Paragraph(
-            "Precision: of the land changes the platform reports, the share "
-            "confirmed by eye against before-and-after Sentinel-2 imagery on a "
-            "random sample (95% interval 45–80%). Validation against the ground "
-            "is the next step.", small),
+            "Farmland: cropland and rangeland on Esri's 2023 land-cover map; "
+            "tree canopy and built-up land excluded. Precision: of the land "
+            "changes the platform reports, the share confirmed by eye against "
+            "before-and-after Sentinel-2 imagery on a random sample (95% "
+            "interval 45–80%). Validation against the ground is the next "
+            "step.", small),
         Spacer(1, 4),
 
         Paragraph("What it does", h2),
