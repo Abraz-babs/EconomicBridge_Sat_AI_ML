@@ -188,3 +188,7 @@ apps/ml/.kaggle_src/
 # Private partnership working papers — candid prep notes about active
 # negotiation counterparties must never reach the public repo.
 docs/partnerships/NASRDA_Meeting_Prep.*
+# Joint-project concept note: names the ministries we plan to approach — local
+# until it has been used.
+docs/partnerships/EconomicBridge_Joint_Projects.md
+docs/partnerships/EconomicBridge_NASRDA_Joint_Projects.pdf
