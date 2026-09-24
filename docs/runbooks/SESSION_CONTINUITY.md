@@ -246,6 +246,21 @@ to the same date. Run it AFTER the rains, when October is available
 to both years: in mid-September the 2025 baseline over Benue averages 0.39
 clear looks per pixel and the LGA honestly reports 0% observed.
 
+**Economic Visibility (village light) — one round a year, in late September.**
+Measures night light and people at every real GRID3 village into
+`tenant_<id>.village_light` (migration 0054): VIIRS 12-night medians on dry
+(to 20 Mar) and wet (to 14 Sep) nights of the same year, HRSL people and
+under-fives assigned to the nearest village. Rounds are ADDED, never
+overwritten — next year's round shows which villages became lit. One-shot
+ingestion task at 8 GB, about 4 minutes per state (two tasks in parallel took
+~25 min for all eight in 2026):
+```sh
+python -m scripts.run_village_light --tenant kebbi,zamfara,fct,nasarawa --year 2027
+python -m scripts.run_village_light --tenant kaduna,niger,benue,plateau --year 2027
+```
+The old generated poverty points (poverty_villages) and their two weekly jobs
+are retired — do not re-schedule them; a test keeps them off.
+
 **Village names for field directions — refresh twice a year.** Every Farmland
 alert carries its nearest named village and ward ("1.0 km SE of Kurmin Kaya ·
 Libata ward") from `public.named_settlements` (migration 0052), our own copy of
