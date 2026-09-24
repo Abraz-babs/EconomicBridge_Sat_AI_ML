@@ -246,6 +246,18 @@ to the same date. Run it AFTER the rains, when October is available
 to both years: in mid-September the 2025 baseline over Benue averages 0.39
 clear looks per pixel and the LGA honestly reports 0% observed.
 
+**Village names for field directions — refresh twice a year.** Every Farmland
+alert carries its nearest named village and ward ("1.0 km SE of Kurmin Kaya ·
+Libata ward") from `public.named_settlements` (migration 0052), our own copy of
+GRID3 NGA Settlement Names (CC BY 4.0 — the credit line must stay on screen).
+Refresh with a one-shot ingestion task, default memory, about two minutes:
+```sh
+python -m scripts.load_grid3_settlements            # 8 Nigerian pilots, upsert only
+python -m scripts.load_grid3_settlements --dry-run  # download + count, no DB
+```
+It never deletes; a changed name keeps its old version in `deleted_records`.
+A new pilot state needs its GRID3 name (FCT is `Fct`) passed with `--states`.
+
 > **On Windows the AWS CLI cannot read `--overrides file:///tmp/...`** — it is a
 > Windows binary and `/tmp` is not a Windows path. Write the JSON into the
 > scratchpad and pass its Windows path.

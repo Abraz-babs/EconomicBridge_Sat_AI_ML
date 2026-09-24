@@ -19,6 +19,17 @@ export type AlertStatus =
   | 'dismissed';
 export type AlertType = 'conflict' | 'flood' | 'crop_disease' | 'drought';
 
+/** The named village nearest an alert (GRID3 settlement names, CC BY 4.0).
+ *  `direction` is from the village TO the alert; null when it is at it. */
+export interface NearestPlace {
+  name: string;
+  ward: string | null;
+  lga: string | null;
+  distance_km: number;
+  direction: string | null;
+  location: { lon: number; lat: number };
+}
+
 export interface AlertResponse {
   id: string;
   tenant_id: string;
@@ -41,6 +52,7 @@ export interface AlertResponse {
   agencies_notified: string[] | null;
   created_at: string;
   updated_at: string;
+  nearest_place?: NearestPlace | null;
 }
 
 interface AlertListData {
@@ -172,6 +184,7 @@ export interface RecordEntry {
   patches: number | null;
   lgas: number | null;
   points: { lon: number; lat: number }[];
+  nearest_place?: NearestPlace | null;
 }
 
 export interface AlertRecord {

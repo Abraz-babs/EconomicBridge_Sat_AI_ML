@@ -45,6 +45,22 @@ class LonLat(BaseModel):
     lat: float = Field(ge=-90, le=90)
 
 
+class NearestPlace(BaseModel):
+    """The named village nearest an alert, for field teams (services/places.py).
+
+    Source: GRID3 NGA Settlement Names, CC BY 4.0 — credit it where shown.
+    """
+
+    name: str
+    ward: str | None = None
+    lga: str | None = None
+    distance_km: float
+    # Compass direction FROM the village TO the alert; None when the alert is
+    # at the village itself.
+    direction: str | None = None
+    location: LonLat
+
+
 class AlertResponse(BaseModel):
     """A single alert as returned to clients."""
 
@@ -75,6 +91,8 @@ class AlertResponse(BaseModel):
 
     created_at: AwareDatetime
     updated_at: AwareDatetime
+
+    nearest_place: NearestPlace | None = None
 
 
 class AlertListData(BaseModel):
@@ -142,6 +160,7 @@ class RecordEntry(BaseModel):
     patches: int | None = None
     lgas: int | None = None
     points: list[LonLat] = []
+    nearest_place: NearestPlace | None = None
 
 
 class RecordData(BaseModel):

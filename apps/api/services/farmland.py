@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.alert_event import AlertEvent
 from repositories import alerts as alerts_repo
 from schemas.farmland import AlertListQuery, AlertResponse, AlertStatus, LonLat
+from services.places import nearest_places
 
 
 def _point_to_lonlat(value: object | None) -> LonLat | None:
@@ -74,7 +75,14 @@ async def list_alerts(
 ) -> tuple[list[AlertResponse], int]:
     """Return (responses, total) for the requested filter window."""
     rows, total = await alerts_repo.list_alerts(session, query)
-    return [alert_to_response(r) for r in rows], total
+    responses = [alert_to_response(r) for r in rows]
+    # Field directions: the named village nearest each alert (services/places).
+    places = await nearest_places(
+        session, [(a.location.lon, a.location.lat) if a.location else None for a in responses],
+    )
+    for a, p in zip(responses, places):
+        a.nearest_place = p
+    return responses, total
 
 
 async def update_alert_status(

@@ -38,6 +38,7 @@ from schemas.farmland import (
     RecordEntryStatus,
     RecordRead,
 )
+from services.places import nearest_places
 
 ENCROACHMENT_MODEL = "encroachment_detector_v1"
 LAND_CHANGE_MODEL = "land_change_v1"
@@ -238,6 +239,12 @@ async def build_record(
         (e for e in entries if e.start.year == chosen),
         key=lambda e: (e.start, e.end), reverse=True,
     )
+    # Field directions for every entry with one location (services/places).
+    places = await nearest_places(
+        session, [(e.location.lon, e.location.lat) if e.location else None for e in shown],
+    )
+    for e, p in zip(shown, places):
+        e.nearest_place = p
     return RecordData(
         year=chosen,
         years=years,

@@ -7,6 +7,7 @@ import {
   type RecordEntry,
   type RecordEntryStatus,
 } from '@/hooks/useFarmlandAlerts';
+import FieldDirections, { GRID3_CREDIT } from './FieldDirections';
 
 /**
  * Alert record — fills the map column under the Alert Spotlight.
@@ -211,6 +212,7 @@ export default function AlertRecord({ tenantId, stateLabel, focusedKey, onRevisi
                 {record.watches_kept_since && (
                   <> Radar watches kept since <b>{dayYear(record.watches_kept_since)}</b>; earlier ones were not kept, so the record fills forward from there.</>
                 )}
+                {entries.some((e) => e.nearest_place) && <> {GRID3_CREDIT}.</>}
               </>
             ) : (
               <>No entries yet for {stateLabel}. The first alert raised here will start the record, and it will stay here.</>
@@ -241,6 +243,9 @@ export default function AlertRecord({ tenantId, stateLabel, focusedKey, onRevisi
                         <span className={`fp-record-chip fp-record-chip--${e.status}`}>{STATUS_LABEL[e.status]}</span>
                       </div>
                       <div className="fp-alert-desc">{line}</div>
+                      {e.location && (
+                        <FieldDirections place={e.nearest_place} lat={e.location.lat} lon={e.location.lon} />
+                      )}
                       <div className="fp-record-foot">
                         {e.kind === 'radar_watch' && <ReadLine reads={e.reads} />}
                         <span className="fp-alert-meta fp-record-meta">
