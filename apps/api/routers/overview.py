@@ -111,7 +111,8 @@ async def overview_stats(
                 text(
                     """
                     SELECT
-                      (SELECT COUNT(*) FROM poverty_villages) AS villages,
+                      (SELECT COUNT(*) FROM village_light
+                        WHERE period = (SELECT max(period) FROM village_light)) AS villages,
                       (SELECT COUNT(*) FROM crop_predictions
                          WHERE model_version LIKE '0.1.0%'
                            AND predicted_class NOT LIKE '%healthy') AS crop_det,
@@ -140,9 +141,9 @@ async def overview_stats(
             tone="ok",
         ),
         OverviewStatCard(
-            label="Settlements scored",
+            label="Villages checked",
             value=_fmt(settlements),
-            subtitle="VIIRS night-lights + WorldPop",
+            subtitle="real GRID3 villages · VIIRS night light + HRSL",
             tone="ok",
         ),
         OverviewStatCard(

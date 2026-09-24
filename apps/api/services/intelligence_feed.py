@@ -187,20 +187,25 @@ async def _gather_tenant_rows(
 
         UNION ALL
 
+        -- Economic Visibility: the most populous REAL villages a fresh
+        -- measurement round found dark at night (migration 0054) — not the
+        -- generated "settlement N" points, which are no longer read.
         SELECT 'poverty_village' AS kind,
                '' AS subtype,
                CASE
-                 WHEN poverty_score >= 0.8 THEN 'high'
-                 WHEN poverty_score >= 0.6 THEN 'medium'
+                 WHEN people >= 5000 THEN 'high'
+                 WHEN people >= 1000 THEN 'medium'
                  ELSE 'low'
                END AS severity,
-               COALESCE(settlement_name, lga, '') AS region,
-               source AS source,
-               created_at AS observed_at,
-               poverty_score AS metric_value,
+               name AS region,
+               'village_light_v1' AS source,
+               measured_at AS observed_at,
+               people AS metric_value,
                lga AS extra
-          FROM "{schema}".poverty_villages
-         WHERE created_at >= :cutoff
+          FROM (SELECT name, lga, people, measured_at
+                  FROM "{schema}".village_light
+                 WHERE light_class = 'unlit' AND measured_at >= :cutoff
+                 ORDER BY people DESC LIMIT 5) AS unlit_villages
 
          ORDER BY observed_at DESC
          LIMIT 50
@@ -278,13 +283,15 @@ def _row_to_feed_event(tenant_id: str, row: dict) -> FeedEvent | None:
             observed_at=observed_at,
         )
     if kind == "poverty_village":
-        score = row.get("metric_value") or 0.0
+        people = int(row.get("metric_value") or 0)
+        lga = row.get("extra")
         return FeedEvent(
             kind=kind,
             tenant_id=tenant_id,
             title=(
-                f"Poverty hotspot — {region or tenant_id} "
-                f"({int(score * 100)}% index)"
+                f"Unlit village — {region or tenant_id}"
+                f"{f' ({lga} LGA)' if lga else ''}: ~{people:,} people, "
+                "no light at night"
             ),
             region=row.get("extra") or region,
             tag="Poverty",

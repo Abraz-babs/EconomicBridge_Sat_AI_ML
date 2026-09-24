@@ -1455,6 +1455,22 @@ footer.app-footer {
    The live list beside the map is the present; this is the past as well,
    by year and month. Reuses the fp-alert-* type scale so it reads as part
    of the same panel. */
+/* Economic Visibility — LGA planning table (village light). */
+.ev-lga-table-wrap { overflow-x: auto; }
+.ev-lga-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.ev-lga-table th, .ev-lga-table td {
+  padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--border); font-size: 11px;
+}
+.ev-lga-table th {
+  font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted);
+  font-weight: 400; background: var(--surface2);
+}
+.ev-lga-table th:first-child, .ev-lga-table td:first-child { text-align: left; }
+.ev-lga-bar {
+  display: inline-block; height: 7px; background: var(--alert); opacity: .75;
+  border-radius: 1px; vertical-align: middle; margin-right: 6px;
+}
+
 /* Field directions line (nearest named village) — under an alert's coords. */
 .fp-directions { color: var(--ink2); }
 .fp-directions-link { color: #2f855a; text-decoration: underline; }

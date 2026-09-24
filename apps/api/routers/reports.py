@@ -78,16 +78,20 @@ REPORT_SPECS: dict[str, ReportSpec] = {
         ],
         breakdown_col="severity", breakdown_title="By severity"),
     "economic-visibility": ReportSpec(
-        label="Poverty Mapping", table="poverty_villages", date_col="created_at",
-        columns=["created_at", "settlement_name", "lga", "poverty_score", "population",
-                 "households_unreached", "nightlight_dimness", "viirs_pixel_radiance",
-                 "worldpop_estimate", "source"],
+        # Measured at real GRID3 villages (migration 0054); the old generated
+        # points and their invented "households unreached" are not reported.
+        label="Economic Visibility — village night light", table="village_light",
+        date_col="measured_at",
+        columns=["measured_at", "period", "name", "ward", "lga", "light_class",
+                 "light_class_wet", "radiance_dry", "radiance_wet", "people", "under5",
+                 "sources"],
         metrics=[
-            Metric("Villages mapped", "rows"),
-            Metric("Avg poverty score", "avg", "poverty_score", "float1"),
-            Metric("Population covered", "sum", "population"),
-            Metric("Households unreached", "sum", "households_unreached"),
-        ]),
+            Metric("Villages checked", "rows"),
+            Metric("People", "sum", "people"),
+            Metric("Children under 5", "sum", "under5"),
+            Metric("LGAs covered", "distinct", "lga"),
+        ],
+        breakdown_col="light_class", breakdown_title="By night light"),
     "aid-coordination": ReportSpec(
         label="Aid Coordination", table="aid_coverage", date_col="created_at",
         columns=["created_at", "agency_slug", "lga", "beneficiaries_served",

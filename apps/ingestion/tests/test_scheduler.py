@@ -43,16 +43,16 @@ def test_setup_scheduler_registers_firms_daily_job():
         sched.remove_all_jobs()
 
 
-def test_setup_scheduler_registers_worldpop_weekly_job():
-    """Slice 09 — Phase B raster sweep. Weekly Sunday 07:00 UTC."""
+def test_generated_poverty_point_jobs_stay_retired():
+    """Retired 2026-09-24: the WorldPop sweep and the weekly poverty ingest only
+    refreshed Economic Visibility's GENERATED points. Scheduling them again
+    would manufacture rows nothing reads, every week."""
+    from scheduler import JOB_ID_POVERTY_WEEKLY
+
     sched = setup_scheduler()
     try:
-        job = sched.get_job(JOB_ID_WORLDPOP_WEEKLY)
-        assert job is not None
-        assert "WorldPop" in job.name
-        trigger_repr = str(job.trigger)
-        assert "day_of_week='sun'" in trigger_repr
-        assert "hour='7'" in trigger_repr
+        assert sched.get_job(JOB_ID_WORLDPOP_WEEKLY) is None
+        assert sched.get_job(JOB_ID_POVERTY_WEEKLY) is None
     finally:
         sched.remove_all_jobs()
 

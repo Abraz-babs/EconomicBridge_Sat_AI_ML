@@ -1,15 +1,25 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useState } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
-import { formatLatLon, sourceBadge } from '@/lib/display';
-import {
-  usePovertyVillages,
-  type PovertyVillage,
-} from '@/hooks/usePovertyVillages';
-import PovertyMap from './PovertyMap';
+import { formatLatLon } from '@/lib/display';
+import { useVillageLight, type UnlitVillage } from '@/hooks/useVillageLight';
+import VillageLightMap, { type Season } from './VillageLightMap';
 
+/**
+ * Economic Visibility — the villages the grid does not reach.
+ *
+ * One practical question for a state: which of our villages show no light at
+ * night, and how many people and young children live in them? Those are the
+ * likeliest to be off-grid and underserved — the first stops for
+ * electrification, cash-transfer enrolment, immunisation and aid.
+ *
+ * Every figure is measured at a REAL village (GRID3 names), from NASA VIIRS
+ * night light and Meta & CIESIN HRSL population (migration 0054). It replaced
+ * generated "<LGA> settlement N" points with a hashed population and a
+ * "households unreached by aid" figure that had no source (2026-09-24).
+ */
 
 const STATE_NAMES: Record<string, string> = {
   kebbi: 'Kebbi State', benue: 'Benue State', plateau: 'Plateau State',
@@ -18,258 +28,188 @@ const STATE_NAMES: Record<string, string> = {
   ghana: 'Ghana', senegal: 'Senegal',
 };
 
-
-function fmtNum(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
-  return n.toLocaleString();
-}
-
-function fmtPct(n: number): string {
-  return `${n.toFixed(0)}%`;
-}
-
+const fmt = (n: number) => n.toLocaleString('en-GB');
+const pct = (a: number, b: number) => (b ? `${Math.round((100 * a) / b)}%` : '—');
 
 export default function EconomicVisibilityPanel() {
   const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
-
-  const query = usePovertyVillages({ tenantId: activeTenantId });
-  const stats = query.data;
-
-  const ranked = useMemo<PovertyVillage[]>(
-    () => [...(stats?.villages ?? [])].sort(
-      (a, b) => b.poverty_score - a.poverty_score,
-    ),
-    [stats?.villages],
-  );
+  const query = useVillageLight(activeTenantId);
+  const data = query.data;
+  const s = data?.stats ?? null;
+  const [season, setSeason] = useState<Season>('dry');
+  const [focus, setFocus] = useState<{ lng: number; lat: number; zoom?: number } | null>(null);
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
-  const isSeedOnly = stats?.sources.length === 1 && stats.sources[0] === 'seed_v1';
-  const badge = sourceBadge(stats?.sources, { loading: query.isLoading, error: query.isError });
+  const topLga = data?.lgas[0]?.people_unlit ?? 1;
+
+  const badge = query.isLoading
+    ? { label: 'LOADING', cls: 'cg-mode-untuned' }
+    : query.isError
+      ? { label: 'API UNREACHABLE', cls: 'cg-mode-untuned' }
+      : s
+        ? { label: `MEASURED · ${data?.period}`, cls: 'cg-mode-trained' }
+        : { label: 'NOT YET MEASURED', cls: 'cg-mode-untuned' };
+
+  const showOnMap = (v: UnlitVillage) => {
+    setFocus({ lng: v.location.lon, lat: v.location.lat, zoom: 12 });
+    document.getElementById('ev-night-map')?.scrollIntoView({
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      block: 'start',
+    });
+  };
 
   return (
     <div>
-      {/* HEADER */}
       <div className="cg-header">
         <div>
-          <div className="cg-title">Poverty Mapping — Economic Visibility</div>
+          <div className="cg-title">Economic Visibility — villages the grid does not reach</div>
           <div className="cg-subtitle">
-            Satellite-derived poverty intensity for villages missed by traditional census ·
-            VIIRS Nightlight + WorldPop + DHS validation
+            Every GRID3-named village, read from space at night · NASA VIIRS Black Marble ·
+            Meta &amp; CIESIN HRSL population
           </div>
         </div>
         <div className={`cg-mode-badge ${badge.cls}`}>{badge.label}</div>
       </div>
 
-      {/* TENANT SELECTOR */}
       <div className="fp-tenant-bar">
         <label htmlFor="ev-tenant-select" className="fp-tenant-label">Viewing tenant</label>
         <select
           id="ev-tenant-select"
           className="fp-tenant-select"
           value={activeTenantId}
-          onChange={(e) => setActiveTenant(e.target.value)}
+          onChange={(e) => { setFocus(null); setActiveTenant(e.target.value); }}
         >
           {pilotTenants.map((t) => (
             <option key={t.id} value={t.id}>{t.name}</option>
           ))}
         </select>
-        <button
-          type="button"
-          className="fp-refresh-btn"
-          onClick={() => query.refetch()}
-          disabled={query.isFetching}
-        >
-          {query.isFetching ? 'Refreshing…' : 'Refresh'}
-        </button>
       </div>
 
       {query.isError && (
-        <div className="fp-alert-error">
-          Could not load poverty data: {query.error?.message ?? 'unknown'}.{' '}
-          Run <code>python -m scripts.seed_poverty_villages</code> from{' '}
-          <code>apps/api/</code> to populate seed rows.
+        <div className="fp-alert-error">Could not load village light: {query.error?.message ?? 'unknown'}.</div>
+      )}
+      {!query.isLoading && !query.isError && !s && (
+        <div className="fp-alert-empty">
+          {activeTenantId === 'ghana' || activeTenantId === 'senegal'
+            ? `Village names for ${stateLabel} are not in GRID3's Nigeria register, so villages cannot be listed here yet.`
+            : `${stateLabel} has not been measured yet — the village-light round runs once a year.`}
         </div>
       )}
 
-      {/* STATS */}
-      <div className="fp-grid">
-        <div className="fp-stat warn">
-          <div className="fp-stat-label">Villages Identified</div>
-          <div className="fp-stat-val">{stats?.villages_identified ?? '—'}</div>
-          <div className="fp-stat-sub">From satellite nightlight + WorldPop clustering</div>
-        </div>
-        <div className="fp-stat crit">
-          <div className="fp-stat-label">Population Estimated</div>
-          <div className="fp-stat-val">
-            {stats ? fmtNum(stats.population_estimated) : '—'}
+      {s && data && (
+        <>
+          <div className="fp-grid">
+            <div className="fp-stat ok">
+              <div className="fp-stat-label">Named villages checked</div>
+              <div className="fp-stat-val">{fmt(s.villages)}</div>
+              <div className="fp-stat-sub">Every GRID3 village in {stateLabel}, each read from space at night</div>
+            </div>
+            <div className="fp-stat warn">
+              <div className="fp-stat-label">No light at night</div>
+              <div className="fp-stat-val">{fmt(s.unlit)}</div>
+              <div className="fp-stat-sub">
+                {pct(s.unlit, s.villages)} of villages, dry season · {fmt(s.unlit_both_seasons)} are dark in the wet season too
+              </div>
+            </div>
+            <div className="fp-stat crit">
+              <div className="fp-stat-label">People in unlit villages</div>
+              <div className="fp-stat-val">{fmt(s.people_unlit)}</div>
+              <div className="fp-stat-sub">{pct(s.people_unlit, s.people)} of people living at a named village</div>
+            </div>
+            <div className="fp-stat crit">
+              <div className="fp-stat-label">Children under 5 in them</div>
+              <div className="fp-stat-val">{fmt(s.under5_unlit)}</div>
+              <div className="fp-stat-sub">For nutrition, immunisation and maternal-health outreach</div>
+            </div>
           </div>
-          <div className="fp-stat-sub">Across identified vulnerable settlements</div>
-        </div>
-        <div className="fp-stat crit">
-          <div className="fp-stat-label">Households Unreached</div>
-          <div className="fp-stat-val">
-            {stats ? fmtNum(stats.households_unreached) : '—'}
-          </div>
-          <div className="fp-stat-sub">Not covered by current aid programs</div>
-        </div>
-        <div className="fp-stat ok">
-          <div className="fp-stat-label">DHS Verification</div>
-          <div className="fp-stat-val">
-            {stats ? fmtPct(stats.verification_pct) : '—'}
-          </div>
-          <div className="fp-stat-sub">Villages with cross-validated survey data</div>
-        </div>
-      </div>
 
-      {/* Phase B (Slice 09) — real WorldPop COG pixel reads. Banner sits
-         between the stat grid and the map so it reads as a provenance
-         note rather than a 5th stat tile that would overflow fp-grid. */}
-      {stats && stats.villages_identified > 0 && (
-        <div className="ev-raster-banner">
-          <span className="ev-raster-banner__chip">
-            Phase B · WorldPop COG sampling
-          </span>
-          <span>
-            <strong>
-              {stats.raster_sampled_villages} / {stats.villages_identified}
-            </strong>{' '}
-            villages enriched with real WorldPop pixel reads
-          </span>
-        </div>
+          <div className="fp-main-row">
+            <div className="fp-map" id="ev-night-map">
+              <div className="fp-map-header">
+                <span className="fp-map-title">Night map — {stateLabel}</span>
+                <div className="fp-map-controls">
+                  {(['dry', 'wet'] as Season[]).map((k) => (
+                    <button key={k} type="button" className={`fp-layer-btn ${season === k ? 'active' : ''}`}
+                      aria-pressed={season === k} onClick={() => setSeason(k)}>
+                      {k === 'dry' ? 'Dry season' : 'Wet season'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <VillageLightMap tenant={activeTenant} points={data.points} season={season} focus={focus} />
+              <div className="fp-impact-footnote" style={{ padding: '9px 16px' }}>
+                {season === 'dry' ? `Dry season, nights ${data.dry_window}` : `Wet season, nights ${data.wet_window}`} ·
+                12-night median per village. Unlit rings grow with the number of people living there.
+              </div>
+            </div>
+
+            <div className="fp-alerts">
+              <div className="fp-alerts-header">
+                Unlit villages, most people first
+                <span className="fp-alert-count">{fmt(s.unlit)} UNLIT</span>
+              </div>
+              {data.top_unlit.map((v) => (
+                <div key={`${v.name}-${v.location.lat}-${v.location.lon}`} className="fp-alert-item">
+                  <div className="fp-alert-top">
+                    <span className="fp-alert-location">{v.name}</span>
+                    <span className="fp-sev fp-sev-crit">No light</span>
+                  </div>
+                  <div className="fp-alert-desc">
+                    {v.ward ? `${v.ward} ward · ` : ''}{v.lga} LGA · about {fmt(v.people)} people, {fmt(v.under5)} under five
+                    {v.light_class_wet === 'unlit' ? '' : ' · lit in the wet-season check'}
+                  </div>
+                  <div className="fp-alert-coords">
+                    📍 {formatLatLon(v.location.lat, v.location.lon)} · night light {v.radiance_dry ?? '—'} nW/cm²/sr ·{' '}
+                    <button type="button" onClick={() => showOnMap(v)}
+                      style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: '#2f855a', textDecoration: 'underline' }}>
+                      Show on map
+                    </button>{' · '}
+                    <a className="fp-directions-link" target="_blank" rel="noopener noreferrer"
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${v.location.lat},${v.location.lon}`}>
+                      Directions ↗
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="fp-main-row fp-main-row--equal">
+            <div className="fp-timeline">
+              <div className="fp-timeline-header">Where to act first — LGAs by people living in unlit villages</div>
+              <div className="ev-lga-table-wrap">
+                <table className="ev-lga-table">
+                  <thead>
+                    <tr><th>LGA</th><th>Villages</th><th>Unlit</th><th>People in unlit villages</th><th>Children under 5</th></tr>
+                  </thead>
+                  <tbody>
+                    {data.lgas.map((g) => (
+                      <tr key={g.lga}>
+                        <td>{g.lga}</td>
+                        <td>{fmt(g.villages)}</td>
+                        <td>{fmt(g.unlit)} · {pct(g.unlit, g.villages)}</td>
+                        <td>
+                          <span className="ev-lga-bar" style={{ width: `${Math.max(2, (90 * g.people_unlit) / topLga)}px` }} />
+                          {fmt(g.people_unlit)}
+                        </td>
+                        <td>{fmt(g.under5_unlit)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div className="fp-impact-footnote" style={{ padding: '12px 0' }}>
+            <b>What this measures:</b> whether light is detectable from space at each named village at night, and
+            how many people and young children live within a kilometre of it (each person counted once, at the
+            nearest village). <b>What it does not:</b> household income, or a single bulb or solar lamp — &ldquo;no
+            light&rdquo; means below what the satellite detects, so a field team confirms. Sources: GRID3 NGA
+            Settlement Names (CC BY 4.0) · NASA VIIRS Black Marble VNP46A2 · Meta &amp; CIESIN High Resolution
+            Settlement Layer (CC BY 4.0). Round {data.period}.
+          </div>
+        </>
       )}
-
-      {/* MAP + RANKING */}
-      <div className="fp-main-row">
-        <div className="fp-map">
-          <div className="fp-map-header">
-            <span className="fp-map-title">
-              Poverty Intensity — {stateLabel}
-            </span>
-            <span className="ev-map-meta">
-              {stats?.villages.length ?? 0} settlements ·
-              Sources: {stats?.sources.join(', ') ?? '—'}
-            </span>
-          </div>
-          <PovertyMap tenant={activeTenant} villages={stats?.villages ?? []} />
-        </div>
-
-        <div className="fp-alerts">
-          <div className="fp-alerts-header">
-            Vulnerability Ranking — {stateLabel}
-            <span className="fp-alert-count">{ranked.length} VILLAGES</span>
-          </div>
-          {query.isLoading && (
-            <div className="fp-alert-empty">Loading villages…</div>
-          )}
-          {!query.isLoading && !query.isError && ranked.length === 0 && (
-            <div className="fp-alert-empty">
-              No villages recorded for {stateLabel}. Run{' '}
-              <code>python -m scripts.seed_poverty_villages</code> from{' '}
-              <code>apps/api/</code> to populate sample data.
-            </div>
-          )}
-          {ranked.map((v, idx) => (
-            <VillageRow key={v.id} village={v} rank={idx + 1} />
-          ))}
-        </div>
-      </div>
-
-      {/* AID PRIORITY */}
-      <div className="fp-main-row fp-main-row--equal">
-        <div className="fp-timeline">
-          <div className="fp-timeline-header">Aid-Delivery Priority — {stateLabel}</div>
-          <div className="fp-timeline-body">
-            <div className="fp-impact-row fp-impact-row--bordered">
-              <div>
-                <div className="fp-impact-label">Coverage Gap</div>
-                <div className="fp-impact-val">
-                  {stats ? fmtPct(100 - stats.coverage_pct) : '—'}
-                </div>
-                <div className="fp-impact-desc">
-                  Pop. not reached by NGO / gov programs
-                </div>
-              </div>
-              <div>
-                <div className="fp-impact-label">Hottest Village</div>
-                <div className="fp-impact-val fp-impact-val--small">
-                  {ranked[0]?.lga ?? '—'}
-                </div>
-                <div className="fp-impact-desc">
-                  {ranked[0]
-                    ? <>Poverty score {ranked[0].poverty_score.toFixed(2)} · ~{fmtNum(ranked[0].population)} pop.</>
-                    : 'No data'}
-                </div>
-              </div>
-              <div>
-                <div className="fp-impact-label">Verification Rate</div>
-                <div className="fp-impact-val fp-impact-val--small">
-                  {stats ? fmtPct(stats.verification_pct) : '—'}
-                </div>
-                <div className="fp-impact-desc">
-                  Sample-validated via DHS survey joins
-                </div>
-              </div>
-            </div>
-            <div className="fp-impact-footnote">
-              {isSeedOnly ? (
-                <>
-                  Data sources: <code>seed_v1</code> only. Real VIIRS Nightlight
-                  + WorldPop + DHS ingestion lands in a follow-up slice; the
-                  schema + endpoint contract stay unchanged when it flips.
-                </>
-              ) : (
-                <>
-                  Data sources: {(stats?.sources ?? []).map((s, i) => (
-                    <span key={s}><code>{s}</code>{i < (stats?.sources.length ?? 1) - 1 ? ', ' : ''}</span>
-                  ))}.
-                  AI: poverty score = VIIRS dimness × 0.6 + DHS adjustment × 0.4.
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-function VillageRow({ village, rank }: { village: PovertyVillage; rank: number }) {
-  const severity = village.poverty_score >= 0.80
-    ? 'fp-sev-crit'
-    : village.poverty_score >= 0.65 ? 'fp-sev-high' : 'fp-sev-med';
-  return (
-    <div className="fp-alert-item">
-      <div className="fp-alert-top">
-        <span className="fp-alert-location">
-          #{rank} · {village.lga} — {village.settlement_name}
-        </span>
-        <span className={`fp-sev ${severity}`}>
-          {village.poverty_score >= 0.80 ? 'Critical' : village.poverty_score >= 0.65 ? 'High' : 'Medium'}
-        </span>
-      </div>
-      <div className="fp-alert-desc">
-        Estimated population {fmtNum(village.population)}.{' '}
-        {village.households_unreached > 0 && (
-          <>~{fmtNum(village.households_unreached)} households unreached by current aid. </>
-        )}
-        {village.has_dhs_data ? 'DHS survey data on file.' : 'No ground-truth data — high uncertainty.'}
-      </div>
-      <div className="fp-alert-meta">
-        <span>Nightlight dimness: {(village.nightlight_dimness * 100).toFixed(0)}%</span>
-        <span>Poverty score: {village.poverty_score.toFixed(2)}</span>
-        <span>Source: {village.source}</span>
-        {village.latest_worldpop_sample !== null && (
-          <span title="Real per-pixel WorldPop 2020 sample from the COG sweep">
-            WorldPop pixel: {fmtNum(Math.round(village.latest_worldpop_sample))}
-          </span>
-        )}
-      </div>
-      <div className="fp-alert-coords">
-        📍 {formatLatLon(village.location.lat, village.location.lon)}
-        {' · '}
-        {village.lga} LGA
-      </div>
     </div>
   );
 }

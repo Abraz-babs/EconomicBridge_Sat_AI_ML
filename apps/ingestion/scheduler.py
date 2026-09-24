@@ -105,18 +105,10 @@ def setup_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=300,
     )
 
-    scheduler.add_job(
-        run_weekly_worldpop_sweep,
-        # WorldPop publishes annual rasters; weekly is plenty. Sunday
-        # 07:00 UTC lands after Saturday-night FIRMS + conflict pipeline.
-        trigger=CronTrigger(day_of_week="sun", hour=7, minute=0, timezone="UTC"),
-        id=JOB_ID_WORLDPOP_WEEKLY,
-        name="WorldPop COG sweep (all pilot tenants, weekly)",
-        replace_existing=True,
-        max_instances=1,
-        # 6h grace covers a Sunday-morning pod restart.
-        misfire_grace_time=21600,
-    )
+    # RETIRED 2026-09-24: this job only refreshed Economic Visibility's GENERATED
+    # "<LGA> settlement N" points, which nothing reads any more — village
+    # light (tasks/village_light_scan.py) measures real villages instead.
+    # Still manually triggerable via the jobs router; not scheduled.
 
     scheduler.add_job(
         run_encroachment_sweep,
@@ -211,19 +203,10 @@ def setup_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=21600,
     )
 
-    scheduler.add_job(
-        run_weekly_poverty_ingest,
-        # VIIRS Black Marble nightlights move slowly for poverty purposes —
-        # weekly keeps them fresh. Monday 06:30 UTC, off the Sunday WorldPop
-        # slot. (This feed previously had NO schedule at all and silently sat
-        # unused despite a configured Earthdata token — never again.)
-        trigger=CronTrigger(day_of_week="mon", hour=6, minute=30, timezone="UTC"),
-        id=JOB_ID_POVERTY_WEEKLY,
-        name="VIIRS nightlights + WorldPop poverty ingest (all pilots, weekly)",
-        replace_existing=True,
-        max_instances=1,
-        misfire_grace_time=21600,
-    )
+    # RETIRED 2026-09-24: this job only refreshed Economic Visibility's GENERATED
+    # "<LGA> settlement N" points, which nothing reads any more — village
+    # light (tasks/village_light_scan.py) measures real villages instead.
+    # Still manually triggerable via the jobs router; not scheduled.
 
     scheduler.add_job(
         run_monthly_mobility_ingest,

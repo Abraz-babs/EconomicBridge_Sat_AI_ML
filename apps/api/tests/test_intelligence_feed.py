@@ -127,15 +127,18 @@ def test_aid_coverage_renders_with_agency_and_beneficiaries():
     assert "12,500" in event.title
 
 
-def test_poverty_village_uses_score_for_severity_band():
+def test_unlit_village_names_a_real_village_and_its_people():
+    """Economic Visibility items are measured villages (migration 0054), not
+    the retired generated points with an invented '% index'."""
     event = _row_to_feed_event("kebbi", _row(
-        kind="poverty_village", region="Argungu settlement 1",
-        source="viirs_v2", metric_value=0.85, extra="Argungu",
+        kind="poverty_village", region="Unguwar Hakimi", severity="high",
+        source="village_light_v1", metric_value=9355, extra="Shanga",
     ))
     assert event is not None
     assert event.tag == "Poverty"
     assert event.severity == "high"
-    assert "85%" in event.title
+    assert event.title == "Unlit village — Unguwar Hakimi (Shanga LGA): ~9,355 people, no light at night"
+    assert "%" not in event.title
 
 
 def test_row_without_observed_at_returns_none():
