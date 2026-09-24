@@ -69,6 +69,60 @@ def test_thin_data_returns_none():
     assert compute_encroachment([0.5, 0.5], [-10, -10], 0) is None
 
 
+# ─── cloud must not veto the radar ────────────────────────────────────────
+# Found 2026-09-24 when Abuja returned nothing on the Farmland panel while
+# Kebbi alerted daily. Every FCT LGA had 20 Sentinel-1 passes in the window but
+# only 1-5 usable Sentinel-2 ones, and the gate returned None when EITHER series
+# was short — so cloud over the optical record threw the radar away too.
+
+FCT_LIKE_SAR = [-12.0, -12.4, -11.8, -12.2, -11.9, -12.1, -12.3, -11.7,
+                -12.0, -12.2, -11.9, -12.1, -12.0, -11.8, -12.2, -12.1,
+                -12.0, -9.0, -9.2, -8.9]               # 20 passes, recent jump
+
+
+def test_radar_alone_is_judged_when_cloud_leaves_optical_thin():
+    sig = compute_encroachment([0.55, 0.52], FCT_LIKE_SAR, fire_count=0)
+    assert sig is not None                         # judged, not "not judged"
+    assert sig.ndvi_z == 0.0                       # thin optical says nothing
+    assert sig.components["ndvi_loss"] == 0.0
+    assert sig.sar_z > 1.0
+    assert sig.score >= ALERT_THRESHOLD            # radar change still raises a watch
+
+
+def test_a_radar_only_watch_carries_the_lone_signal_discount():
+    """Same bar as any other lone signal: primary x 0.6, no corroboration from
+    an optical record we could not read."""
+    sig = compute_encroachment([0.55], FCT_LIKE_SAR, fire_count=0)
+    # score is rounded to 4 places, the component to 3 — compare within that.
+    assert abs(sig.score - sig.components["sar_change"] * 0.6) < 1e-3
+
+
+def test_calm_radar_with_thin_optical_is_judged_calm():
+    """The other half of the fix: a quiet LGA under cloud is now REPORTED as
+    scored and calm, instead of vanishing into "not judged"."""
+    calm = [-12.0, -12.4, -11.8, -12.2, -11.9, -12.1, -12.3, -11.7, -12.0]
+    sig = compute_encroachment([0.5, 0.5, 0.5], calm, fire_count=0)
+    assert sig is not None
+    assert sig.score < ALERT_THRESHOLD
+
+
+def test_a_short_optical_drop_is_not_read_as_vegetation_loss():
+    """Two or three clear passes cannot establish a baseline, however steep the
+    apparent drop between them."""
+    sig = compute_encroachment([0.70, 0.65, 0.10], [-12.0] * 9, fire_count=0)
+    assert sig is not None
+    assert sig.ndvi_z == 0.0
+    assert sig.score < ALERT_THRESHOLD
+
+
+def test_optical_alone_is_judged_when_radar_is_thin():
+    ndvi = [0.60, 0.61, 0.59, 0.60, 0.62, 0.61, 0.30, 0.28, 0.31]
+    sig = compute_encroachment(ndvi, [-12.0, -12.1], fire_count=0)
+    assert sig is not None
+    assert sig.sar_z == 0.0
+    assert sig.ndvi_z < 0
+
+
 def test_flat_series_scores_low_no_alert():
     flat = [0.50] * 10
     sar = [-12.0] * 10

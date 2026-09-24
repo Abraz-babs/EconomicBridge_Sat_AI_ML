@@ -217,7 +217,8 @@ def compute_encroachment(
     latest_obs: date | None = None,
     nightlight: float = 0.0,
 ) -> EncroachmentSignal | None:
-    """Pure fusion of the satellite signals. Returns None if data is too thin.
+    """Pure fusion of the satellite signals. Returns None only when NEITHER
+    the optical nor the radar series is long enough to judge.
 
     Args:
         ndvi_vals: Sentinel-2 NDVI means, oldest-to-newest.
@@ -226,7 +227,17 @@ def compute_encroachment(
         latest_obs: date of the most recent observation (for dedup).
         nightlight: 0..1 VIIRS new-light-in-dark-area component (year-round).
     """
-    if len(ndvi_vals) < MIN_POINTS or len(sar_vals) < MIN_POINTS:
+    # Each series is judged on its OWN length. The old gate returned None when
+    # EITHER was short, so a clouded-out optical record vetoed the radar too —
+    # and radar exists precisely because it sees through cloud. Measured
+    # 2026-09-24: every FCT LGA had 20 Sentinel-1 passes in the 120-day window
+    # but only 1-5 Sentinel-2 scenes under 60% cloud in 90 days, so 4-5 of its
+    # 6 LGAs were "not judged" every morning while drier Kebbi, with the same
+    # radar, was judged daily. A short series is treated like a flat one
+    # below: an unjudgeable component contributes 0.0, the others still count.
+    ndvi_ok = len(ndvi_vals) >= MIN_POINTS
+    sar_ok = len(sar_vals) >= MIN_POINTS
+    if not ndvi_ok and not sar_ok:
         return None
 
     def split(vals: list[float]) -> tuple[list[float], list[float]]:
@@ -245,8 +256,8 @@ def compute_encroachment(
     # An unjudgeable component contributes 0.0 — absence of evidence, not
     # evidence. The other signals still count, so a genuine multi-signal
     # event is never suppressed by this.
-    n_std = pstdev(nb)
-    s_std = pstdev(sb)
+    n_std = pstdev(nb) if ndvi_ok else 0.0
+    s_std = pstdev(sb) if sar_ok else 0.0
     ndvi_z = (mean(nr) - mean(nb)) / n_std if n_std >= MIN_BASELINE_NDVI_STD else 0.0
     sar_z = abs(mean(sr) - mean(sb)) / s_std if s_std >= MIN_BASELINE_SAR_STD else 0.0
 
@@ -696,7 +707,8 @@ async def detect_per_lga_for_tenant(
     alerts = 0
     evaluated = 0
     # Read successfully but NOT scoreable — compute_encroachment needs
-    # MIN_POINTS clear passes and cloud can leave fewer. Counted apart from
+    # MIN_POINTS passes in at least ONE series (optical or radar); only an LGA
+    # short on both lands here. Counted apart from
     # `evaluated` because "we looked and it was calm" and "we could not judge
     # this one" are different statements, and a board that renders them the
     # same is the last corner of the not-checked / no-signal confusion.
@@ -742,7 +754,7 @@ async def detect_per_lga_for_tenant(
             "AND status = 'pending_review' AND lga = :lga"
         ), {"m": MODEL_VERSION, "lga": g["lga"]})
         if signal is None:
-            # Too few clear optical passes to judge. Its prior watch has just
+            # Too few passes in BOTH series to judge. Its prior watch has just
             # been cleared above, which is right — we are not asserting calm,
             # we are declining to assert anything.
             unscorable.append(g["lga"])
