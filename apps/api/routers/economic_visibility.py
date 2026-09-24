@@ -24,7 +24,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.engine import get_session
 from schemas.envelope import ResponseMeta, SuccessResponse
-from schemas.poverty import LonLat, PovertyStatsData, PovertyVillage
+from schemas.poverty import (
+    LgaLightRow,
+    LonLat,
+    PovertyStatsData,
+    PovertyVillage,
+    UnlitVillage,
+    VillageLightData,
+    VillageLightStats,
+)
 
 
 router = APIRouter(prefix="/economic_visibility", tags=["economic-visibility"])
@@ -178,3 +186,86 @@ async def list_villages(
             pagination=None,
         ),
     )
+
+
+# ─── Village light — measured night light and people at real villages ─────
+
+_CLASS_CODE = {"unlit": 0, "dim": 1, "lit": 2, "unknown": 3}
+
+
+@router.get(
+    "/village-light",
+    response_model=SuccessResponse[VillageLightData],
+    summary="Which real villages are dark at night, and who lives there",
+    description=(
+        "Every GRID3-named village of the tenant for one measurement round: "
+        "VIIRS night light (dry season, with a wet-season check), HRSL people "
+        "and children under five, the LGA table and every village for the map. "
+        "Omit `period` for the latest round."
+    ),
+)
+async def village_light(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    period: Annotated[str | None, Query(max_length=16)] = None,
+    top: Annotated[int, Query(ge=1, le=200)] = 25,
+) -> SuccessResponse[VillageLightData]:
+    _require_tenant(request)
+
+    def reply(data: VillageLightData) -> SuccessResponse[VillageLightData]:
+        return SuccessResponse(data=data, meta=ResponseMeta(
+            tenant_id=None, trace_id=_trace_id(request), timestamp=datetime.now(timezone.utc)))
+
+    if not (await session.execute(text("SELECT to_regclass('village_light') IS NOT NULL"))).scalar():
+        return reply(VillageLightData(period=None, periods=[]))
+    periods = [r[0] for r in (await session.execute(text(
+        "SELECT DISTINCT period FROM village_light ORDER BY period DESC"))).all()]
+    chosen = period if period in periods else (periods[0] if periods else None)
+    if chosen is None:
+        return reply(VillageLightData(period=None, periods=[]))
+    p = {"p": chosen}
+
+    s = (await session.execute(text("""
+        SELECT count(*),
+               count(*) FILTER (WHERE light_class = 'unlit'),
+               count(*) FILTER (WHERE light_class = 'dim'),
+               count(*) FILTER (WHERE light_class = 'lit'),
+               count(*) FILTER (WHERE light_class = 'unknown'),
+               count(*) FILTER (WHERE light_class = 'unlit' AND light_class_wet = 'unlit'),
+               COALESCE(sum(people), 0),
+               COALESCE(sum(people) FILTER (WHERE light_class = 'unlit'), 0),
+               COALESCE(sum(under5) FILTER (WHERE light_class = 'unlit'), 0),
+               max(dry_window), max(wet_window), max(sources)
+          FROM village_light WHERE period = :p
+    """), p)).one()
+    lgas = [LgaLightRow(lga=r[0] or "Unknown", villages=r[1], unlit=r[2],
+                        people_unlit=r[3], under5_unlit=r[4])
+            for r in (await session.execute(text("""
+        SELECT lga, count(*),
+               count(*) FILTER (WHERE light_class = 'unlit'),
+               COALESCE(sum(people) FILTER (WHERE light_class = 'unlit'), 0),
+               COALESCE(sum(under5) FILTER (WHERE light_class = 'unlit'), 0)
+          FROM village_light WHERE period = :p
+         GROUP BY lga ORDER BY 4 DESC
+    """), p)).all()]
+    top_rows = (await session.execute(text("""
+        SELECT name, ward, lga, ST_X(geom), ST_Y(geom), people, under5,
+               radiance_dry, radiance_wet, light_class_wet
+          FROM village_light WHERE period = :p AND light_class = 'unlit'
+         ORDER BY people DESC LIMIT :top
+    """), {**p, "top": top})).all()
+    points = [[round(r[0], 4), round(r[1], 4), _CLASS_CODE.get(r[2], 3), _CLASS_CODE.get(r[3], 3), r[4]]
+              for r in (await session.execute(text(
+                  "SELECT ST_X(geom), ST_Y(geom), light_class, light_class_wet, people "
+                  "FROM village_light WHERE period = :p"), p)).all()]
+    return reply(VillageLightData(
+        period=chosen, periods=periods, dry_window=s[9], wet_window=s[10], sources=s[11],
+        stats=VillageLightStats(villages=s[0], unlit=s[1], dim=s[2], lit=s[3], unknown=s[4],
+                                unlit_both_seasons=s[5], people=s[6], people_unlit=s[7],
+                                under5_unlit=s[8]),
+        lgas=lgas,
+        top_unlit=[UnlitVillage(name=r[0], ward=r[1], lga=r[2], location=LonLat(lon=r[3], lat=r[4]),
+                                people=r[5], under5=r[6], radiance_dry=r[7], radiance_wet=r[8],
+                                light_class_wet=r[9]) for r in top_rows],
+        points=points,
+    ))

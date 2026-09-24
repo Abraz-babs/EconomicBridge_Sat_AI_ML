@@ -30,6 +30,8 @@ boto3>=1.34,<2.0
 # at the bundled DB to dodge Windows-PostGIS PROJ version conflicts.
 rasterio>=1.4,<2.0
 numpy>=1.26,<3.0
+# Village light: nearest-village assignment of HRSL population (cKDTree).
+scipy>=1.11,<2.0
 
 # VIIRS Black Marble (VNP46A2) night-light radiance — HDF5 reads.
 # sources/viirs_raster.py samples true per-pixel radiance from NASA granules;

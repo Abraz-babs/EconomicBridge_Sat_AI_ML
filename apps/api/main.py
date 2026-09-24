@@ -18,6 +18,7 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -124,6 +125,9 @@ app.add_middleware(ModuleAccessMiddleware)
 app.add_middleware(TenantContextMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(TraceIdMiddleware)
+# Compress large JSON (the village-light map carries every village: ~26k in
+# Kaduna). Inside CORS so the CORS headers still wrap the compressed body.
+app.add_middleware(GZipMiddleware, minimum_size=2048)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
