@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
 import { formatLatLon } from '@/lib/display';
@@ -40,6 +40,31 @@ export default function EconomicVisibilityPanel() {
   const [focus, setFocus] = useState<{ lng: number; lat: number; zoom?: number } | null>(null);
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
   const topLga = data?.lgas[0]?.people_unlit ?? 1;
+
+  // Under-the-map insight cards — derived from the villages already loaded
+  // for the map, so they cost no extra request.
+  const insight = useMemo(() => {
+    if (!data) return null;
+    const unlit = data.points.filter((p) => p[2] === 0);
+    const bands = [
+      { label: '5,000+ people', min: 5000, max: Infinity, cls: 'ev-band--large' },
+      { label: '1,000–4,999', min: 1000, max: 5000, cls: 'ev-band--mid' },
+      { label: 'Under 1,000', min: 1, max: 1000, cls: 'ev-band--small' },
+    ].map((b) => {
+      const inBand = unlit.filter((p) => p[4] >= b.min && p[4] < b.max);
+      return { ...b, villages: inBand.length, people: inBand.reduce((t, p) => t + p[4], 0) };
+    });
+    const sizes = unlit.map((p) => p[4]).filter((n) => n > 0).sort((a, b) => a - b);
+    const lit = data.points.filter((p) => p[2] === 1 || p[2] === 2);
+    return {
+      bands,
+      bandPeople: bands.reduce((t, b) => t + b.people, 0) || 1,
+      median: sizes.length ? sizes[Math.floor(sizes.length / 2)] : 0,
+      noBuildings: unlit.filter((p) => p[4] === 0).length,
+      litVillages: lit.length,
+      litPeople: lit.reduce((t, p) => t + p[4], 0),
+    };
+  }, [data]);
 
   const badge = query.isLoading
     ? { label: 'LOADING', cls: 'cg-mode-untuned' }
@@ -140,6 +165,64 @@ export default function EconomicVisibilityPanel() {
                 {season === 'dry' ? `Dry season, nights ${data.dry_window}` : `Wet season, nights ${data.wet_window}`} ·
                 12-night median per village. Unlit rings grow with the number of people living there.
               </div>
+              {insight && (
+                <div className="ev-cards">
+                  <div className="ev-card ev-card--wide">
+                    <div className="ev-card-label">Unlit villages by size</div>
+                    <div className="ev-bandbar" role="img"
+                      aria-label={insight.bands.map((b) => `${b.label}: ${b.villages} villages, ${b.people} people`).join('; ')}>
+                      {insight.bands.map((b) => (
+                        <span key={b.label} className={`ev-band ${b.cls}`}
+                          style={{ width: `${(100 * b.people) / insight.bandPeople}%` }} />
+                      ))}
+                    </div>
+                    <div className="ev-bandrows">
+                      {insight.bands.map((b) => (
+                        <div key={b.label} className="ev-bandrow">
+                          <span className={`ev-swatch ${b.cls}`} />
+                          <span className="ev-bandrow-label">{b.label}</span>
+                          <span className="ev-bandrow-num">{fmt(b.villages)} villages</span>
+                          <span className="ev-bandrow-num">{fmt(b.people)} people</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="ev-card-sub">
+                      The largest dark communities reach the most people per trip.
+                      {insight.noBuildings > 0 && ` ${fmt(insight.noBuildings)} named places show no mapped buildings nearby.`}
+                    </div>
+                  </div>
+                  {data.lgas[0] && (
+                    <div className="ev-card ev-card--alert">
+                      <div className="ev-card-label">Hardest-hit LGA</div>
+                      <div className="ev-card-num ev-card-num--text">{data.lgas[0].lga}</div>
+                      <div className="ev-card-sub">
+                        {fmt(data.lgas[0].people_unlit)} people in {fmt(data.lgas[0].unlit)} unlit villages —{' '}
+                        {pct(data.lgas[0].people_unlit, s.people_unlit)} of the state&rsquo;s total
+                      </div>
+                    </div>
+                  )}
+                  <div className="ev-card">
+                    <div className="ev-card-label">Typical unlit village</div>
+                    <div className="ev-card-num">{fmt(insight.median)}</div>
+                    <div className="ev-card-sub">people (median) — half are larger, half smaller</div>
+                  </div>
+                  <div className="ev-card ev-card--ok">
+                    <div className="ev-card-label">Wet-season check</div>
+                    <div className="ev-card-num">{pct(s.unlit_both_seasons, s.unlit)}</div>
+                    <div className="ev-card-sub">of unlit villages are dark in the rains too — the reading is not cloud</div>
+                  </div>
+                  <div className="ev-card ev-card--warn">
+                    <div className="ev-card-label">Young children</div>
+                    <div className="ev-card-num">{pct(s.under5_unlit, s.people_unlit)}</div>
+                    <div className="ev-card-sub">of people in unlit villages are under five — {fmt(s.under5_unlit)} children</div>
+                  </div>
+                  <div className="ev-card ev-card--lit">
+                    <div className="ev-card-label">Already lit or dim</div>
+                    <div className="ev-card-num">{fmt(insight.litVillages)}</div>
+                    <div className="ev-card-sub">villages, home to {fmt(insight.litPeople)} people — where supply already reaches</div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="fp-alerts">
@@ -176,7 +259,7 @@ export default function EconomicVisibilityPanel() {
           <div className="fp-main-row fp-main-row--equal">
             <div className="fp-timeline">
               <div className="fp-timeline-header">Where to act first — LGAs by people living in unlit villages</div>
-              <div className="ev-lga-table-wrap">
+              <div className="ev-lga-table-wrap eb-scroll">
                 <table className="ev-lga-table">
                   <thead>
                     <tr><th>LGA</th><th>Villages</th><th>Unlit</th><th>People in unlit villages</th><th>Children under 5</th></tr>

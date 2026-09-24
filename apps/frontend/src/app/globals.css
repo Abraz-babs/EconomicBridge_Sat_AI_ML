@@ -1276,6 +1276,45 @@ footer.app-footer {
 
 .fp-main-row { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; margin-bottom: 20px; }
 
+/* ── Scroll, don't stretch ──────────────────────────────────────────────
+   A list beside a map takes the MAP column's height and scrolls inside it,
+   so a long feed never stretches the page or leaves empty space under the
+   map. `contain: size` stops the list's own length from sizing the grid row;
+   the row follows the map column and the list fills it. Its header stays
+   pinned while the items scroll. Same idea as the Overview's .feed-scroll. */
+.fp-main-row > .fp-alerts {
+  contain: size;
+  min-height: 460px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.fp-main-row > .fp-alerts > .fp-alerts-header {
+  position: sticky; top: 0; z-index: 2; background: var(--surface);
+}
+@media (max-width: 900px) {
+  /* Stacked on a phone: no map column to match, so cap it instead. */
+  .fp-main-row > .fp-alerts { contain: none; max-height: 70vh; }
+}
+/* Long lists and tables elsewhere: capped, scrolling inside, header pinned. */
+.eb-scroll,
+.mc-table-scroll,
+.sb-table-scroll { max-height: 480px; overflow-y: auto; overscroll-behavior: contain; }
+.eb-scroll thead th,
+.mc-table-scroll thead th,
+.sb-table-scroll thead th { position: sticky; top: 0; z-index: 1; }
+.cg-recent-col { max-height: 720px; overflow-y: auto; overscroll-behavior: contain; }
+.cg-recent-col > .cg-section-header { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+.fp-main-row > .fp-alerts::-webkit-scrollbar,
+.eb-scroll::-webkit-scrollbar,
+.mc-table-scroll::-webkit-scrollbar,
+.sb-table-scroll::-webkit-scrollbar,
+.cg-recent-col::-webkit-scrollbar { width: 5px; height: 5px; }
+.fp-main-row > .fp-alerts::-webkit-scrollbar-thumb,
+.eb-scroll::-webkit-scrollbar-thumb,
+.mc-table-scroll::-webkit-scrollbar-thumb,
+.sb-table-scroll::-webkit-scrollbar-thumb,
+.cg-recent-col::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
 .fp-map {
   background: var(--surface); border: 1px solid var(--border); border-radius: 3px; overflow: hidden;
 }
@@ -1455,6 +1494,47 @@ footer.app-footer {
    The live list beside the map is the present; this is the past as well,
    by year and month. Reuses the fp-alert-* type scale so it reads as part
    of the same panel. */
+/* Economic Visibility — insight cards under the night map. The accents match
+   the stat tiles above: rust = unlit, amber = children, green = a check that
+   held, gold = already lit. Numbers use the display serif, like .fp-stat-val. */
+.ev-cards {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
+  padding: 14px 16px 16px; border-top: 1px solid var(--border); background: var(--surface2);
+}
+@media (max-width: 700px) { .ev-cards { grid-template-columns: 1fr; } }
+.ev-card {
+  background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--alert);
+  border-radius: 3px; padding: 12px 14px; display: grid; gap: 5px; align-content: start;
+}
+.ev-card--wide { grid-column: 1 / -1; }
+.ev-card--alert { border-top-color: var(--alert); }
+.ev-card--warn { border-top-color: var(--warn); }
+.ev-card--ok { border-top-color: var(--ok); }
+.ev-card--lit { border-top-color: #d4a017; }
+.ev-card-label { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+.ev-card-num {
+  font-family: 'Playfair Display', Georgia, serif; font-size: 26px; line-height: 1.1;
+  color: var(--ink); font-variant-numeric: tabular-nums;
+}
+.ev-card-num--text { font-size: 20px; }
+.ev-card-sub { font-size: 10px; color: var(--ink2); line-height: 1.5; }
+.ev-bandbar {
+  display: flex; height: 14px; border-radius: 2px; overflow: hidden; background: var(--surface2);
+  margin: 4px 0 2px;
+}
+.ev-band { display: block; height: 100%; min-width: 2px; }
+.ev-band--large, .ev-swatch.ev-band--large { background: #9c3208; }
+.ev-band--mid, .ev-swatch.ev-band--mid { background: #d9622b; }
+.ev-band--small, .ev-swatch.ev-band--small { background: #f0a37a; }
+.ev-bandrows { display: grid; gap: 4px; }
+.ev-bandrow {
+  display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 10px;
+  align-items: center; font-size: 10.5px; color: var(--ink2); font-variant-numeric: tabular-nums;
+}
+.ev-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.ev-bandrow-num { text-align: right; min-width: 92px; }
+.fp-record-scroll { max-height: 560px; }
+
 /* Economic Visibility — LGA planning table (village light). */
 .ev-lga-table-wrap { overflow-x: auto; }
 .ev-lga-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }

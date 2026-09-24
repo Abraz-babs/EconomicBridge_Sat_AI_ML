@@ -223,6 +223,7 @@ export default function AlertRecord({ tenantId, stateLabel, focusedKey, onRevisi
             <div className="fp-alert-empty">Nothing in this view. Try All months or All.</div>
           )}
 
+          <div className="eb-scroll fp-record-scroll">
           {groups.map(([m, list]) => (
             <div key={m}>
               <div className="fp-record-month">
@@ -265,6 +266,7 @@ export default function AlertRecord({ tenantId, stateLabel, focusedKey, onRevisi
               })}
             </div>
           ))}
+          </div>
         </>
       )}
     </section>

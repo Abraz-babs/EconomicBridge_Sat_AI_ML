@@ -174,7 +174,7 @@ export default function AidCoordinationPanel() {
       <div className="fp-main-row fp-main-row--equal">
         <div className="fp-timeline">
           <div className="fp-timeline-header">Coverage Gaps — {stateLabel}</div>
-          <div className="fp-timeline-body">
+          <div className="fp-timeline-body eb-scroll">
             {!stats || stats.gap_lgas.length === 0 ? (
               <div className="fp-alert-empty">
                 {stats
