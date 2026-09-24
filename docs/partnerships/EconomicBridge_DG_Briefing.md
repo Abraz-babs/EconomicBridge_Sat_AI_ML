@@ -83,7 +83,7 @@ Every layer carries its satellite and product, provider, licence, attribution, a
 |---|---|---|
 | **Copernicus Sentinel-1 & 2 (ESA/EU)** | Allowed — free, full and open | *"Contains modified Copernicus Sentinel data [year]"* |
 | **NASA — FIRMS, VIIRS Black Marble, GPM IMERG** | Allowed — US public domain | Cite the product |
-| **GRID3 LGA boundaries, WorldPop, World Bank** | Allowed — CC BY 4.0 | Attribution |
+| **GRID3 LGA boundaries & settlement names, Meta & CIESIN HRSL population, WorldPop, World Bank** | Allowed — CC BY 4.0 | Attribution |
 | **Esri / Impact Observatory land cover** | Allowed — CC BY 4.0 | Attribution |
 
 **Audit trail:** every ingestion run is recorded, success or failure — **4,425 runs** to date across eight feeds — and a watchdog checks staleness daily.
