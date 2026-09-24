@@ -68,7 +68,7 @@ So we rebuilt it on the **open Sentinel archive** (STAC catalogue, cloud-optimis
 - **Leaf diagnosis:** a trained 12-class ResNet-50 reaches **87% on held-out laboratory images**. It has **not yet been validated on field photographs** and should be treated as a field-officer aid, not a diagnosis. Field-condition ground truth is one of the things a NASRDA partnership would provide.
 
 ### Economic Visibility, Aid Coordination, Economic Mobility, SkillsBridge
-- **Economic Visibility:** VIIRS Black Marble night-light radiance per pixel, with WorldPop population.
+- **Economic Visibility:** night light (NASA VIIRS Black Marble) and population (Meta & CIESIN HRSL) measured at all **76,995 named villages** in the eight pilots: **84% show no light at night — about 25.6 million people, 5 million of them under five.** It measures light visible from space, not income; it tells a state where to look first.
 - **Aid Coordination:** connected to OCHA HDX operational-presence data, which today covers only north-east Nigeria (Borno, Yobe, Adamawa), so it holds no records for the pilot states yet.
 - **Mobility:** World Bank income and employment indicators, Nigeria NLSS calibration.
 - **SkillsBridge:** UNICEF GIGA school access and connectivity.
