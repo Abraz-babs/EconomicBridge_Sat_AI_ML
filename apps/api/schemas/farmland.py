@@ -8,6 +8,7 @@ migration 0003). Drift between them would be a bug — keep them in sync.
 """
 from __future__ import annotations
 
+from datetime import date
 from enum import Enum
 from typing import Annotated
 from uuid import UUID
@@ -94,6 +95,64 @@ class FireStatusData(BaseModel):
     detections_24h: int = 0
     detections_7d: int = 0
     source: str = "NASA FIRMS (MODIS + VIIRS)"
+
+
+class RecordEntryKind(str, Enum):
+    """What an alert-record entry is."""
+
+    RADAR_WATCH = "radar_watch"            # one LGA-level watch episode
+    LAND_CHANGE_SCAN = "land_change_scan"  # one seasonal scan's patches
+    OFFICER_CLOSED = "officer_closed"      # an alert an officer acted on
+
+
+class RecordEntryStatus(str, Enum):
+    ACTIVE = "active"            # still on the live alert list
+    ENDED = "ended"              # its LGA read calm at the next revisit
+    RESOLVED = "resolved"
+    ACKNOWLEDGED = "acknowledged"
+    DISMISSED = "dismissed"
+    SUPERSEDED = "superseded"    # a land-change scan replaced by a later one
+
+
+class RecordRead(BaseModel):
+    """One satellite read inside a watch episode."""
+
+    day: date
+    score: float | None = None
+    sigma: float | None = None
+
+
+class RecordEntry(BaseModel):
+    """One entry in the alert record — past or present."""
+
+    kind: RecordEntryKind
+    status: RecordEntryStatus
+    lga: str | None = None
+    start: date
+    end: date
+    reads: list[RecordRead] = []
+    severity: AlertSeverity | None = None
+    peak_score: float | None = None
+    peak_sigma: float | None = None
+    summary: str | None = None
+    location: LonLat | None = None
+    affected_area_ha: float | None = None
+    livelihoods_at_risk: int | None = None
+    # Land-change scans only: how many patches, across how many LGAs, and where.
+    patches: int | None = None
+    lgas: int | None = None
+    points: list[LonLat] = []
+
+
+class RecordData(BaseModel):
+    """Payload of SuccessResponse[RecordData] for GET /farmland/record."""
+
+    year: int | None
+    years: list[int]
+    # First day radar watches were kept permanently for this tenant (migration
+    # 0045). Anything the panel shows before it came from officer actions.
+    watches_kept_since: date | None
+    entries: list[RecordEntry]
 
 
 class AlertStatusPatch(BaseModel):

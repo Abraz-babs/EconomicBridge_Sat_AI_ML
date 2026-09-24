@@ -26,8 +26,10 @@ from schemas.farmland import (
     AlertStatusPatch,
     AlertType,
     FireStatusData,
+    RecordData,
 )
 from services import farmland as farmland_service
+from services import farmland_record
 from services.auto_notify import fire_conflict_notification
 
 router = APIRouter(prefix="/farmland", tags=["farmland"])
@@ -174,6 +176,34 @@ async def fire_status(
             detections_24h=detections_24h,
             detections_7d=detections_7d,
         ),
+        meta=ResponseMeta(
+            tenant_id=None, trace_id=_trace_id(request),
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
+
+
+@router.get(
+    "/record",
+    response_model=SuccessResponse[RecordData],
+    summary="The alert record — past and present alerts for one year",
+    description=(
+        "Every alert the platform raised for the tenant in a year: radar watches "
+        "grouped into episodes, land-change scans, and alerts an officer "
+        "acknowledged, resolved or dismissed — including ones no longer on the "
+        "live list. Omit `year` for the most recent year with entries."
+    ),
+)
+async def alert_record(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    year: Annotated[int | None, Query(ge=2020, le=2100)] = None,
+) -> SuccessResponse[RecordData]:
+    """Return one year of the tenant's alert record."""
+    tenant_id = _require_tenant(request)
+    data = await farmland_record.build_record(session, tenant_id, year)
+    return SuccessResponse(
+        data=data,
         meta=ResponseMeta(
             tenant_id=None, trace_id=_trace_id(request),
             timestamp=datetime.now(timezone.utc),

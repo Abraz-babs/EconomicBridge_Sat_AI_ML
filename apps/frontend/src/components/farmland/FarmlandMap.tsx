@@ -158,6 +158,9 @@ interface Props {
   tenant: Tenant;
   /** Opt-in: clicking an alert pin calls this (Alert Spotlight selection). */
   onAlertClick?: (alert: FarmlandAlertPoint) => void;
+  /** Points revisited from the Alert record, drawn as hollow white rings.
+   *  Pass a memoised array — the reference is the layer's data key. */
+  revisit?: FarmlandAlertPoint[];
 }
 
 interface HoverInfo {
@@ -166,7 +169,11 @@ interface HoverInfo {
   alert: FarmlandAlertPoint;
 }
 
-export default function FarmlandMap({ alerts, activeLayer, tenant, onAlertClick }: Props) {
+const NO_REVISIT: FarmlandAlertPoint[] = [];
+
+export default function FarmlandMap({
+  alerts, activeLayer, tenant, onAlertClick, revisit = NO_REVISIT,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Latest click handler via ref so the layer-composition effect's deps
   // don't grow (same pattern as EBMap's clickRef).
@@ -315,6 +322,19 @@ export default function FarmlandMap({ alerts, activeLayer, tenant, onAlertClick 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setHover(null);
   }, [tenant.id, tenant.centroid, mapStatus]);
+
+  // Fly to whatever the Alert record is revisiting: close in on one alert,
+  // wider for a land-change scan's spread of patches. Clearing a revisit
+  // leaves the view where the reader put it.
+  useEffect(() => {
+    if (mapStatus !== 'ready' || revisit.length === 0) return;
+    const map = mapRef.current as
+      | { flyTo: (o: { center: [number, number]; zoom: number; duration: number }) => void }
+      | null;
+    const lon = revisit.reduce((s, p) => s + p.longitude, 0) / revisit.length;
+    const lat = revisit.reduce((s, p) => s + p.latitude, 0) / revisit.length;
+    map?.flyTo({ center: [lon, lat], zoom: revisit.length === 1 ? 9 : 7, duration: 1200 });
+  }, [revisit, mapStatus]);
 
   // Sync the dated Esri Wayback imagery in/out as a raster layer on the
   // MAPBOX style itself — not the deck overlay — so the pulse-perf pattern
@@ -544,9 +564,29 @@ export default function FarmlandMap({ alerts, activeLayer, tenant, onAlertClick 
         })
       );
 
+      // ── Revisited from the Alert record (hollow white rings) ─────────
+      // Static radius, no pulse trigger: it never re-evaluates on the tick.
+      if (revisit.length > 0) {
+        layers.push(
+          new ScatterplotLayer<FarmlandAlertPoint>({
+            id: 'farmland-revisit',
+            data: revisit,
+            getPosition: (a) => [a.longitude, a.latitude],
+            getRadius: () => 13,
+            radiusUnits: 'pixels',
+            filled: false,
+            stroked: true,
+            getLineColor: [255, 255, 255, 235],
+            lineWidthUnits: 'pixels',
+            getLineWidth: () => 2,
+            pickable: false,
+          })
+        );
+      }
+
       overlay.setProps({ layers });
     })();
-  }, [activeLayer, alerts, active, pulseAlerts, mapStatus, pulse, tenant.centroid, tenant.type]);
+  }, [activeLayer, alerts, active, pulseAlerts, mapStatus, pulse, tenant.centroid, tenant.type, revisit]);
 
   // Drop Deck layer buffers while the browser tab is hidden, then rebuild the
   // current layers on return via the pulse dependency above.
@@ -694,6 +734,12 @@ export default function FarmlandMap({ alerts, activeLayer, tenant, onAlertClick 
           <div className="fp-legend-dot fp-legend-dot--resolved" />
           Resolved / mediated
         </div>
+        {revisit.length > 0 && (
+          <div className="fp-legend-item">
+            <div className="fp-legend-dot fp-legend-dot--revisit" />
+            Revisited from the record
+          </div>
+        )}
       </div>
 
       <div className="fp-map-overlay">

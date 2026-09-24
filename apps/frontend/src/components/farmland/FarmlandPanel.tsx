@@ -10,9 +10,46 @@ import {
   useResolveAlert,
   type AlertResponse,
   type AlertSeverity,
+  type RecordEntry,
 } from '@/hooks/useFarmlandAlerts';
+import AlertRecord from './AlertRecord';
 import AlertSpotlight from './AlertSpotlight';
 import FarmlandMap, { type FarmlandAlertPoint } from './FarmlandMap';
+
+/** A record entry in the shape the Spotlight already renders, so a revisited
+ *  alert gets the same imagery deep-dive as a live one without the Spotlight
+ *  changing. Deliberately no ETA: a past watch must not ask for field
+ *  verification "within 96 h". The detected date is when it was first raised. */
+function recordToAlert(e: RecordEntry, key: string, tenantId: string): AlertResponse | null {
+  if (!e.location) return null;
+  const status: AlertResponse['status'] =
+    e.status === 'resolved' || e.status === 'acknowledged' || e.status === 'dismissed'
+      ? e.status
+      : 'pending_review';
+  return {
+    id: `record:${key}`,
+    tenant_id: tenantId,
+    alert_type: 'conflict',
+    severity: e.severity ?? 'low',
+    status,
+    zone_name: e.summary,
+    lga: e.lga,
+    location: e.location,
+    confidence_score: e.peak_score,
+    affected_area_ha: e.affected_area_ha,
+    livelihoods_at_risk: e.livelihoods_at_risk,
+    economic_value_ngn: null,
+    predicted_breach_hours: null,
+    satellite_source: null,
+    satellite_pass_time: null,
+    model_name: 'alert_record',
+    model_version: null,
+    human_review_required: true,
+    agencies_notified: null,
+    created_at: `${e.start}T00:00:00Z`,
+    updated_at: `${e.end}T00:00:00Z`,
+  };
+}
 
 type MapLayerKey = 'heat' | 'ndvi' | 'sar' | 'boundary';
 
@@ -324,6 +361,9 @@ export default function FarmlandPanel() {
   // stopped by its Stop chip, any manual selection, or a tenant switch.
   const [touring, setTouring] = useState(false);
 
+  // An entry from the Alert record being revisited on the map + Spotlight.
+  const [revisit, setRevisit] = useState<{ key: string; entry: RecordEntry } | null>(null);
+
   // A spotlighted alert belongs to one tenant's dataset — clear selection
   // and stop any tour when the viewer switches tenants (same pattern as the
   // map's hover reset).
@@ -331,6 +371,7 @@ export default function FarmlandPanel() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSpotlightId(null);
     setTouring(false);
+    setRevisit(null);
   }, [activeTenantId]);
 
   const query = useFarmlandAlerts({ tenantId: activeTenantId, perPage: 50 });
@@ -418,10 +459,29 @@ export default function FarmlandPanel() {
 
   // Resolve the spotlighted alert from the *unfiltered* list so a selection
   // survives provenance-chip changes.
-  const spotlightAlert = useMemo(
-    () => allAlerts.find((a) => a.id === spotlightId) ?? null,
-    [allAlerts, spotlightId],
+  const revisitAlert = useMemo(
+    () => (revisit ? recordToAlert(revisit.entry, revisit.key, activeTenantId) : null),
+    [revisit, activeTenantId],
   );
+  const spotlightAlert = useMemo(
+    () => revisitAlert ?? allAlerts.find((a) => a.id === spotlightId) ?? null,
+    [revisitAlert, allAlerts, spotlightId],
+  );
+
+  // Rings on the map for the revisited entry: its one location, or every
+  // patch of a land-change scan. Memoised — the map keys its layer on it.
+  const revisitPoints = useMemo<FarmlandAlertPoint[]>(() => {
+    if (!revisit) return [];
+    const e = revisit.entry;
+    const pts = e.location ? [e.location] : e.points;
+    return pts.map((p, i) => ({
+      id: `revisit:${i}`,
+      location: `${stateLabel} — ${e.lga ?? 'land-change scan'}`,
+      longitude: p.lon,
+      latitude: p.lat,
+      severity: e.severity ?? 'low',
+    }));
+  }, [revisit, stateLabel]);
 
   // The tour route: active, located watches in feed order.
   const tourList = useMemo(
@@ -461,6 +521,7 @@ export default function FarmlandPanel() {
    *  a reader elsewhere on the page. */
   const selectManually = (id: string | null) => {
     setTouring(false);
+    setRevisit(null);
     setSpotlightId(id);
     if (id) {
       // Two frames so React has painted the (re)mounted panel before we
@@ -474,6 +535,21 @@ export default function FarmlandPanel() {
         });
       }));
     }
+  };
+
+  /** Revisit an entry from the Alert record: ring it on the map and, when it
+   *  has one location, open it in the Spotlight. A land-change scan has many
+   *  patches, so it lands the reader on the map instead. */
+  const revisitEntry = (entry: RecordEntry, key: string) => {
+    setTouring(false);
+    setSpotlightId(null);
+    setRevisit({ key, entry });
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.getElementById(entry.location ? 'alert-spotlight' : 'farmland-map')?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'start',
+      });
+    }));
   };
 
   return (
@@ -635,7 +711,7 @@ export default function FarmlandPanel() {
 
       {/* MAP + ALERT FEED */}
       <div className="fp-main-row">
-        <div className="fp-map">
+        <div className="fp-map" id="farmland-map">
           <div className="fp-map-header">
             <span className="fp-map-title">
               Encroachment &amp; Boundary Monitor — {stateLabel}
@@ -658,6 +734,7 @@ export default function FarmlandPanel() {
             activeLayer={activeMapLayer}
             tenant={activeTenant}
             onAlertClick={(p) => selectManually(p.id)}
+            revisit={revisitPoints}
           />
           {/* Alert Spotlight — fills the column under the map. Idle = state
               briefing (+ tour start); click a halo / card Spotlight → deep-dive. */}
@@ -669,6 +746,16 @@ export default function FarmlandPanel() {
             onClose={() => selectManually(null)}
             touring={touring}
             onToggleTour={() => setTouring((t) => !t)}
+          />
+          {/* Alert record — the past as well as the present, by year and
+              month, in the space under the Spotlight. Keyed by tenant so a
+              switch starts from that tenant's latest year. */}
+          <AlertRecord
+            key={activeTenantId}
+            tenantId={activeTenantId}
+            stateLabel={stateLabel}
+            focusedKey={revisit?.key ?? null}
+            onRevisit={revisitEntry}
           />
         </div>
 

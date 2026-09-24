@@ -1320,6 +1320,7 @@ footer.app-footer {
 .fp-legend-dot--critical { background: #ff4500; }
 .fp-legend-dot--high     { background: #ff8c00; }
 .fp-legend-dot--resolved { background: #52b788; }
+.fp-legend-dot--revisit  { background: transparent; border: 2px solid #fff; border-radius: 50%; }
 .fp-legend-dot--boundary { background: #52b788; }
 .fp-legend-dot--flood    { background: #41aeda; }
 
@@ -1449,6 +1450,60 @@ footer.app-footer {
 
 .fp-alert-desc { font-size: 10px; color: var(--ink2); line-height: 1.5; margin-bottom: 5px; }
 .fp-alert-meta { font-size: 9px; color: var(--muted); letter-spacing: 1px; display: flex; gap: 10px; }
+
+/* ── Alert record — fills the map column under the Spotlight ───────────
+   The live list beside the map is the present; this is the past as well,
+   by year and month. Reuses the fp-alert-* type scale so it reads as part
+   of the same panel. */
+.fp-record { border-top: 1px solid var(--border); }
+.fp-record-head {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
+  font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--ink2);
+}
+.fp-record-year { display: flex; align-items: center; gap: 6px; }
+.fp-record-year select {
+  font-family: 'DM Mono', monospace; font-size: 11px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 2px; padding: 3px 6px;
+}
+.fp-record-tools {
+  padding: 9px 16px; display: flex; flex-wrap: wrap; gap: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.fp-record-summary {
+  padding: 10px 16px; font-size: 10px; color: var(--muted); line-height: 1.6;
+  border-bottom: 1px solid var(--border);
+}
+.fp-record-summary b { color: var(--ink2); font-weight: 500; }
+.fp-record-month {
+  padding: 8px 16px; background: var(--surface2); border-bottom: 1px solid var(--border);
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--ink2);
+  display: flex; justify-content: space-between;
+}
+.fp-record-entry {
+  display: grid; grid-template-columns: 3px minmax(0, 1fr);
+  border-bottom: 1px solid var(--border);
+}
+.fp-record-entry.is-focused { background: #fbf3ee; }
+.fp-record-stripe { background: var(--dim); }
+.fp-record-entry--active .fp-record-stripe { background: var(--alert); }
+.fp-record-entry--resolved .fp-record-stripe,
+.fp-record-entry--acknowledged .fp-record-stripe { background: var(--ok); }
+.fp-record-body { padding: 11px 14px; display: grid; gap: 5px; min-width: 0; }
+.fp-record-foot {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;
+}
+.fp-record-chip {
+  font-size: 8px; letter-spacing: 1px; padding: 2px 7px; border-radius: 2px;
+  text-transform: uppercase; white-space: nowrap;
+}
+.fp-record-chip--active { background: #fde8e1; color: var(--alert); }
+.fp-record-chip--ended,
+.fp-record-chip--superseded,
+.fp-record-chip--dismissed { background: var(--surface2); color: var(--muted); }
+.fp-record-chip--resolved,
+.fp-record-chip--acknowledged { background: #d8f3dc; color: var(--ok); }
+.fp-record-meta { font-variant-numeric: tabular-nums; }
 
 .fp-timeline {
   background: var(--surface); border: 1px solid var(--border); border-radius: 3px; overflow: hidden;

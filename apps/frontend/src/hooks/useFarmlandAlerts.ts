@@ -143,6 +143,63 @@ export function useFireStatus(
   });
 }
 
+// ─── The alert record: past and present alerts, one year at a time ──────
+
+/** Mirrors RecordEntry in apps/api/schemas/farmland.py — keep in sync. */
+export type RecordEntryKind = 'radar_watch' | 'land_change_scan' | 'officer_closed';
+export type RecordEntryStatus =
+  | 'active'
+  | 'ended'
+  | 'resolved'
+  | 'acknowledged'
+  | 'dismissed'
+  | 'superseded';
+
+export interface RecordEntry {
+  kind: RecordEntryKind;
+  status: RecordEntryStatus;
+  lga: string | null;
+  start: string;
+  end: string;
+  reads: { day: string; score: number | null; sigma: number | null }[];
+  severity: AlertSeverity | null;
+  peak_score: number | null;
+  peak_sigma: number | null;
+  summary: string | null;
+  location: { lon: number; lat: number } | null;
+  affected_area_ha: number | null;
+  livelihoods_at_risk: number | null;
+  patches: number | null;
+  lgas: number | null;
+  points: { lon: number; lat: number }[];
+}
+
+export interface AlertRecord {
+  year: number | null;
+  years: number[];
+  watches_kept_since: string | null;
+  entries: RecordEntry[];
+}
+
+/** GET /api/v1/farmland/record — one year of the tenant's alert record.
+ *  `year` undefined = the most recent year with entries. */
+export function useAlertRecord(
+  tenantId: string,
+  year?: number,
+): UseQueryResult<AlertRecord, ApiException> {
+  return useQuery<AlertRecord, ApiException>({
+    queryKey: ['farmland-record', tenantId, year ?? null],
+    enabled: Boolean(tenantId),
+    queryFn: async ({ signal }) => {
+      const envelope: SuccessEnvelope<AlertRecord> = await apiFetch<AlertRecord>(
+        `/farmland/record${year ? `?year=${year}` : ''}`,
+        { tenantId, signal },
+      );
+      return envelope.data;
+    },
+  });
+}
+
 // ─── Mutation: mark an alert resolved / acknowledged / dismissed ─────────
 
 export interface ResolveAlertInput {
