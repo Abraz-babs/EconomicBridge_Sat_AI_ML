@@ -69,7 +69,7 @@ So we rebuilt it on the **open Sentinel archive** (STAC catalogue, cloud-optimis
 
 ### Economic Visibility, Aid Coordination, Economic Mobility, SkillsBridge
 - **Economic Visibility:** night light (NASA VIIRS Black Marble) and population (Meta & CIESIN HRSL) measured at all **76,995 named villages** in the eight pilots: **84% show no light at night — about 25.6 million people, 5 million of them under five.** It measures light visible from space, not income; it tells a state where to look first.
-- **Aid Coordination:** connected to OCHA HDX operational-presence data, which today covers only north-east Nigeria (Borno, Yobe, Adamawa), so it holds no records for the pilot states yet.
+- **Aid Coordination:** who reports aid activity where, from the activities organisations publish themselves through IATI. In the eight pilots, 4 to 10 organisations per state report current activity, at sites in 3 to 14 LGAs. The rest is statewide. An LGA with no reported activity is not an LGA without aid, because state agencies and many NGOs do not publish to IATI.
 - **Mobility:** World Bank income and employment indicators, Nigeria NLSS calibration.
 - **SkillsBridge:** UNICEF GIGA school access and connectivity.
 
@@ -85,6 +85,7 @@ Every layer carries its satellite and product, provider, licence, attribution, a
 | **NASA — FIRMS, VIIRS Black Marble, GPM IMERG** | Allowed — US public domain | Cite the product |
 | **GRID3 LGA boundaries & settlement names, Meta & CIESIN HRSL population, WorldPop, World Bank** | Allowed — CC BY 4.0 | Attribution |
 | **Esri / Impact Observatory land cover** | Allowed — CC BY 4.0 | Attribution |
+| **IATI aid activity (via d-portal)** | Allowed — each publisher's declared open licence | Attribution to IATI and the publishing organisation |
 
 **Audit trail:** every ingestion run is recorded, success or failure — **4,425 runs** to date across eight feeds — and a watchdog checks staleness daily.
 

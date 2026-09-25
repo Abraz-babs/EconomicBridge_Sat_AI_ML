@@ -81,8 +81,9 @@ def _build(out: Path, story: list, title: str, side_mm: float = 18) -> Path:
 # EconomicBridge, Planet/Maxar, EOS/Farmonaut, Digital Earth Africa.
 # EconomicBridge's own partial marks are measured, not modest: the disease
 # model has passed laboratory images only, the 2024 Kebbi flood backtest
-# scored 0 of 11 (so it reports storms and extreme rain, not floods), and the
-# HDX aid feed covers only north-east Nigeria, none of the pilot states.
+# scored 0 of 11 (so it reports storms and extreme rain, not floods), and aid
+# coverage is what organisations publish to IATI (since 2026-09-25; HDX covers
+# only the north-east) — reported activity, not all aid, so still partial.
 _CAPS = [
     ("AI crop-disease diagnosis (from a leaf photo)", "pnnn"),
     ("Satellite crop / vegetation monitoring (NDVI)", "yyyy"),
