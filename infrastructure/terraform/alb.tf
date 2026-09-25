@@ -159,3 +159,41 @@ resource "aws_lb_listener_rule" "service" {
     }
   }
 }
+
+# ─── Public block on the SMS recipient routes (2026-09-25) ───────────────
+#
+# The notifications service's PII routes were gated only by an organisation
+# id sent in a header — and the id that opens them was hard-coded in the
+# dashboard's public source. With it, anyone could read the Kebbi farmer
+# leaders' names and phone numbers (/subscribers) and send them a conflict
+# SMS (/notify/conflict). Blocked here, ahead of the /notifications/* forward
+# (priority 400), until the real fix (a private service credential, the id
+# out of the code) lands after the demo.
+#
+# NOT blocked: /notify/advisory — the live rainfall-advisory pipeline calls it
+# through this load balancer; /notify/preview and /notify/outbox — the Admin
+# SMS card (outbox phones are masked). Remove this rule only together with
+# that fix.
+resource "aws_lb_listener_rule" "block_public_sms_pii" {
+  listener_arn = local.active_listener_arn
+  priority     = 390
+
+  action {
+    type = "fixed-response"
+    fixed_response {
+      content_type = "application/json"
+      message_body = "{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Not available from the public internet.\"}}"
+      status_code  = "403"
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = [
+        "/notifications/api/v1/subscribers",
+        "/notifications/api/v1/subscribers/*",
+        "/notifications/api/v1/notify/conflict",
+      ]
+    }
+  }
+}
