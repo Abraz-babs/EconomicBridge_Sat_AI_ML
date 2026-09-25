@@ -36,7 +36,11 @@ each probe states what it measured, not merely pass/fail.
 """
 from __future__ import annotations
 
+import base64
+import json
 import logging
+import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -261,6 +265,63 @@ async def _check_stock(
         ), {"t": tenant, "p": probe.key, "v": current, "now": now})
 
 
+# NASA Earthdata user tokens expire ~60 days after issue and only a person can
+# renew them. The storm engine, the rainfall advisories (and so the farmer SMS)
+# and village light all read NASA archives with it, and until 2026-09-25 the
+# watchdog noticed a lapse only AFTER those feeds had gone stale. It now reads
+# the expiry straight from the token and warns this many days ahead.
+TOKEN_WARN_DAYS = 14
+TOKEN_RENEWAL = (
+    "renew at urs.earthdata.nasa.gov (Generate Token), then "
+    "`aws secretsmanager put-secret-value --secret-id "
+    "/economicbridge/staging/earthdata/token` and force a new deployment of "
+    "the ingestion service"
+)
+
+
+def token_expiry(token: str) -> datetime | None:
+    """The `exp` claim of a JWT, read WITHOUT verifying the signature — only
+    the date is needed, and nothing here trusts the token for anything."""
+    try:
+        body = token.split(".")[1]
+        body += "=" * (-len(body) % 4)
+        exp = json.loads(base64.urlsafe_b64decode(body))["exp"]
+        return datetime.fromtimestamp(int(exp), tz=timezone.utc)
+    except (IndexError, KeyError, TypeError, ValueError):
+        return None
+
+
+def _check_credentials(
+    report: HealthReport, now: datetime, env: Mapping[str, str] | None = None,
+) -> None:
+    """Expiry of the NASA Earthdata token. Never prints the token itself."""
+    token = ((env if env is not None else os.environ).get("EARTHDATA_TOKEN") or "").strip()
+    if not token:
+        report.observations.append("EARTHDATA_TOKEN: not present on this task, not checked")
+        return
+    exp = token_expiry(token)
+    if exp is None:
+        report.findings.append(Finding(
+            "warning", "EARTHDATA_TOKEN",
+            f"its expiry date could not be read — check it; {TOKEN_RENEWAL}",
+        ))
+        return
+    days = (exp - now).total_seconds() / 86400.0
+    if days < 0:
+        report.findings.append(Finding(
+            "critical", "EARTHDATA_TOKEN",
+            f"EXPIRED {exp:%Y-%m-%d} — the storm engine, rainfall advisories and "
+            f"village light cannot read NASA data; {TOKEN_RENEWAL}",
+        ))
+    elif days <= TOKEN_WARN_DAYS:
+        report.findings.append(Finding(
+            "warning", "EARTHDATA_TOKEN",
+            f"expires {exp:%Y-%m-%d} (in {days:.0f} days); {TOKEN_RENEWAL}",
+        ))
+    else:
+        report.observations.append(f"EARTHDATA_TOKEN: expires {exp:%Y-%m-%d} ({days:.0f} days)")
+
+
 async def run_health_check(
     session: AsyncSession, tenants: list[str], *, now: datetime | None = None,
 ) -> HealthReport:
@@ -269,6 +330,7 @@ async def run_health_check(
     report = HealthReport(checked_at=now)
 
     await _check_staleness(session, report, now)
+    _check_credentials(report, now)
 
     from services.tenants import tenant_schema_name
 

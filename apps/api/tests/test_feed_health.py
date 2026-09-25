@@ -217,3 +217,54 @@ def test_every_live_shockguard_feed_is_watched_for_staleness() -> None:
     assert not unwatched, (
         f"live on the panel but nothing watches staleness: {unwatched}"
     )
+
+
+# ─── Earthdata token expiry ──────────────────────────────────────────────
+
+def _jwt(exp: datetime) -> str:
+    import base64
+    import json
+    part = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip("=")  # noqa: E731
+    return f"{part({'alg': 'RS256'})}.{part({'exp': int(exp.timestamp()), 'uid': 'x'})}.sig"
+
+
+def _creds(token: str | None) -> "HealthReport":
+    from services.feed_health import HealthReport, _check_credentials
+    now = datetime(2026, 9, 25, tzinfo=timezone.utc)
+    r = HealthReport(checked_at=now)
+    _check_credentials(r, now, env={} if token is None else {"EARTHDATA_TOKEN": token})
+    return r
+
+
+def test_token_expiry_is_read_from_the_jwt() -> None:
+    from services.feed_health import token_expiry
+    exp = datetime(2026, 11, 16, tzinfo=timezone.utc)
+    assert token_expiry(_jwt(exp)) == exp
+    assert token_expiry("not-a-jwt") is None
+
+
+def test_a_distant_expiry_is_only_an_observation() -> None:
+    r = _creds(_jwt(datetime(2026, 11, 16, tzinfo=timezone.utc)))
+    assert r.healthy and "2026-11-16" in r.observations[0]
+
+
+def test_two_weeks_out_is_a_warning_with_the_renewal_steps() -> None:
+    r = _creds(_jwt(datetime(2026, 10, 5, tzinfo=timezone.utc)))
+    (f,) = r.findings
+    assert f.severity == "warning" and "urs.earthdata.nasa.gov" in f.detail
+
+
+def test_an_expired_token_is_critical() -> None:
+    (f,) = _creds(_jwt(datetime(2026, 9, 1, tzinfo=timezone.utc))).findings
+    assert f.severity == "critical" and "EXPIRED" in f.detail
+
+
+def test_the_token_itself_is_never_reported() -> None:
+    token = _jwt(datetime(2026, 10, 1, tzinfo=timezone.utc))
+    r = _creds(token)
+    assert all(token not in (f.detail + f.subject) for f in r.findings)
+    assert all(token not in o for o in r.observations)
+
+
+def test_a_missing_token_is_not_a_finding() -> None:
+    assert _creds(None).healthy
