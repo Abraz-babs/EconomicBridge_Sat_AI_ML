@@ -192,3 +192,8 @@ docs/partnerships/NASRDA_Meeting_Prep.*
 # until it has been used.
 docs/partnerships/EconomicBridge_Joint_Projects.md
 docs/partnerships/EconomicBridge_NASRDA_Joint_Projects.pdf
+
+# Legal drafts under review — published only once the directors approve them.
+docs/legal/drafts/
+# Security review records list weaknesses; the repository is public.
+docs/security/
