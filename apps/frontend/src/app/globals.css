@@ -3254,3 +3254,72 @@ nav::-webkit-scrollbar {
   border-color: #e05a2b; color: #e05a2b; background: rgba(224,90,43,0.08);
 }
 .cg-recent-remove:disabled { opacity: 0.4; cursor: default; }
+
+/* ─── Published legal texts (/privacy, /terms) ───────────────────────────
+   Laid out like the company's official documents (the 24 July 2026
+   letterhead standard): centred logo, dark-green rule, registered name and
+   RC number, serif text. Long-form reading, so a text face rather than the
+   dashboard's DM Mono; the labels keep DM Mono. */
+.legal {
+  --legal-green: #136b3a;
+  width: 100%; min-width: 0; background: var(--surface); color: var(--ink);
+  font-family: Georgia, 'Times New Roman', Times, serif;
+}
+/* The dashboard styles bare header / main / nav (row layout, borders,
+   padding); these pages are documents, so undo that here. min-width: 0 lets
+   this flex child shrink to a phone's width instead of growing to the
+   widest table — the tables scroll inside their own box. */
+.legal header, .legal main, .legal nav {
+  display: block; flex: none; gap: 0; background: none; border: 0; overflow: visible;
+}
+.legal .legal-head { max-width: 760px; margin: 0 auto; padding: 36px 16px 8px; text-align: center; }
+.legal-logo { width: 150px; height: auto; display: inline-block; }
+.legal-rule { height: 2px; background: var(--legal-green); margin: 14px 0 12px; }
+.legal-company { font-weight: 700; font-size: 17px; letter-spacing: .02em; color: var(--legal-green); }
+.legal-rc { font-size: 14px; color: var(--ink2); margin-top: 2px; }
+
+.legal .legal-body { max-width: 760px; margin: 0 auto; padding: 28px 16px 48px; font-size: 17px; line-height: 1.65; }
+.legal-kicker {
+  font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--legal-green); margin-bottom: 6px;
+}
+.legal-body h1 {
+  font-family: 'Playfair Display', Georgia, serif; font-weight: 700;
+  font-size: clamp(30px, 5vw, 40px); line-height: 1.15; text-wrap: balance; color: var(--ink);
+}
+.legal .legal-updated { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted); margin: 10px 0 28px; }
+.legal-body article > p:first-child { color: var(--ink2); }
+.legal-body h2 {
+  font-family: 'Playfair Display', Georgia, serif; font-size: 23px; font-weight: 700;
+  color: var(--legal-green); margin: 38px 0 10px; text-wrap: balance; scroll-margin-top: 16px;
+}
+.legal-body h3 { font-size: 18px; font-weight: 700; margin: 24px 0 8px; color: var(--ink); }
+.legal-body p { margin: 0 0 14px; max-width: 68ch; }
+.legal-body ul { margin: 0 0 16px 1.2em; max-width: 68ch; }
+.legal-body li { margin: 0 0 6px; }
+.legal-body strong { color: var(--ink); }
+.legal-body a { color: var(--legal-green); text-decoration: underline; text-underline-offset: 2px; }
+.legal-body a:focus-visible, .legal-foot a:focus-visible, .legal-logo-link:focus-visible {
+  outline: 2px solid var(--legal-green); outline-offset: 2px;
+}
+.legal-table { overflow-x: auto; max-width: 100%; margin: 6px 0 20px; border: 1px solid var(--border); }
+.legal-table table { border-collapse: collapse; width: 100%; font-size: 15px; line-height: 1.5; }
+.legal-table th {
+  background: var(--legal-green); color: #fff; text-align: left; font-weight: 700;
+  padding: 9px 12px; vertical-align: top;
+}
+.legal-table td { padding: 9px 12px; border-top: 1px solid var(--border); vertical-align: top; min-width: 120px; }
+.legal-table tr:nth-child(even) td { background: var(--surface2); }
+
+.legal-foot {
+  border-top: 1px solid var(--border); padding: 22px 16px 32px; text-align: center;
+  font-family: 'DM Mono', monospace; font-size: 12px; color: var(--muted);
+}
+.legal .legal-foot nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 22px; margin-bottom: 10px; padding: 0; }
+.legal-foot a { color: var(--ink2); }
+.legal-foot a:hover { color: var(--legal-green); }
+@media (max-width: 600px) {
+  .legal .legal-body { font-size: 16px; }
+  .legal-logo { width: 120px; }
+  .legal-company { font-size: 15px; }
+}
