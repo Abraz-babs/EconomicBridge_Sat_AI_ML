@@ -137,6 +137,11 @@ jobs:
           cd apps/frontend
           npm run lint
 
+      - name: Unit tests
+        run: |
+          cd apps/frontend
+          npm test
+
       - name: Build (production)
         env:
           # Build-time public env vars. CI builds with placeholders;
