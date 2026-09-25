@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EconomicBridge — Every village. Every field. Read from orbit.</title>
+<meta name="description" content="EconomicBridge, by Bizra Farms Integrated, turns NASA and Copernicus satellites into village- and field-level intelligence for Nigerian states: farmland that stopped growing, villages dark at night, where extreme rain fell — each figure with its source and measured accuracy.">
+<meta name="theme-color" content="#0b0f0e">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+<style>
+/* EconomicBridge front page — "Night Survey" face, with the Field Ledger and
+   Operating Picture sections (operator's choice, 25 Sep 2026). Colour means
+   data: amber = light seen at night, green = growing farmland, blue = rain.
+   Every figure on this page is a measured one; see docs/partnerships. */
+:root{
+  --night:#0b0f0e; --night-2:#111715; --night-line:#1f2a26; --night-line-2:#2c3a35;
+  --night-ink:#eef1ea; --night-ink-2:#c6cfc9; --night-muted:#97a59c;
+  --amber:#ffc466; --leaf-d:#9fd68f; --rain-d:#8cbde6;
+  --paper:#f3f4ef; --paper-2:#fbfbf8; --paper-line:#d5d9cf;
+  --ink:#17201b; --ink-2:#3c4a41; --muted:#56625a;
+  --leaf:#2f6b3a; --rain:#1d5fae; --amber-ink:#6b4507;
+  --display:Archivo,"Helvetica Neue",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --serif:Newsreader,Georgia,"Times New Roman",serif;
+  --gutter:64px; --maxw:1312px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--night);color:var(--night-ink);font-family:var(--display);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+img{max-width:100%;display:block}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+.wrap{max-width:calc(var(--maxw) + 2 * var(--gutter));margin:0 auto;padding:0 var(--gutter)}
+.kicker{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--night-muted)}
+.src{font-family:var(--mono);font-size:11.5px;line-height:1.55;letter-spacing:.02em;color:var(--night-muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:52px;padding:0 26px;font:600 15.5px/1 var(--display);text-decoration:none;border-radius:2px;border:1px solid transparent;cursor:pointer}
+.btn-amber{background:var(--amber);color:#1a1406}
+.btn-amber:hover{background:#ffd48a}
+.btn-line{border-color:#3a4a44;color:var(--night-ink)}
+.btn-line:hover{border-color:var(--night-ink)}
+
+/* ── header ── */
+.top{position:sticky;top:0;z-index:20;background:rgba(11,15,14,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--night-line)}
+.top .wrap{height:76px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+.brand{display:flex;align-items:center;gap:14px;text-decoration:none;min-width:0}
+.brand img{height:34px;width:auto;background:#fff;padding:4px 8px;border-radius:3px}
+.brand div{min-width:0}
+.brand b{display:block;font-size:17px;font-weight:700;font-stretch:112%;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand span{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--night-muted)}
+.nav{display:flex;align-items:center;gap:34px;font-size:14.5px;flex:none}
+.nav a{color:var(--night-ink-2);text-decoration:none}
+.nav a:hover{color:var(--night-ink)}
+.nav .btn{min-height:44px;padding:0 20px;background:var(--night-ink);color:var(--night)}
+.menu{display:none}
+
+/* ── hero ── */
+.hero{display:grid;grid-template-columns:minmax(0,760px) minmax(0,1fr);min-height:860px;max-width:calc(var(--maxw) + 2 * var(--gutter));margin:0 auto}
+.hero-copy{padding:84px 24px 64px var(--gutter);display:flex;flex-direction:column;gap:30px;position:relative;z-index:2}
+.hero h1{margin:0;font-size:clamp(42px,5.2vw,72px);line-height:.96;font-weight:800;font-stretch:118%;letter-spacing:-.035em}
+.hero h1 span{display:block}
+.hero p.lead{margin:0;max-width:500px;font-size:18.5px;line-height:1.55;color:var(--night-ink-2);text-wrap:pretty}
+.actions{display:flex;flex-wrap:wrap;gap:12px}
+.proof{margin-top:22px;padding-top:28px;border-top:1px solid var(--night-line);display:flex;flex-direction:column;gap:12px;max-width:600px}
+.proof-row{display:flex;align-items:baseline;gap:18px}
+.proof-num{font-size:clamp(56px,5.6vw,80px);font-weight:800;font-stretch:125%;line-height:.85;letter-spacing:-.04em;color:var(--amber)}
+.proof-row span:not(.proof-num){font-size:17px;line-height:1.45;color:#dfe5e0}
+.hero-map{margin:0;position:relative;overflow:hidden;min-height:620px;background:var(--night)}
+.hero-map picture img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center;padding:28px 24px 28px 0}
+.legend{position:absolute;right:24px;top:40px;width:268px;padding:18px 20px;background:rgba(11,15,14,.88);border:1px solid #23302b;display:flex;flex-direction:column;gap:10px}
+.legend div{display:flex;align-items:center;gap:10px;font-size:13.5px}
+.dot{width:10px;height:10px;border-radius:50%;flex:none}
+.dot-lit{background:var(--amber);box-shadow:0 0 10px var(--amber)}
+.dot-dark{width:8px;height:8px;background:#58706a}
+
+/* ── measured band ── */
+.measured{padding:72px 0 80px;border-top:1px solid var(--night-line)}
+.measured-head{display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:34px}
+.measured h2{margin:0;line-height:1.1;font-size:34px;font-weight:700;font-stretch:112%;letter-spacing:-.02em}
+.cells{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--night-line-2)}
+.cell{padding:26px 28px 0;display:flex;flex-direction:column;gap:10px;border-right:1px solid var(--night-line)}
+.cell:first-child{padding-left:0}
+.cell:last-child{border-right:0;padding-right:0}
+.cell b{font-size:clamp(38px,4vw,50px);font-weight:800;font-stretch:118%;letter-spacing:-.03em;line-height:1.05}
+.cell span:not(.src){font-size:15.5px;line-height:1.45;color:#dfe5e0}
+
+/* ── light sections ── */
+.light{background:var(--paper);color:var(--ink)}
+.light .kicker{color:var(--muted)}
+.light .src{color:var(--muted)}
+.light :focus-visible{outline-color:var(--leaf)}
+
+/* operating picture */
+.op{padding:104px 0 96px}
+.op .wrap{display:grid;grid-template-columns:minmax(0,480px) minmax(0,1fr);gap:64px;align-items:start}
+.op h2{margin:14px 0 18px;font-size:clamp(34px,4vw,50px);line-height:1.04;font-weight:800;font-stretch:112%;letter-spacing:-.03em;text-wrap:balance}
+.op p{margin:0;font-size:17.5px;line-height:1.6;color:var(--ink-2);text-wrap:pretty}
+.panel{background:var(--paper-2);border:1px solid var(--paper-line);border-radius:4px;box-shadow:0 24px 60px rgba(23,32,27,.14);overflow:hidden}
+.panel-top{height:52px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e2e5dd;gap:12px}
+.panel-top b{font-size:15px}
+.tabs{display:flex;gap:4px;font-size:13px}
+.tabs span{height:30px;padding:0 11px;display:inline-flex;align-items:center;color:var(--muted);border-radius:2px}
+.tabs .on{background:var(--ink);color:#fff}
+.panel-body{display:grid;grid-template-columns:230px minmax(0,1fr)}
+.panel-map{position:relative;overflow:hidden;background:var(--night);min-height:420px}
+.panel-map img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:14px 10px 40px}
+.panel-map .tag{position:absolute;left:10px;bottom:10px;font-family:var(--mono);font-size:10.5px;color:#c9d2cb;background:rgba(11,15,14,.82);padding:6px 8px}
+.item{padding:16px 20px;border-bottom:1px solid #e6e9e2;display:flex;flex-direction:column;gap:5px}
+.item:last-child{border-bottom:0}
+.item-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.item-head b{font-size:15px;font-weight:600}
+.item p{margin:0;font-size:13.5px;line-height:1.45;color:var(--ink-2)}
+.chip{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;padding:3px 7px;border-radius:2px;white-space:nowrap}
+.chip-amber{background:#fde9c7;color:var(--amber-ink)}
+.chip-rain{background:#dbe9f7;color:#13467e}
+.chip-grey{background:#e6e9e4;color:var(--ink-2)}
+.chip-leaf{background:#dcefd8;color:#24552c}
+.item .src a{color:var(--rain)}
+
+/* modules */
+.modules{padding:0 0 104px}
+.modules-head{display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-top:48px;border-top:1px solid var(--paper-line);margin-bottom:28px}
+.modules h2{margin:0;line-height:1.1;font-size:30px;font-weight:700;font-stretch:112%;letter-spacing:-.02em}
+.mod-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;border-top:1px solid var(--paper-line);border-left:1px solid var(--paper-line)}
+.mod{padding:22px 22px 24px;border-right:1px solid var(--paper-line);border-bottom:1px solid var(--paper-line);display:flex;flex-direction:column;gap:9px;background:var(--paper-2)}
+.mod-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.mod-head b{font-size:16.5px;font-weight:700}
+.mod p{margin:0;font-size:14.5px;line-height:1.5;color:var(--ink-2)}
+.mod .src{margin-top:auto}
+.mod-alert{background:var(--ink);color:#eef1ea}
+.mod-alert p{color:#c6cfc9}
+.mod-alert .src{color:#97a59c}
+
+/* ledger */
+.ledger{background:var(--paper-2);border-top:1px solid var(--paper-line);border-bottom:1px solid var(--paper-line);padding:96px 0}
+.ledger .wrap{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:72px}
+.ledger h2{margin:0 0 18px;line-height:1.1;font-family:var(--serif);font-size:38px;font-weight:500;letter-spacing:-.01em}
+.row{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;padding:18px 0;border-top:1px solid var(--paper-line)}
+.row:last-child{border-bottom:1px solid var(--paper-line)}
+.row .n{font-family:var(--serif);font-size:34px;font-weight:500;line-height:1.1;color:var(--ink)}
+.row .n.leaf{color:var(--leaf)}
+.row span{font-size:16px;line-height:1.45}
+.claim{padding:18px 0;border-top:1px solid var(--paper-line);display:flex;flex-direction:column;gap:4px}
+.claim:last-child{border-bottom:1px solid var(--paper-line)}
+.claim b{font-size:16.5px}
+.claim span{font-size:15.5px;line-height:1.55;color:var(--ink-2)}
+
+/* reach */
+.reach{padding:96px 0}
+.reach h2{margin:0 0 30px;line-height:1.08;font-size:clamp(30px,3.4vw,40px);font-weight:800;font-stretch:112%;letter-spacing:-.025em}
+.reach-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.card{background:#fff;border:1px solid var(--paper-line);padding:28px;display:flex;flex-direction:column;gap:12px}
+.card b{font-size:20px;font-weight:600;line-height:1.3}
+.card p{margin:0;font-size:15px;line-height:1.55;color:var(--ink-2)}
+.sms{background:#eef1ec;border-radius:12px 12px 12px 3px;padding:14px 16px;font-size:14.5px;line-height:1.5;color:var(--ink)}
+.sms i{font-style:normal;font-family:var(--mono);font-size:13px;color:var(--rain)}
+.card p.small{font-size:13.5px;color:var(--muted)}
+
+/* bizra strip */
+.bizra{padding:0 0 96px}
+.bizra-inner{display:grid;grid-template-columns:420px minmax(0,1fr);background:var(--ink);color:#eef1ea}
+.bizra-inner img{width:100%;height:100%;min-height:260px;object-fit:cover}
+.bizra-copy{padding:40px 48px;display:flex;flex-direction:column;justify-content:center;gap:16px}
+.bizra-copy .kicker{color:var(--leaf-d)}
+.bizra-copy p{margin:0;font-family:var(--serif);font-size:30px;line-height:1.2;font-weight:500;max-width:720px}
+.bizra-stats{display:flex;flex-wrap:wrap;gap:12px 36px;font-size:14.5px;color:#c6cfc9}
+.bizra-stats b{color:#fff;font-size:18px}
+.bizra-copy a{color:var(--leaf-d);font-size:14.5px}
+
+/* briefing */
+.brief{padding:96px 0}
+.brief .wrap{display:grid;grid-template-columns:minmax(0,440px) minmax(0,1fr);gap:64px;align-items:start}
+.brief h2{margin:14px 0 18px;font-size:clamp(34px,4vw,50px);line-height:1.04;font-weight:800;font-stretch:118%;letter-spacing:-.03em;text-wrap:balance}
+.brief p{margin:0 0 22px;font-size:17px;line-height:1.6;color:var(--night-ink-2)}
+.contact{display:flex;flex-direction:column;gap:6px;font-size:15px;color:var(--night-ink-2)}
+.contact a{color:var(--night-ink)}
+form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 18px;background:var(--night-2);border:1px solid var(--night-line);padding:30px}
+label{display:flex;flex-direction:column;gap:7px;font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--night-muted)}
+label.full{grid-column:1 / -1}
+input,select,textarea{width:100%;min-width:0;font:400 15.5px/1.4 var(--display);color:var(--night-ink);background:var(--night);border:1px solid var(--night-line-2);border-radius:2px;padding:12px 13px;min-height:48px;text-transform:none;letter-spacing:0}
+textarea{min-height:110px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--amber);outline-offset:0;border-color:transparent}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.form-foot{grid-column:1 / -1;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.note{font-size:14.5px;color:var(--night-ink-2)}
+
+/* footer */
+.foot{border-top:1px solid var(--night-line)}
+.foot .wrap{min-height:72px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-top:16px;padding-bottom:16px;font-family:var(--mono);font-size:11.5px;color:var(--night-muted)}
+.foot nav{display:flex;gap:22px;flex-wrap:wrap}
+.foot a{color:var(--night-muted)}
+.foot a:hover{color:var(--night-ink)}
+
+/* ── tablet ── */
+@media (max-width:1100px){
+  :root{--gutter:40px}
+  .nav{gap:22px}
+  .hero{grid-template-columns:minmax(0,1fr);min-height:0}
+  .hero-copy{padding:64px var(--gutter) 40px;max-width:none}
+  .hero-map{min-height:0;aspect-ratio:1600/1300}
+  .cells{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cell{padding:24px 24px 24px 0;border-right:0;border-bottom:1px solid var(--night-line)}
+  .op .wrap{grid-template-columns:minmax(0,1fr);gap:40px}
+  .mod-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ledger .wrap{grid-template-columns:minmax(0,1fr);gap:56px}
+  .reach-grid{grid-template-columns:minmax(0,1fr)}
+  .bizra-inner{grid-template-columns:minmax(0,1fr)}
+  .bizra-inner img{max-height:280px}
+  .brief .wrap{grid-template-columns:minmax(0,1fr);gap:40px}
+}
+/* ── phone ── */
+@media (max-width:700px){
+  :root{--gutter:18px}
+  .top .wrap{height:64px}
+  .brand{gap:10px}
+  .brand img{height:28px}
+  .brand b{font-size:15.5px}
+  .brand span{display:none}
+  .nav > a{display:none}
+  .menu{display:block;position:relative}
+  .menu summary{list-style:none;cursor:pointer;min-height:44px;display:flex;align-items:center;padding:0 12px;border:1px solid #3a4a44;font-size:14px;color:var(--night-ink)}
+  .menu summary::-webkit-details-marker{display:none}
+  .menu nav{position:absolute;right:0;top:52px;min-width:200px;background:var(--night-2);border:1px solid var(--night-line-2);display:flex;flex-direction:column}
+  .menu nav a{padding:14px 16px;text-decoration:none;color:var(--night-ink);border-bottom:1px solid var(--night-line)}
+  .hero-copy{padding-top:44px;gap:24px}
+  .proof-row{flex-direction:column;gap:8px}
+  .hero-map{aspect-ratio:auto}
+  .hero-map picture img{position:static;height:auto;padding:0 6px}
+  .legend{position:static;width:auto;margin:8px var(--gutter) 32px}
+  .cells{grid-template-columns:minmax(0,1fr)}
+  .cell{padding-right:0}
+  .measured h2{font-size:28px}
+  .op{padding:72px 0}
+  .panel-body{grid-template-columns:minmax(0,1fr)}
+  .panel-map{min-height:320px}
+  .tabs span:not(.on){display:none}
+  .mod-grid{grid-template-columns:minmax(0,1fr)}
+  .row{grid-template-columns:110px minmax(0,1fr)}
+  .row .n{font-size:28px}
+  .ledger h2{font-size:32px}
+  .bizra-copy{padding:30px 22px}
+  .bizra-copy p{font-size:25px}
+  form{grid-template-columns:minmax(0,1fr);padding:20px}
+}
+/* ── small phone ── */
+@media (max-width:400px){
+  .brand img{display:none}
+  .row{grid-template-columns:minmax(0,1fr);gap:4px}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/" target="_top" aria-label="EconomicBridge by Bizra Farms Integrated — home">
+      <img src="/bizra-assets/bizra-logo.jpg" alt="" width="93" height="34">
+      <div><b>EconomicBridge</b><span>by Bizra Farms Integrated</span></div>
+    </a>
+    <div class="nav">
+      <a href="#platform">Platform</a>
+      <a href="#evidence">Evidence</a>
+      <a href="/bizra.html" target="_top">Bizra Farms</a>
+      <a href="#briefing">Briefing</a>
+      <details class="menu">
+        <summary>Menu</summary>
+        <nav aria-label="Main">
+          <a href="#platform">Platform</a>
+          <a href="#evidence">Evidence</a>
+          <a href="/bizra.html" target="_top">Bizra Farms</a>
+          <a href="#briefing">Request a briefing</a>
+          <a href="/dashboard" target="_top">Open the dashboard</a>
+        </nav>
+      </details>
+      <a class="btn" href="/dashboard" target="_top">Open the dashboard</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <div class="kicker">06°–14°N · 03°–10°E · eight Nigerian pilot states</div>
+      <h1 id="hero-title"><span>Every village.</span> <span>Every field.</span> <span>Read from orbit.</span></h1>
+      <p class="lead">EconomicBridge turns NASA and Copernicus satellites into intelligence a state can act on — which farmland stopped growing, which villages are dark at night, where extreme rain fell. Every figure carries its source and its measured accuracy.</p>
+      <div class="actions">
+        <a class="btn btn-amber" href="/dashboard" target="_top">Open the live dashboard</a>
+        <a class="btn btn-line" href="#briefing">Request a briefing</a>
+      </div>
+      <div class="proof">
+        <div class="proof-row">
+          <span class="proof-num">84%</span>
+          <span>of the 76,995 named villages in the eight pilot states show no light at night — about 25.6 million people, 5 million of them under five.</span>
+        </div>
+        <div class="src">NASA VIIRS Black Marble · Meta &amp; CIESIN HRSL · GRID3 · 2026 round</div>
+      </div>
+    </div>
+    <figure class="hero-map">
+      <picture>
+        <source srcset="/site-assets/village-night-map.webp" type="image/webp">
+        <img src="/site-assets/village-night-map.jpg" width="1600" height="1787" alt="Map of 76,995 named villages across eight Nigerian states: a few amber clusters of light around the cities, most villages dark" fetchpriority="high">
+      </picture>
+      <figcaption class="legend">
+        <div><span class="dot dot-lit"></span>Light seen from space</div>
+        <div style="color:#c6cfc9"><span class="dot dot-dark"></span>Dark at night</div>
+        <div class="src">Each point is a real, named village — Kebbi, Zamfara, Kaduna, Niger, Plateau, Nasarawa, Benue and the FCT.</div>
+      </figcaption>
+    </figure>
+  </section>
+
+  <section class="measured" id="evidence" aria-labelledby="measured-title">
+    <div class="wrap">
+      <div class="measured-head">
+        <h2 id="measured-title">Measured, not asserted.</h2>
+        <span class="src">Figures as of 25 September 2026</span>
+      </div>
+      <div class="cells">
+        <div class="cell"><b style="color:var(--leaf-d)">18.3M ha</b><span>of farmland measured greening in the 2026 rains</span><span class="src">Sentinel-2 · every pixel of 142 LGAs</span></div>
+        <div class="cell"><b>64%</b><span>measured precision of land-change detections, each at its own coordinates</span><span class="src">Random sample · 95% interval 45–80%</span></div>
+        <div class="cell"><b style="color:var(--rain-d)">447</b><span>LGAs watched every day for storms and extreme rain</span><span class="src">NASA GPM IMERG · half-hourly</span></div>
+        <div class="cell"><b>0 of 11</b><span>floods found by our 2024 radar backtest — so we report storms and extreme rain, not floods</span><span class="src">What we don't claim, we say</span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="light">
+    <section class="op" id="platform" aria-labelledby="op-title">
+      <div class="wrap">
+        <div>
+          <div class="kicker">For state governments, ministries and partners</div>
+          <h2 id="op-title">One operating picture for a state's farmland, villages and weather.</h2>
+          <p>Satellite readings arrive every day. EconomicBridge turns them into a short list of places that need a person — each with the nearest village, directions, and the evidence behind it.</p>
+        </div>
+        <div class="panel" aria-label="Example: the Kebbi State view">
+          <div class="panel-top">
+            <b>Kebbi State</b>
+            <div class="tabs" aria-hidden="true"><span>Farmland</span><span class="on">Villages</span><span>Storms</span><span>Aid</span></div>
+          </div>
+          <div class="panel-body">
+            <div class="panel-map">
+              <picture>
+                <source srcset="/site-assets/kebbi-night-map.webp" type="image/webp">
+                <img src="/site-assets/kebbi-night-map.jpg" width="640" height="761" alt="Night map of Kebbi's 14,086 named villages: amber where light is seen, grey where it is not" loading="lazy">
+              </picture>
+              <span class="tag">14,086 villages · 88% dark</span>
+            </div>
+            <div>
+              <div class="item">
+                <div class="item-head"><b>Unguwar Hakimi · Shanga LGA</b><span class="chip chip-amber">NO LIGHT</span></div>
+                <p>About 9,355 people, 1,870 under five — no light seen at night</p>
+                <span class="src">11.2165°N 4.5805°E · <a href="https://www.google.com/maps/dir/?api=1&amp;destination=11.21647,4.58047" target="_blank" rel="noopener">Directions</a></span>
+              </div>
+              <div class="item">
+                <div class="item-head"><b>Rainfall advisory sent</b><span class="chip chip-rain">SMS</span></div>
+                <p>11 farmer cooperative leaders · 22 September 2026</p>
+                <span class="src">NASA GPM IMERG · the LGA's own rainfall history</span>
+              </div>
+              <div class="item">
+                <div class="item-head"><b>UNICEF · water &amp; sanitation</b><span class="chip chip-grey">AID</span></div>
+                <p>Reported activity in Arewa Dandi LGA, 2023–2027</p>
+                <span class="src">IATI · published by the organisation</span>
+              </div>
+              <div class="item">
+                <div class="item-head"><b>Land that stopped growing</b><span class="chip chip-leaf">FARMLAND</span></div>
+                <p>Green in the 2024 and 2025 rains, bare in 2026 — at its own coordinates</p>
+                <span class="src">Sentinel-2 · every pixel · 64% measured precision</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="modules" aria-labelledby="mod-title">
+      <div class="wrap">
+        <div class="modules-head">
+          <h2 id="mod-title">Seven modules, one alert layer</h2>
+          <span class="src">LIVE: open now · PRO: per subscription and region</span>
+        </div>
+        <div class="mod-grid">
+          <div class="mod"><div class="mod-head"><b>Farmland Protection</b><span class="chip chip-leaf">LIVE</span></div><p>Every farmland pixel of 142 LGAs across three rainy seasons — land that stopped growing, pinned with the nearest village.</p><span class="src">Sentinel-2 · Esri land cover</span></div>
+          <div class="mod"><div class="mod-head"><b>Economic Visibility</b><span class="chip chip-leaf">LIVE</span></div><p>Night light and population at 76,995 named villages — who lives in the dark, and a list to reach them.</p><span class="src">NASA VIIRS · HRSL · GRID3</span></div>
+          <div class="mod"><div class="mod-head"><b>ShockGuard</b><span class="chip chip-leaf">LIVE</span></div><p>Storms and extreme rainfall rebuilt from half-hourly NASA rainfall, graded against each LGA's own history.</p><span class="src">NASA GPM IMERG</span></div>
+          <div class="mod"><div class="mod-head"><b>CropGuard</b><span class="chip chip-grey">PRO</span></div><p>Crop health for every LGA from Sentinel-2, and a leaf-photo disease check for field officers (tested on lab images).</p><span class="src">Sentinel-2</span></div>
+          <div class="mod"><div class="mod-head"><b>Aid Coordination</b><span class="chip chip-grey">PRO</span></div><p>Which organisations report aid activity where — the gaps, and same-sector overlap, by LGA.</p><span class="src">IATI</span></div>
+          <div class="mod"><div class="mod-head"><b>Mobility Compass</b><span class="chip chip-leaf">LIVE</span></div><p>Income and cost of living for every LGA, in naira and dollars.</p><span class="src">World Bank · NLSS calibration</span></div>
+          <div class="mod"><div class="mod-head"><b>SkillsBridge</b><span class="chip chip-leaf">LIVE</span></div><p>89,647 schools mapped, to show where digital learning should reach underserved youth first.</p><span class="src">UNICEF GIGA</span></div>
+          <div class="mod mod-alert"><div class="mod-head"><b>Alerts</b><span class="chip chip-amber">LIVE</span></div><p>Rainfall advisories by SMS to farmer leaders, and email digests to the agencies that subscribe.</p><span class="src">SMS · email</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="ledger" aria-label="What we measured and what we don't claim">
+      <div class="wrap">
+        <div>
+          <h2>What we measured</h2>
+          <div class="row"><span class="n leaf">62</span><div><span>land changes on farmland, each at its own coordinates</span><div class="src">64% precision on a random sample · 95% interval 45–80%</div></div></div>
+          <div class="row"><span class="n">76,995</span><div><span>named villages checked for light at night — 84% dark</span><div class="src">NASA VIIRS Black Marble · GRID3 · Meta &amp; CIESIN HRSL</div></div></div>
+          <div class="row"><span class="n">447</span><div><span>LGAs watched daily for storms and extreme rain</span><div class="src">NASA GPM IMERG · half-hourly rainfall</div></div></div>
+          <div class="row"><span class="n">11</span><div><span>farmer cooperative leaders in Kebbi receiving rainfall advisories by SMS</span><div class="src">Sent automatically since August 2026</div></div></div>
+        </div>
+        <div>
+          <h2>What we don't claim</h2>
+          <div class="claim"><b>Floods</b><span>Our radar backtest missed the 2024 Kebbi floods, so we report storms and extreme rainfall — not floods.</span></div>
+          <div class="claim"><b>Income</b><span>Night light shows where a state should look first. It is not a measure of what a household earns.</span></div>
+          <div class="claim"><b>Individuals</b><span>We report places — villages, wards, fields. We never identify a household or a person from space.</span></div>
+          <div class="claim"><b>What cloud hides</b><span>Benue's 2025 rains were too cloudy for a change baseline. We show that gap instead of filling it.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="reach" aria-labelledby="reach-title">
+      <div class="wrap">
+        <h2 id="reach-title">It reaches the people who act.</h2>
+        <div class="reach-grid">
+          <div class="card">
+            <span class="kicker">Ministries &amp; agencies</span>
+            <b>A dashboard for each state, and alert digests by email</b>
+            <p>Each organisation sees the states it is permitted to see, and receives email digests for the modules it has subscribed to.</p>
+          </div>
+          <div class="card">
+            <span class="kicker">Farmer cooperative leaders</span>
+            <div class="sms">EconomicBridge advisory: heavy rain recorded in <i>[LGA]</i>, <i>[State]</i>. Check low-lying fields and clear drainage channels. Reply STOP to opt out.</div>
+            <p class="small">The message in use in Kebbi, sent automatically when an LGA's rain passes its own history. A Hausa version is in native-speaker review.</p>
+          </div>
+          <div class="card">
+            <span class="kicker">Field teams</span>
+            <b>The nearest village and directions to the exact point</b>
+            <p>Farmland alerts name the nearest real village (GRID3) and open navigation on the officer's phone. Village lists download as a spreadsheet for enumeration.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="bizra" aria-label="Bizra Farms Integrated">
+      <div class="wrap">
+        <div class="bizra-inner">
+          <img src="/bizra-assets/service-rice.jpg" alt="Ripe rice on a Bizra Farms field in Kebbi" loading="lazy" width="1600" height="1067">
+          <div class="bizra-copy">
+            <div class="kicker">Bizra Farms Integrated</div>
+            <p>We farm rice in Kebbi. The satellites watch the same fields we plant.</p>
+            <div class="bizra-stats"><span><b>5+</b> years in agribusiness</span><span><b>100+</b> clients</span><span><b>500+</b> reviews</span></div>
+            <a href="/bizra.html" target="_top">About Bizra Farms Integrated →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="brief" id="briefing" aria-labelledby="brief-title">
+    <div class="wrap">
+      <div>
+        <div class="kicker">Request a briefing</div>
+        <h2 id="brief-title">See your state from orbit.</h2>
+        <p>Tell us the state and the decisions you need to make. We'll bring that state's farmland, villages and rainfall — measured, with their limits — to the briefing.</p>
+        <div class="contact">
+          <span>Bizra Farms Integrated Nigeria Limited · RC 1929412</span>
+          <span>No. 32A ITM, Sabara Road, Gesse Phase 1, Birnin Kebbi, Kebbi State</span>
+          <a href="mailto:bizra@economicbridge.org">bizra@economicbridge.org</a>
+          <a href="tel:+2347037919465">+234 703 791 9465</a>
+        </div>
+      </div>
+      <form id="briefForm" novalidate>
+        <label>Name<input name="name" required autocomplete="name"></label>
+        <label>Organisation<input name="organisation" required autocomplete="organization"></label>
+        <label>Email<input name="email" type="email" required autocomplete="email"></label>
+        <label>Phone (optional)<input name="phone" type="tel" autocomplete="tel"></label>
+        <label>Interest
+          <select name="interest">
+            <option>Farmland Protection</option>
+            <option>Economic Visibility (village reach)</option>
+            <option>ShockGuard storms &amp; rainfall</option>
+            <option>CropGuard</option>
+            <option>Aid Coordination</option>
+            <option>Full EconomicBridge partnership</option>
+          </select>
+        </label>
+        <label>State or region<input name="region"></label>
+        <label class="full">Message<textarea name="message" placeholder="The state, the decisions, the communities you want to reach"></textarea></label>
+        <label class="hp" aria-hidden="true">Leave this field empty<input name="eb_hp" tabindex="-1" autocomplete="off"></label>
+        <div class="form-foot">
+          <button class="btn btn-amber" type="submit">Send request</button>
+          <span class="note" id="briefNote" aria-live="polite"></span>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <span>Bizra Farms Integrated Nigeria Limited · RC 1929412 · Birnin Kebbi · © 2026</span>
+    <nav aria-label="Footer">
+      <a href="/privacy" target="_top">Privacy Notice</a>
+      <a href="/terms" target="_top">Terms of Use</a>
+      <a href="/bizra.html" target="_top">Bizra Farms</a>
+      <a href="/dashboard" target="_top">Dashboard</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+// Close the phone menu after a choice.
+document.querySelectorAll('.menu nav a').forEach(function (a) {
+  a.addEventListener('click', function () { a.closest('details').removeAttribute('open'); });
+});
+
+// Briefing request -> POST /api/v1/contact (the same pipeline as the Bizra site's form).
+(function () {
+  var API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? 'http://localhost:8000/api/v1' : '/api/v1';
+  var form = document.getElementById('briefForm');
+  var note = document.getElementById('briefNote');
+  var btn = form.querySelector('button[type="submit"]');
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!form.reportValidity()) return;
+    var payload = Object.fromEntries(new FormData(form).entries());
+    note.style.color = '';
+    note.textContent = 'Sending…';
+    btn.disabled = true;
+    fetch(API + '/contact', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    }).then(function (res) {
+      if (res.ok) {
+        note.textContent = 'Thank you — your request has reached our team. We will reply by email.';
+        form.reset();
+      } else if (res.status === 429) {
+        note.style.color = '#ffb4a0';
+        note.textContent = 'You have sent a few requests already — please try again in a few minutes.';
+      } else { throw new Error('status ' + res.status); }
+    }).catch(function () {
+      note.style.color = '#ffb4a0';
+      note.textContent = 'That did not send. Please email bizra@economicbridge.org or call +234 703 791 9465.';
+    }).finally(function () { btn.disabled = false; });
+  });
+})();
+</script>
+</body>
+</html>
