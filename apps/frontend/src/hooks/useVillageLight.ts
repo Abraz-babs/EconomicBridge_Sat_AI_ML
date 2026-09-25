@@ -2,7 +2,7 @@
 
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 
-import { ApiException, apiFetch, type SuccessEnvelope } from '@/lib/api';
+import { ApiException, apiFetch, downloadFile, type SuccessEnvelope } from '@/lib/api';
 
 /** Mirrors apps/api/schemas/poverty.py VillageLightData — keep in sync. */
 export interface VillageLightStats {
@@ -68,4 +68,15 @@ export function useVillageLight(tenantId: string): UseQueryResult<VillageLight, 
       return envelope.data;
     },
   });
+}
+
+
+/** Village reach list as CSV — every unlit village (or every village), most
+ *  people first, with coordinates and a directions link, for field teams. */
+export function downloadVillageList(
+  tenantId: string, scope: 'unlit' | 'all', period?: string | null,
+): Promise<void> {
+  const qs = `?scope=${scope}${period ? `&period=${encodeURIComponent(period)}` : ''}`;
+  return downloadFile(`/economic_visibility/village-light/export.csv${qs}`,
+    `${tenantId}_villages_${scope}_${period ?? 'latest'}.csv`, { tenantId });
 }

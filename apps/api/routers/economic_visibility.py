@@ -14,11 +14,14 @@ tagged source='seed_v1'.
 """
 from __future__ import annotations
 
+import csv
+import io
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -269,3 +272,78 @@ async def village_light(
                                 light_class_wet=r[9]) for r in top_rows],
         points=points,
     ))
+
+
+# ─── Village reach list (CSV) ────────────────────────────────────────────
+
+EXPORT_COLUMNS: tuple[str, ...] = (
+    "rank", "village", "ward", "lga", "latitude", "longitude",
+    "light_dry_season", "light_wet_season", "radiance_dry_nw", "radiance_wet_nw",
+    "people_estimate", "under5_estimate", "directions", "round", "sources",
+)
+
+
+def export_rows(rows: list[tuple], period: str, sources: str | None) -> list[list]:
+    """DB rows (name, ward, lga, lon, lat, class, class_wet, rad_dry, rad_wet,
+    people, under5), already ordered, into CSV rows. Pure — no DB.
+
+    People and under-fives are ESTIMATES (Meta & CIESIN HRSL), and the column
+    names say so, because a field team will read this file without the panel's
+    footnotes beside it.
+    """
+    out: list[list] = []
+    for i, r in enumerate(rows, start=1):
+        name, ward, lga, lon, lat, cls, cls_wet, rad_dry, rad_wet, people, under5 = r
+        out.append([
+            i, name, ward or "", lga or "", round(lat, 5), round(lon, 5),
+            cls, cls_wet or "", rad_dry if rad_dry is not None else "",
+            rad_wet if rad_wet is not None else "", people, under5,
+            f"https://www.google.com/maps/dir/?api=1&destination={lat:.5f},{lon:.5f}",
+            period, sources or "",
+        ])
+    return out
+
+
+@router.get(
+    "/village-light/export.csv",
+    summary="Village reach list — every village of the tenant (or only unlit ones) as CSV",
+    description=(
+        "One row per GRID3 village for one measurement round, most people first: "
+        "coordinates, night light in both seasons, estimated people and children "
+        "under five, and a navigation link — for enumeration and field teams."
+    ),
+)
+async def village_light_export(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    scope: Annotated[Literal["unlit", "all"], Query()] = "unlit",
+    period: Annotated[str | None, Query(max_length=16)] = None,
+) -> StreamingResponse:
+    tenant_id = _require_tenant(request)
+    if not (await session.execute(text("SELECT to_regclass('village_light') IS NOT NULL"))).scalar():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No village measurements yet")
+    periods = [r[0] for r in (await session.execute(text(
+        "SELECT DISTINCT period FROM village_light ORDER BY period DESC"))).all()]
+    chosen = period if period in periods else (periods[0] if periods else None)
+    if chosen is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No village measurements yet")
+    where = "period = :p" + (" AND light_class = 'unlit'" if scope == "unlit" else "")
+    rows = (await session.execute(text(f"""
+        SELECT name, ward, lga, ST_X(geom), ST_Y(geom), light_class, light_class_wet,
+               radiance_dry, radiance_wet, people, under5
+          FROM village_light WHERE {where}
+         ORDER BY people DESC, name
+    """), {"p": chosen})).all()
+    sources = (await session.execute(text(
+        "SELECT max(sources) FROM village_light WHERE period = :p"), {"p": chosen})).scalar()
+
+    buf = io.StringIO()
+    buf.write("﻿")   # BOM: Excel then reads village names with accents correctly
+    writer = csv.writer(buf)
+    writer.writerow(EXPORT_COLUMNS)
+    writer.writerows(export_rows([tuple(r) for r in rows], chosen, sources))
+    fname = f"{tenant_id}_villages_{scope}_{chosen}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
