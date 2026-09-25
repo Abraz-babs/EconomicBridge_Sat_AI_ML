@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import EBMap from '@/components/map/EBMap';
-import { hazardIcon, hazardLabel, hazardStyle } from './hazard';
+import { eventLabel, hazardIcon, hazardLabel, hazardStyle } from './hazard';
 import { haloRadiusPx, haloRows } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
 import type { ShockEventRow } from '@/hooks/useShockGuard';
@@ -55,7 +55,8 @@ function colourFor(ev: ShockEventRow): [number, number, number, number] {
 function tooltipFor(obj: unknown): string | null {
   const e = obj as PositionedEvent;
   if (!e?.event_type) return null;
-  const { icon, label } = hazardStyle(e.event_type);
+  const { icon } = hazardStyle(e.event_type);
+  const label = eventLabel(e.event_type, e.source);
   const lines = [
     `${icon} ${label.toUpperCase()} · ${e.severity}`,
     `Location: ${e.lga ?? '—'}`,

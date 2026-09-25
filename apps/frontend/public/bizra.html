@@ -433,7 +433,11 @@
       .impact-grid { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--dkline); border-left: 1px solid var(--dkline); }
       /* Two labelled halves: the platform's measured figures, and the farming
          business's own track record — so neither is read as the other's. */
-      .impact-split { display: grid; grid-template-columns: 4fr 3fr; gap: 28px; }
+      .impact-split { display: grid; grid-template-columns: 4fr 3fr; gap: 28px; align-items: stretch; }
+      /* Both halves take the height of the taller one (its labels wrap to two
+         lines), so the two rows of boxes line up. */
+      .impact-group { display: flex; flex-direction: column; }
+      .impact-group > .impact-grid { flex: 1; }
       .impact-group-label { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--dkink); margin-bottom: 12px; opacity: .85; }
       .impact-grid--3 { grid-template-columns: repeat(3, 1fr); }
       .impact-badges a { text-decoration: underline; text-underline-offset: 3px; }

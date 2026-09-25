@@ -50,3 +50,23 @@ export function hazardIcon(eventType: string | null | undefined): string {
 export function hazardLabel(eventType: string | null | undefined): string {
   return hazardStyle(eventType).label;
 }
+
+/** A live radar reading of standing water is NOT a confirmed flood: the 2024
+ *  Kebbi backtest found 0 of 11 real floods, so the platform reports storms
+ *  and extreme rainfall, not floods (the DG briefing says so). A live 'flood'
+ *  detection is therefore shown for what it is. Documented disasters
+ *  (historical_v1, each with a citation) keep their real name. */
+export const RADAR_WATER_LABEL = 'Surface water (radar, unconfirmed)';
+
+export function isRecordedEvent(source: string | null | undefined): boolean {
+  return source === 'historical_v1' || source === 'seed_v1';
+}
+
+/** The label to show for an event: source-aware for floods. */
+export function eventLabel(
+  eventType: string | null | undefined,
+  source?: string | null,
+): string {
+  if (eventType === 'flood' && !isRecordedEvent(source)) return RADAR_WATER_LABEL;
+  return hazardLabel(eventType);
+}

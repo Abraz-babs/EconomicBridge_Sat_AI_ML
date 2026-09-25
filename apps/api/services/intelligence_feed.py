@@ -220,6 +220,9 @@ async def _gather_tenant_rows(
     return [dict(r) for r in result.mappings().all()]
 
 
+# How a live radar "flood" reading is shown — see _row_to_feed_event.
+RADAR_WATER_LABEL = "Surface water (radar, unconfirmed)"
+
 def _row_to_feed_event(tenant_id: str, row: dict) -> FeedEvent | None:
     """Map normalized DB row → FeedEvent + write a human-readable title."""
     kind: FeedKind = row["kind"]
@@ -261,7 +264,11 @@ def _row_to_feed_event(tenant_id: str, row: dict) -> FeedEvent | None:
         )
     if kind == "shock_event":
         et = (row.get("subtype") or "").lower()
-        emoji = "Flood" if et == "flood" else "Drought" if et == "drought" else "Shock"
+        # A live radar 'flood' is unconfirmed surface water — the 2024 Kebbi
+        # backtest found 0 of 11 real floods. Documented disasters keep the name.
+        recorded = source.startswith("historical") or source == "seed_v1"
+        emoji = ("Flood" if recorded else RADAR_WATER_LABEL) if et == "flood" \
+            else "Drought" if et == "drought" else "Shock"
         return FeedEvent(
             kind=kind,
             tenant_id=tenant_id,

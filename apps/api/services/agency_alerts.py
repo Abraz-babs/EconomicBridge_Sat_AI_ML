@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 _SEV_RANK = {"all": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
 _MODULE_LABEL = {
     "farmland": "Farmland encroachment",
-    "shockguard": "ShockGuard flood/drought",
+    "shockguard": "ShockGuard radar signals",
     "cropguard": "CropGuard crop-stress",
 }
 _EPOCH = datetime(2000, 1, 1, tzinfo=timezone.utc)
@@ -98,7 +98,8 @@ async def _shockguard_lines(session: AsyncSession, since: datetime, min_rank: in
     kept = [dict(r) for r in rows if _SEV_RANK.get(r["severity"], 0) >= min_rank]
     return await _with_directions(session, kept, lambda r: AlertLine(
         r["severity"], r["lga"],
-        f"{r['event_type']} — {r['zone_name'] or ''}".strip(" —"), r["created_at"]))
+        f"{'surface water (radar, unconfirmed)' if r['event_type'] == 'flood' else r['event_type']}"
+        f" — {r['zone_name'] or ''}".strip(" —"), r["created_at"]))
 
 
 async def _cropguard_lines(session: AsyncSession, since: datetime, min_rank: int) -> list[AlertLine]:

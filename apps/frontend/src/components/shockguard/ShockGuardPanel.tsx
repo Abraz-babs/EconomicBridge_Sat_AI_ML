@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
-import { hazardIcon, hazardLabel } from './hazard';
+import { eventLabel, hazardIcon } from './hazard';
 import {
   useShockEvents,
   useShockScan,
@@ -154,8 +154,8 @@ export default function ShockGuardPanel() {
         <div>
           <div className="cg-title">ShockGuard — Disaster Early Warning</div>
           <div className="cg-subtitle">
-            Flood + drought early warning · Sentinel-1 SAR backscatter ·
-            Sentinel-2 NDVI · GPM IMERG rainfall
+            Storms &amp; extreme rainfall · GPM IMERG · radar surface-water and
+            Sentinel-2 vegetation signals (unconfirmed)
           </div>
         </div>
         <div
@@ -259,8 +259,8 @@ export default function ShockGuardPanel() {
             </div>
             <div className="fp-stat-sub">
               {lastScan.triggered
-                ? `${lastScan.event_type.toUpperCase()} flagged · ${lastScan.severity}`
-                : `No ${lastScan.event_type} activity · baseline holding`}
+                ? `${eventLabel(lastScan.event_type).toUpperCase()} flagged · ${lastScan.severity}`
+                : `No ${eventLabel(lastScan.event_type).toLowerCase()} signal · baseline holding`}
             </div>
           </div>
           <div className="fp-stat warn">
@@ -299,7 +299,7 @@ export default function ShockGuardPanel() {
               onClick={() => setEventType('flood')}
               disabled={scanMutation.isPending}
             >
-              Flood
+              Surface water
             </button>
             <button
               type="button"
@@ -437,7 +437,7 @@ export default function ShockGuardPanel() {
               <div className="fp-alert-top">
                 <span className="fp-alert-location">
                   {hazardIcon(ev.event_type)}{' '}
-                  {hazardLabel(ev.event_type).toUpperCase()} · {ev.lga ?? stateLabel}
+                  {eventLabel(ev.event_type, ev.source).toUpperCase()} · {ev.lga ?? stateLabel}
                 </span>
                 <span style={{
                   fontSize: '9px', fontWeight: 700, letterSpacing: '0.04em',
@@ -514,8 +514,8 @@ export default function ShockGuardPanel() {
 
 function ShockScanCard({ scan }: { scan: ShockScanData }) {
   const headline = scan.triggered
-    ? `${hazardIcon(scan.event_type)} ${hazardLabel(scan.event_type).toUpperCase()} DETECTED · ${scan.severity}`
-    : `No ${scan.event_type} activity · baseline holding`;
+    ? `${hazardIcon(scan.event_type)} ${eventLabel(scan.event_type).toUpperCase()} DETECTED · ${scan.severity}`
+    : `No ${eventLabel(scan.event_type).toLowerCase()} signal · baseline holding`;
 
   const metricsLine = useMemo(() => {
     if (scan.event_type === 'flood') {

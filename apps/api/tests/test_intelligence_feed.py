@@ -112,7 +112,8 @@ def test_shock_event_flood_titles_with_region():
     assert event is not None
     assert event.kind == "shock_event"
     assert event.tag == "Disaster"
-    assert "Flood" in event.title
+    # A live detector's flood is unconfirmed surface water (0 of 11 in the backtest).
+    assert event.title.startswith("Surface water (radar, unconfirmed)")
     assert "Agatu" in event.title
 
 
@@ -197,3 +198,23 @@ def test_feed_event_dataclass_is_frozen():
     )
     with pytest.raises(AttributeError):
         e.title = "y"  # type: ignore[misc]
+
+
+
+def test_live_radar_flood_is_shown_as_unconfirmed_surface_water():
+    """0 of 11 real floods in the 2024 backtest: a live radar reading is not a flood."""
+    event = _row_to_feed_event("ghana", _row(
+        kind="shock_event", subtype="flood", region="Krachi West",
+        severity="high", source="shockguard_scan_v1",
+    ))
+    assert event is not None
+    assert event.title.startswith("Surface water (radar, unconfirmed)")
+    assert "Flood" not in event.title
+
+
+def test_documented_historical_flood_keeps_its_name():
+    event = _row_to_feed_event("kebbi", _row(
+        kind="shock_event", subtype="flood", region="Argungu",
+        severity="critical", source="historical_v1",
+    ))
+    assert event is not None and event.title.startswith("Flood")
