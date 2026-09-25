@@ -28,6 +28,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from db import PILOT_TENANT_IDS, get_session_factory
 from sources.worldbank import TENANT_TO_ISO3
+from tasks.aid_iati_ingest import run_aid_iati_ingest
 from tasks.aid_ingest import ingest_aid_for_tenant
 from tasks.conflict_pipeline import run_daily_conflict_pipeline
 from tasks.firms_ingest import ingest_firms_for_tenant
@@ -397,10 +398,11 @@ async def run_monthly_mobility_ingest(
 async def run_monthly_aid_ingest(
     tenants: Iterable[str] | None = None,
 ) -> dict[str, str]:
-    """Refresh Module 02 aid coverage from HDX HAPI for every pilot, monthly.
+    """Refresh Module 02 from IATI (d-portal) and HDX HAPI for every pilot, monthly.
 
-    Keyless. Failures for one tenant don't abort the rest. Tenants with no
-    humanitarian operational presence simply write nothing (seed remains).
+    Keyless. IATI is the source that covers the pilots (HAPI is north-east
+    Nigeria only); HAPI still runs so the pilots pick it up if it expands.
+    Failures for one tenant don't abort the rest.
     """
     target = list(tenants) if tenants is not None else sorted(PILOT_TENANT_IDS)
     factory = get_session_factory()
@@ -418,6 +420,13 @@ async def run_monthly_aid_ingest(
             except Exception as exc:  # noqa: BLE001 — log every failure, continue
                 results[tenant_id] = f"failed: {exc!s}"
                 log.exception("scheduled.aid FAILED tenant=%s: %s", tenant_id, exc)
+
+    try:
+        for tenant_id, summary in (await run_aid_iati_ingest(target)).items():
+            results[f"{tenant_id}/iati"] = summary
+    except Exception as exc:  # noqa: BLE001 — the HAPI results above still stand
+        results["iati"] = f"failed: {exc!s}"
+        log.exception("scheduled.aid IATI FAILED: %s", exc)
 
     log.info("scheduled.aid summary: %s", results)
     return results

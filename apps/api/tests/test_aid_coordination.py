@@ -4,7 +4,12 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from main import app
-from routers.aid_coordination import _lga_centroid
+from routers.aid_coordination import (
+    _REAL_COVERAGE,
+    SEED_SOURCE as READ_EXCLUDES,
+    ActivityRow,
+    build_stats,
+)
 from scripts.seed_aid_coordination import (
     AGENCY_REGISTRY,
     SEED_SOURCE,
@@ -130,33 +135,86 @@ def test_seed_source_constant_is_v1():
     assert SEED_SOURCE == "seed_v1"
 
 
-# ─── LGA centroid math ────────────────────────────────────────────────────
+# ─── Real-data rollup (build_stats, DB-free) ──────────────────────────────
+
+LGAS = ["Argungu", "Bagudu", "Shanga"]
+CENTRES = {"Argungu": (4.52, 12.74), "Bagudu": (3.93, 11.33), "Shanga": (4.58, 11.21)}
 
 
-def test_lga_centroid_returns_tenant_centre_for_zero_total():
-    """Defensive: total=0 short-circuits to the tenant centre rather
-    than dividing by zero."""
-    lon, lat = _lga_centroid("kebbi", 0, 0)
-    assert (lon, lat) == (4.55, 12.00)
+def _row(org, lga, buckets=("Health",), activity=None, source="iati_v1"):
+    return ActivityRow(org_slug=org, org_name=org.upper(), lga=lga,
+                       sectors=tuple(buckets), buckets=tuple(buckets),
+                       activity=activity or f"{org}-{lga}", source=source)
 
 
-def test_lga_centroid_spreads_around_tenant_centre():
-    """8 LGAs around kebbi (centroid 4.55, 12.00) should all sit within
-    ~1° of the centre."""
-    points = [_lga_centroid("kebbi", i, 8) for i in range(8)]
-    for lon, lat in points:
-        assert abs(lon - 4.55) < 1.5
-        assert abs(lat - 12.00) < 1.5
+def test_gaps_are_counted_against_every_lga_not_just_rows():
+    """The seed view counted only LGAs that had rows, so coverage was 100%
+    by construction. Every LGA of the tenant is in the denominator now."""
+    s = build_stats("kebbi", LGAS, CENTRES, [_row("unicef", "Argungu")])
+    assert s.total_lgas == 3 and s.covered_lgas == 1
+    assert s.gap_lgas == ["Bagudu", "Shanga"]
+    assert round(s.coverage_pct, 1) == 33.3
 
 
-def test_lga_centroid_is_deterministic_per_index():
-    a = _lga_centroid("benue", 3, 8)
-    b = _lga_centroid("benue", 3, 8)
-    assert a == b
+def test_overlap_needs_two_organisations_in_the_same_sector():
+    different = build_stats("kebbi", LGAS, CENTRES, [
+        _row("unicef", "Argungu", ("Water & sanitation",)),
+        _row("eu", "Argungu", ("Social protection",)),
+    ])
+    same = build_stats("kebbi", LGAS, CENTRES, [
+        _row("unicef", "Argungu", ("Health",)),
+        _row("who", "Argungu", ("Health",)),
+    ])
+    assert different.duplication_pct == 0.0
+    assert {p.lga: p.status for p in different.lga_points}["Argungu"] == "covered"
+    assert {p.lga: p.status for p in same.lga_points}["Argungu"] == "duplicated"
 
 
-def test_lga_centroid_unknown_tenant_falls_back_to_origin():
-    """Unknown tenant lands at (0, 0) — deliberate sentinel."""
-    lon, lat = _lga_centroid("atlantis", 0, 4)
-    # idx 0 + total 4 → angle 0, radius 0.45
-    assert lat == 0.0   # sin(0) = 0
+def test_statewide_activity_is_its_own_column_not_an_lga():
+    s = build_stats("kebbi", LGAS, CENTRES, [_row("eu", None), _row("unicef", "Shanga")])
+    assert s.lga_columns[-1] == "Statewide"
+    assert s.statewide_orgs == 1 and s.active_agencies == 2
+    assert s.covered_lgas == 1                        # statewide covers no LGA
+    assert [p.lga for p in s.lga_points] == LGAS      # no "Statewide" dot on the map
+    eu = next(m for m in s.matrix if m.agency_slug == "eu")
+    assert eu.row == [0, 0, 0, 1]
+
+
+def test_country_tenants_say_countrywide():
+    s = build_stats("ghana", ["Tamale"], {"Tamale": (-0.84, 9.4)}, [_row("wfp", None)])
+    assert s.statewide_label == "Countrywide" and s.lga_columns == ["Tamale", "Countrywide"]
+
+
+def test_rows_for_lgas_outside_the_tenant_are_ignored():
+    s = build_stats("kebbi", LGAS, CENTRES, [_row("x", "Gusau")])
+    assert s.active_agencies == 0 and s.covered_lgas == 0
+
+
+def test_lga_points_sit_at_real_centres():
+    s = build_stats("kebbi", LGAS, CENTRES, [])
+    assert {p.lga: (p.lon, p.lat) for p in s.lga_points} == CENTRES
+
+
+def test_beneficiaries_are_never_invented():
+    s = build_stats("kebbi", LGAS, CENTRES, [_row("unicef", "Argungu")])
+    assert all(a.beneficiaries_served is None for a in s.agencies)
+
+
+def test_activities_are_counted_once_per_organisation():
+    s = build_stats("kebbi", LGAS, CENTRES, [
+        _row("unicef", "Argungu", activity="A1"), _row("unicef", "Shanga", activity="A1"),
+        _row("unicef", None, activity="A2"),
+    ])
+    (u,) = s.agencies
+    assert u.activities == 2 and u.statewide_activities == 1
+    assert u.lgas_covered == ["Argungu", "Shanga"]
+
+
+def test_iati_rows_carry_attribution():
+    assert build_stats("kebbi", LGAS, CENTRES, [_row("unicef", "Argungu")]).attribution
+    assert build_stats("kebbi", LGAS, CENTRES, []).attribution is None
+
+
+def test_seed_fixtures_are_never_read():
+    assert READ_EXCLUDES == "seed_v1"
+    assert "<> :seed" in _REAL_COVERAGE.text

@@ -1,24 +1,39 @@
 """GET  /api/v1/aid_coordination/coverage — Module 02 aggregate view.
 POST /api/v1/aid_coordination/coverage — admin upload one agency/LGA row.
 
-Read endpoint joins `tenant_<id>.aid_coverage` with `public.aid_agencies`
-on slug, rolls up into the aggregate stats the dashboard needs (agencies
-list, coverage matrix, gap/duplication metrics, per-LGA points with
-deterministic spiral centroids around the tenant ROI).
+The read is built from REAL records only:
 
-Admin upload performs UPSERT on (agency_slug, lga, source) so re-imports
-from the same partner-org pipeline replace cleanly. NEMA/WFP/UNHCR
-bulk-CSV ingestion arrives in a follow-up slice.
+  * tenant_<id>.aid_activities — IATI activities published by the
+    organisations themselves (migration 0055, ingestion task aid_iati_ingest):
+    a row per activity location, with `lga` for a site inside the tenant and
+    NULL for statewide (countrywide for Ghana / Senegal);
+  * tenant_<id>.aid_coverage rows that are NOT seed fixtures — admin / partner
+    uploads and HDX HAPI (`hapi_v1`).
+
+Gaps are counted against EVERY LGA of the tenant (services/lga_geo), each
+drawn at its real centre. Until 2026-09-25 this view read seed rows naming six
+real organisations with invented coverage and beneficiary counts, counted only
+LGAs that had rows (so coverage was 100% by construction) and fanned LGA
+points in a spiral around the state centre. The seed rows stay stored (no
+record is deleted) and are never read.
+
+"Overlap" is two or more organisations working in the SAME sector in the same
+LGA. An LGA with no reported activity is not an LGA with no aid: state
+agencies and many NGOs do not publish to IATI.
+
+Admin upload performs UPSERT on (agency_slug, lga, source).
 """
 from __future__ import annotations
 
-import math
+from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import text
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.engine import get_session
@@ -32,25 +47,16 @@ from schemas.aid_coordination import (
     LgaPoint,
 )
 from schemas.envelope import ResponseMeta, SuccessResponse
+from services import lga_geo
 
 
 router = APIRouter(prefix="/aid_coordination", tags=["aid-coordination"])
 
-
-# Tenant centroids (mirror apps/frontend/src/data/tenants.ts) — used
-# to lay LGA points out in a deterministic spiral around the centre.
-TENANT_CENTROIDS: dict[str, tuple[float, float]] = {
-    "kebbi":    (4.55, 12.00),
-    "benue":    (8.85, 7.20),
-    "plateau":  (9.25, 9.45),
-    "kaduna":   (8.15, 10.40),
-    "niger":    (5.50, 10.30),
-    "zamfara":  (6.50, 12.30),
-    "nasarawa": (8.40, 8.85),
-    "fct":      (7.49, 9.06),
-    "ghana":    (-1.10, 7.95),
-    "senegal":  (-14.45, 14.50),
-}
+# Fabricated fixtures — stored, never shown.
+SEED_SOURCE = "seed_v1"
+IATI_ATTRIBUTION = "IATI data, via d-portal.org"
+# Tenants that are whole countries: their area-wide activity is countrywide.
+COUNTRY_TENANTS = frozenset({"ghana", "senegal"})
 
 
 def _trace_id(request: Request) -> UUID:
@@ -67,19 +73,132 @@ def _require_tenant(request: Request) -> str:
     return tenant_id
 
 
-def _lga_centroid(
-    tenant_id: str, idx: int, total: int,
-) -> tuple[float, float]:
-    """Deterministic spiral fan around the tenant centre — matches the
-    frontend's coordinationStatsFor(...).lga_points geometry exactly."""
-    cx, cy = TENANT_CENTROIDS.get(tenant_id, (0.0, 0.0))
-    if total <= 0:
-        return cx, cy
-    angle = (idx * 360.0 / total) * math.pi / 180.0
-    radius = 0.45 + (idx % 3) * 0.18
-    lon = cx + math.cos(angle) * radius
-    lat = cy + math.sin(angle) * radius * 0.85
-    return lon, lat
+@dataclass(frozen=True, slots=True)
+class ActivityRow:
+    """One real record: an organisation active at a site (lga) or statewide (None)."""
+
+    org_slug: str
+    org_name: str
+    lga: str | None
+    sectors: tuple[str, ...]
+    buckets: tuple[str, ...]
+    activity: str
+    source: str
+
+
+@dataclass
+class _Org:
+    name: str
+    lgas: set[str] = field(default_factory=set)
+    sectors: list[str] = field(default_factory=list)
+    activities: set[str] = field(default_factory=set)
+    statewide: set[str] = field(default_factory=set)
+
+
+def build_stats(
+    tenant_id: str,
+    lgas: list[str],
+    centres: dict[str, tuple[float, float]],
+    rows: list[ActivityRow],
+) -> AidCoordinationStats:
+    """Roll real activity rows up into the panel's stats. Pure — no DB."""
+    lga_set = set(lgas)
+    wide_label = "Countrywide" if tenant_id in COUNTRY_TENANTS else "Statewide"
+    orgs: dict[str, _Org] = {}
+    lga_orgs: dict[str, set[str]] = defaultdict(set)
+    lga_bucket_orgs: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+    sources: set[str] = set()
+
+    for r in rows:
+        if r.lga is not None and r.lga not in lga_set:
+            continue
+        o = orgs.setdefault(r.org_slug, _Org(name=r.org_name))
+        o.activities.add(r.activity)
+        for s in r.sectors:
+            if s and s not in o.sectors:
+                o.sectors.append(s)
+        sources.add(r.source)
+        if r.lga is None:
+            o.statewide.add(r.activity)
+            continue
+        o.lgas.add(r.lga)
+        lga_orgs[r.lga].add(r.org_slug)
+        for b in r.buckets or ("Other",):
+            lga_bucket_orgs[r.lga][b].add(r.org_slug)
+
+    overlap = {
+        lga for lga, by_bucket in lga_bucket_orgs.items()
+        if any(len(slugs) >= 2 for slugs in by_bucket.values())
+    }
+    slugs = sorted(orgs, key=lambda s: (-len(orgs[s].lgas), -len(orgs[s].activities), orgs[s].name))
+    any_wide = any(orgs[s].statewide for s in slugs)
+    columns = sorted(lgas) + ([wide_label] if any_wide else [])
+
+    def cell(slug: str, column: str) -> int:
+        if any_wide and column == wide_label:
+            return 1 if orgs[slug].statewide else 0
+        return 1 if column in orgs[slug].lgas else 0
+
+    matrix = [
+        CoverageMatrixRow(agency_slug=s, agency_name=orgs[s].name,
+                          row=[cell(s, c) for c in columns])
+        for s in slugs
+    ]
+    agencies = [
+        AgencyCoverageSummary(
+            agency_slug=s, agency_name=orgs[s].name,
+            sector=", ".join(orgs[s].sectors[:3]) or "Sector not stated",
+            lgas_covered=sorted(orgs[s].lgas),
+            beneficiaries_served=None,
+            activities=len(orgs[s].activities),
+            statewide_activities=len(orgs[s].statewide),
+        )
+        for s in slugs
+    ]
+    points: list[LgaPoint] = []
+    for lga in sorted(lgas):
+        here = lga_orgs.get(lga, set())
+        st: CoverageStatus = "gap" if not here else "duplicated" if lga in overlap else "covered"
+        lon, lat = centres.get(lga, (0.0, 0.0))
+        points.append(LgaPoint(lga=lga, lon=lon, lat=lat, agency_count=len(here),
+                               status=st, agency_slugs=sorted(here)))
+
+    total = len(lgas)
+    covered = sum(1 for p in points if p.agency_count > 0)
+    return AidCoordinationStats(
+        tenant_id=tenant_id,
+        active_agencies=len(slugs),
+        total_lgas=total,
+        covered_lgas=covered,
+        coverage_pct=(covered / total * 100) if total else 0.0,
+        duplication_pct=(len(overlap) / total * 100) if total else 0.0,
+        gap_lgas=[p.lga for p in points if p.agency_count == 0],
+        agencies=agencies,
+        matrix=matrix,
+        lga_columns=columns,
+        lga_points=points,
+        sources=sorted(sources),
+        statewide_label=wide_label,
+        statewide_orgs=sum(1 for s in slugs if orgs[s].statewide),
+        attribution=IATI_ATTRIBUTION if "iati_v1" in sources else None,
+    )
+
+
+_CURRENT_ACTIVITIES = text("""
+    SELECT org_slug, org_name, lga, sectors, sector_buckets, iati_id, source
+      FROM aid_activities
+     WHERE (start_date IS NULL OR start_date <= CURRENT_DATE)
+       AND (end_date >= CURRENT_DATE
+            OR (end_date IS NULL AND start_date >= CURRENT_DATE - INTERVAL '5 years'))
+""")
+
+_REAL_COVERAGE = text("""
+    SELECT c.agency_slug, COALESCE(a.name, c.agency_slug) AS agency_name,
+           c.lga, a.sector, c.source
+      FROM aid_coverage c
+      LEFT JOIN public.aid_agencies a ON a.slug = c.agency_slug
+     WHERE COALESCE(c.source, '') <> :seed
+""")
 
 
 # ─── GET aggregate ────────────────────────────────────────────────────────
@@ -88,7 +207,7 @@ def _lga_centroid(
 @router.get(
     "/coverage",
     response_model=SuccessResponse[AidCoordinationStats],
-    summary="Aggregate agency × LGA coverage for the active tenant",
+    summary="Who reports aid activity where, for the active tenant (real records only)",
 )
 async def get_coverage(
     request: Request,
@@ -96,122 +215,31 @@ async def get_coverage(
 ) -> SuccessResponse[AidCoordinationStats]:
     tenant_id = _require_tenant(request)
 
-    # Join coverage rows (tenant schema) with the agency registry (public)
-    # by slug. Cross-schema reads work fine because the tenant middleware
-    # already set search_path = tenant_<id>, public.
-    result = await session.execute(
-        text(
-            """
-            SELECT c.agency_slug,
-                   c.lga,
-                   c.beneficiaries_served,
-                   c.source,
-                   a.name        AS agency_name,
-                   a.sector      AS sector
-              FROM aid_coverage c
-              LEFT JOIN public.aid_agencies a
-                   ON a.slug = c.agency_slug
-             ORDER BY c.agency_slug, c.lga
-            """
-        ),
-    )
-    rows = result.mappings().all()
-
-    if not rows:
-        # Empty tenant — return zero state with no LGAs computed.
-        return SuccessResponse(
-            data=AidCoordinationStats(
-                tenant_id=tenant_id, active_agencies=0, total_lgas=0,
-                covered_lgas=0, coverage_pct=0.0, duplication_pct=0.0,
-            ),
-            meta=ResponseMeta(
-                tenant_id=None, trace_id=_trace_id(request),
-                timestamp=datetime.now(timezone.utc), pagination=None,
-            ),
-        )
-
-    # Roll up — per-agency, per-LGA, sources.
-    agency_to_lgas: dict[str, set[str]] = {}
-    agency_to_meta: dict[str, dict[str, str]] = {}
-    agency_to_beneficiaries: dict[str, int] = {}
-    lga_to_agencies: dict[str, list[str]] = {}
-    sources: set[str] = set()
-
-    for r in rows:
-        slug = r["agency_slug"]
-        lga = r["lga"]
-        agency_to_lgas.setdefault(slug, set()).add(lga)
-        agency_to_meta[slug] = {
-            "name": r.get("agency_name") or slug,
-            "sector": r.get("sector") or "unknown",
-        }
-        agency_to_beneficiaries[slug] = agency_to_beneficiaries.get(slug, 0) + int(
-            r["beneficiaries_served"] or 0
-        )
-        lga_to_agencies.setdefault(lga, []).append(slug)
-        sources.add(r["source"])
-
-    # Stable orderings.
-    agency_slugs_sorted = sorted(agency_to_lgas.keys())
-    lga_columns = sorted(lga_to_agencies.keys())
-
-    # Matrix
-    matrix = [
-        CoverageMatrixRow(
-            agency_slug=slug,
-            agency_name=agency_to_meta[slug]["name"],
-            row=[1 if lga in agency_to_lgas[slug] else 0 for lga in lga_columns],
-        )
-        for slug in agency_slugs_sorted
-    ]
-
-    # Per-agency summary
-    agencies = [
-        AgencyCoverageSummary(
-            agency_slug=slug,
-            agency_name=agency_to_meta[slug]["name"],
-            sector=agency_to_meta[slug]["sector"],
-            lgas_covered=sorted(agency_to_lgas[slug]),
-            beneficiaries_served=agency_to_beneficiaries[slug],
-        )
-        for slug in agency_slugs_sorted
-    ]
-
-    # LGA points with status + spiral centroid
-    lga_points: list[LgaPoint] = []
-    for idx, lga in enumerate(lga_columns):
-        slugs_here = lga_to_agencies[lga]
-        count = len(slugs_here)
-        status_: CoverageStatus = (
-            "gap" if count == 0 else "covered" if count == 1 else "duplicated"
-        )
-        lon, lat = _lga_centroid(tenant_id, idx, len(lga_columns))
-        lga_points.append(LgaPoint(
-            lga=lga, lon=lon, lat=lat,
-            agency_count=count,
-            status=status_,
-            agency_slugs=sorted(slugs_here),
+    rows: list[ActivityRow] = []
+    try:
+        async with session.begin_nested():
+            for r in (await session.execute(_CURRENT_ACTIVITIES)).mappings():
+                rows.append(ActivityRow(
+                    org_slug=r["org_slug"], org_name=r["org_name"], lga=r["lga"],
+                    sectors=tuple(s.strip() for s in (r["sectors"] or "").split(";") if s.strip()),
+                    buckets=tuple(r["sector_buckets"] or ()), activity=r["iati_id"],
+                    source=r["source"],
+                ))
+    except ProgrammingError:
+        # aid_activities not migrated yet on this database — show the rest.
+        pass
+    for r in (await session.execute(_REAL_COVERAGE, {"seed": SEED_SOURCE})).mappings():
+        sector = (r["sector"] or "").strip()
+        rows.append(ActivityRow(
+            org_slug=r["agency_slug"], org_name=r["agency_name"], lga=r["lga"],
+            sectors=(sector,) if sector else (), buckets=(sector or "Other",),
+            activity=f'{r["source"]}:{r["agency_slug"]}:{r["lga"]}', source=r["source"],
         ))
 
-    covered_lgas = sum(1 for p in lga_points if p.agency_count > 0)
-    dup_lgas = sum(1 for p in lga_points if p.agency_count > 1)
-    gap_lgas = [p.lga for p in lga_points if p.agency_count == 0]
-
+    lgas = lga_geo.all_lgas(tenant_id)
+    centres = {lga: lga_geo.centroid_for(tenant_id, lga) for lga in lgas}
     return SuccessResponse(
-        data=AidCoordinationStats(
-            tenant_id=tenant_id,
-            active_agencies=len(agency_slugs_sorted),
-            total_lgas=len(lga_columns),
-            covered_lgas=covered_lgas,
-            coverage_pct=(covered_lgas / len(lga_columns)) * 100,
-            duplication_pct=(dup_lgas / len(lga_columns)) * 100,
-            gap_lgas=gap_lgas,
-            agencies=agencies,
-            matrix=matrix,
-            lga_columns=lga_columns,
-            lga_points=lga_points,
-            sources=sorted(sources),
-        ),
+        data=build_stats(tenant_id, lgas, centres, rows),
         meta=ResponseMeta(
             tenant_id=None, trace_id=_trace_id(request),
             timestamp=datetime.now(timezone.utc), pagination=None,

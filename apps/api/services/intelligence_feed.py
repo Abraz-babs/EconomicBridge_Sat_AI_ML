@@ -184,12 +184,17 @@ async def _gather_tenant_rows(
                agency_slug AS extra
           FROM "{schema}".aid_coverage
          WHERE COALESCE(last_active_at::timestamptz, updated_at) >= :cutoff
+           AND COALESCE(source, '') <> 'seed_v1'
 
         UNION ALL
 
-        -- Economic Visibility: the most populous REAL villages a fresh
+        -- Economic Visibility: the most populous REAL village a fresh
         -- measurement round found dark at night (migration 0054) — not the
-        -- generated "settlement N" points, which are no longer read.
+        -- generated "settlement N" points, which are no longer read. ONE per
+        -- state, and only in the fortnight after a round: yearly standing
+        -- figures are not news, and five per state (the first cut,
+        -- 2026-09-24) filled 40 of the feed's 50 slots and buried live
+        -- alerts. The full list lives in the Economic Visibility panel.
         SELECT 'poverty_village' AS kind,
                '' AS subtype,
                CASE
@@ -205,7 +210,8 @@ async def _gather_tenant_rows(
           FROM (SELECT name, lga, people, measured_at
                   FROM "{schema}".village_light
                  WHERE light_class = 'unlit' AND measured_at >= :cutoff
-                 ORDER BY people DESC LIMIT 5) AS unlit_villages
+                   AND measured_at >= NOW() - INTERVAL '14 days'
+                 ORDER BY people DESC LIMIT 1) AS unlit_villages
 
          ORDER BY observed_at DESC
          LIMIT 50

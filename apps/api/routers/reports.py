@@ -92,15 +92,16 @@ REPORT_SPECS: dict[str, ReportSpec] = {
             Metric("LGAs covered", "distinct", "lga"),
         ],
         breakdown_col="light_class", breakdown_title="By night light"),
+    # Real IATI activity (0055) — the seed aid_coverage rows are never reported.
     "aid-coordination": ReportSpec(
-        label="Aid Coordination", table="aid_coverage", date_col="created_at",
-        columns=["created_at", "agency_slug", "lga", "beneficiaries_served",
-                 "last_active_at", "source"],
+        label="Aid Coordination", table="aid_activities", date_col="first_seen_at",
+        columns=["first_seen_at", "org_name", "title", "sectors", "lga",
+                 "location_name", "start_date", "end_date", "source"],
         metrics=[
-            Metric("Coverage records", "rows"),
-            Metric("Beneficiaries served", "sum", "beneficiaries_served"),
-            Metric("Agencies active", "distinct", "agency_slug"),
-            Metric("LGAs covered", "distinct", "lga"),
+            Metric("Activity locations", "rows"),
+            Metric("Organisations", "distinct", "org_slug"),
+            Metric("Activities", "distinct", "iati_id"),
+            Metric("LGAs with a site", "distinct", "lga"),
         ]),
     "cropguard": ReportSpec(
         label="CropGuard", table="crop_predictions", date_col="created_at",

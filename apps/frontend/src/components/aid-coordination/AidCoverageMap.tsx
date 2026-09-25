@@ -8,7 +8,7 @@ import type { Tenant } from '@/data/tenants';
 import type { LgaPoint } from '@/hooks/useAidCoordination';
 
 
-/** Status colour: red gap → yellow covered-by-one → green well-served. */
+/** Status colour: red no reported site → yellow reported → green same-sector overlap. */
 function colourFor(point: LgaPoint): [number, number, number, number] {
   if (point.status === 'gap') return [224, 90, 43, 230];           // red
   if (point.status === 'duplicated') return [82, 183, 136, 230];   // green
@@ -21,12 +21,12 @@ function tooltipFor(obj: unknown): string | null {
   const p = obj as LgaPoint;
   if (!p?.lga) return null;
   const label =
-    p.status === 'gap' ? 'Coverage gap — no agency'
-    : p.status === 'duplicated' ? 'Multiple agencies'
-    : 'Single agency';
+    p.status === 'gap' ? 'No reported activity site'
+    : p.status === 'duplicated' ? 'Same-sector overlap'
+    : 'Reported activity';
   const lines = [
     `${p.lga} · ${label}`,
-    `${p.agency_count} agenc${p.agency_count === 1 ? 'y' : 'ies'}`,
+    `${p.agency_count} organisation${p.agency_count === 1 ? '' : 's'}`,
   ];
   if (p.agency_slugs.length > 0) lines.push(p.agency_slugs.join(', '));
   return lines.join('\n');
@@ -141,22 +141,22 @@ export default function AidCoverageMap({ tenant, lgaPoints, sources = [] }: Prop
         <>
           <div className="fp-legend-item">
             <div className="fp-legend-dot fp-legend-dot--critical" />
-            Gap — no agency
+            No reported site
           </div>
           <div className="fp-legend-item">
             <div className="fp-legend-dot fp-legend-dot--high" />
-            Single agency
+            Reported activity
           </div>
           <div className="fp-legend-item">
             <div className="fp-legend-dot fp-legend-dot--resolved" />
-            Multiple agencies
+            Same-sector overlap
           </div>
         </>
       }
       overlay={
         <>
-          {lgaPoints.length} LGAs · {gapCount} gaps · {dupCount} duplications<br />
-          Circle size ≈ agency count · colour ≈ coverage status<br />
+          {lgaPoints.length} LGAs · {gapCount} with no reported site · {dupCount} same-sector overlaps<br />
+          Circle size ≈ organisations · colour ≈ status<br />
           Sources: {sources.length > 0 ? sources.join(' + ') : '—'}
         </>
       }

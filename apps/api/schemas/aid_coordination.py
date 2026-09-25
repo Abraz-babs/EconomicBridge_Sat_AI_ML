@@ -23,13 +23,19 @@ class AidAgency(BaseModel):
 
 
 class AgencyCoverageSummary(BaseModel):
-    """Per-agency rollup for a tenant: which LGAs + total beneficiaries."""
+    """Per-organisation rollup for a tenant: where it reports activity.
+
+    beneficiaries_served is None for IATI records — publishers rarely report
+    it, and a number is never invented to fill the gap.
+    """
 
     agency_slug: str
     agency_name: str
     sector: str
     lgas_covered: list[str] = Field(default_factory=list)
-    beneficiaries_served: int
+    beneficiaries_served: int | None = None
+    activities: int = 0                 # distinct current activities
+    statewide_activities: int = 0       # of which statewide / countrywide
 
 
 class LgaPoint(BaseModel):
@@ -59,13 +65,16 @@ class AidCoordinationStats(BaseModel):
     total_lgas: int
     covered_lgas: int
     coverage_pct: float
-    duplication_pct: float          # % of LGAs with 2+ agencies
+    duplication_pct: float          # % of LGAs where 2+ organisations share a sector
     gap_lgas: list[str] = Field(default_factory=list)
     agencies: list[AgencyCoverageSummary] = Field(default_factory=list)
     matrix: list[CoverageMatrixRow] = Field(default_factory=list)
     lga_columns: list[str] = Field(default_factory=list)
     lga_points: list[LgaPoint] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
+    statewide_label: str = "Statewide"  # "Countrywide" for Ghana / Senegal
+    statewide_orgs: int = 0             # organisations with statewide activity
+    attribution: str | None = None
 
 
 # ─── Admin upload contract ────────────────────────────────────────────────

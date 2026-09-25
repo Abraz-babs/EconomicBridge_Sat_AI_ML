@@ -7,6 +7,8 @@ import { ApiException, apiFetch, type SuccessEnvelope } from '@/lib/api';
 
 /** Mirrors apps/api/schemas/aid_coordination.py — keep in sync. */
 
+/** gap = no reported activity site · covered = reported activity ·
+ *  duplicated = 2+ organisations working in the SAME sector there. */
 export type CoverageStatus = 'gap' | 'covered' | 'duplicated';
 
 export interface AgencyCoverageSummary {
@@ -14,7 +16,10 @@ export interface AgencyCoverageSummary {
   agency_name: string;
   sector: string;
   lgas_covered: string[];
-  beneficiaries_served: number;
+  /** Null for IATI records — never invented. */
+  beneficiaries_served: number | null;
+  activities: number;
+  statewide_activities: number;
 }
 
 export interface LgaPoint {
@@ -45,6 +50,10 @@ export interface AidCoordinationStats {
   lga_columns: string[];
   lga_points: LgaPoint[];
   sources: string[];
+  /** "Statewide", or "Countrywide" for Ghana / Senegal. */
+  statewide_label: string;
+  statewide_orgs: number;
+  attribution: string | null;
 }
 
 
