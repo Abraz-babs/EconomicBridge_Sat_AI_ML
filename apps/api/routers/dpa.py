@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.engine import get_session
-from dependencies import require_signed_dpa
+from dependencies import require_dpa_caller, require_signed_dpa, require_super_admin
 from models.dpa import DataProcessingAgreement, DataSubjectRequest
 from schemas.dpa import (
     AgreementStatus,
@@ -66,6 +66,7 @@ def _meta(request: Request, pagination: Pagination | None = None) -> ResponseMet
     response_model=SuccessResponse[DpaAgreementResponse],
     status_code=status.HTTP_201_CREATED,
     summary="Register a new Data Processing Agreement",
+    dependencies=[Depends(require_super_admin)],
 )
 async def create_agreement(
     request: Request,
@@ -95,6 +96,7 @@ async def create_agreement(
     "/agreements",
     response_model=SuccessResponse[DpaAgreementListData],
     summary="List DPAs",
+    dependencies=[Depends(require_super_admin)],
 )
 async def list_agreements(
     request: Request,
@@ -146,6 +148,7 @@ async def list_agreements(
     "/agreements/{agreement_id}",
     response_model=SuccessResponse[DpaAgreementResponse],
     summary="Fetch one DPA",
+    dependencies=[Depends(require_super_admin)],
 )
 async def get_agreement(
     request: Request,
@@ -164,6 +167,7 @@ async def get_agreement(
     "/agreements/{agreement_id}",
     response_model=SuccessResponse[DpaAgreementResponse],
     summary="Update a DPA's status / fields",
+    dependencies=[Depends(require_super_admin)],
 )
 async def patch_agreement(
     request: Request,
@@ -241,7 +245,7 @@ async def create_dsr(
         "a signed, unexpired Data Processing Agreement for the tenant. "
         "Returns 403 `DPA_REQUIRED` otherwise."
     ),
-    dependencies=[Depends(require_signed_dpa)],
+    dependencies=[Depends(require_signed_dpa), Depends(require_dpa_caller)],
 )
 async def list_dsr(
     request: Request,
@@ -293,7 +297,7 @@ async def list_dsr(
         "`X-Organisation-Id` matching a signed DPA. Same enforcement as "
         "the list endpoint."
     ),
-    dependencies=[Depends(require_signed_dpa)],
+    dependencies=[Depends(require_signed_dpa), Depends(require_dpa_caller)],
 )
 async def patch_dsr(
     request: Request,

@@ -231,3 +231,30 @@ async def require_signed_dpa(request: Request) -> UUID:
 
     request.state.organisation_id = org_id
     return org_id
+
+
+async def require_dpa_caller(request: Request) -> CurrentUser:
+    """The caller must be SIGNED IN, and be the organisation it claims to be.
+
+    `require_signed_dpa` checks that the X-Organisation-Id on a request has a
+    signed agreement — but the caller writes that header itself. Until
+    2026-09-25 nothing tied it to a login, and the agreement register could be
+    written anonymously, so anyone could have registered a "signed" agreement
+    for an invented organisation and then read data-subject requests (people's
+    privacy requests, with their contact details). The platform operator
+    passes; anyone else must present a token whose organisation IS the one in
+    the header.
+    """
+    user = await get_current_user(request)
+    if user.is_super_admin:
+        return user
+    claimed = (request.headers.get("x-organisation-id") or "").strip().lower()
+    if claimed != str(user.org_id).lower():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "FORBIDDEN",
+                "message": "The organisation named in this request is not yours.",
+            },
+        )
+    return user

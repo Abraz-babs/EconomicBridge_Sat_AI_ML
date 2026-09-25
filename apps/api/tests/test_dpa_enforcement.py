@@ -163,6 +163,47 @@ def test_dsr_patch_openapi_advertises_the_dpa_gate():
     assert "DPA" in description or "Data Processing Agreement" in description
 
 
+# ─── The register and the DSR views need a login (2026-09-25) ────────────
+
+
+def _token(role: str, org_id: uuid.UUID) -> str:
+    from core.security import create_access_token
+    return create_access_token(user_id=uuid.uuid4(), role=role, org_id=org_id,
+                               permitted_tenants=["kebbi"])
+
+
+def _auth(org_id: uuid.UUID, role: str = "org_admin") -> dict[str, str]:
+    return {"Authorization": f"Bearer {_token(role, org_id)}"}
+
+
+def test_agreement_register_is_closed_to_anonymous_callers():
+    """It was readable AND writable by anyone until 2026-09-25."""
+    assert client.get("/api/v1/dpa/agreements").status_code == 401
+    assert client.post("/api/v1/dpa/agreements", json={}).status_code == 401
+    some = uuid.uuid4()
+    assert client.get(f"/api/v1/dpa/agreements/{some}").status_code == 401
+    assert client.patch(f"/api/v1/dpa/agreements/{some}", json={}).status_code == 401
+
+
+def test_agreement_register_is_closed_to_non_operators():
+    r = client.get("/api/v1/dpa/agreements", headers=_auth(uuid.uuid4()))
+    assert r.status_code == 403
+
+
+def test_dsr_views_require_a_login_matching_the_claimed_organisation():
+    from dependencies import require_dpa_caller
+    from routers.dpa import router
+    gated = {
+        (next(iter(r.methods)), r.path)
+        for r in router.routes
+        if any(getattr(d, "dependency", None) is require_dpa_caller for d in r.dependencies)
+    }
+    assert ("GET", "/dpa/data-subject-requests") in gated
+    assert ("PATCH", "/dpa/data-subject-requests/{dsr_id}") in gated
+    # Filing a request stays open to the public.
+    assert ("POST", "/dpa/data-subject-requests") not in gated
+
+
 # ─── Integration tests (live DB) ──────────────────────────────────────────
 
 
@@ -270,6 +311,7 @@ def test_dsr_list_with_signed_dpa_succeeds():
             headers={
                 "X-Tenant-Id": "kebbi",
                 "X-Organisation-Id": str(org_id),
+                **_auth(org_id),
             },
         )
         assert r.status_code == 200, r.text
@@ -286,6 +328,7 @@ def test_dsr_list_with_pending_dpa_returns_403():
             headers={
                 "X-Tenant-Id": "kebbi",
                 "X-Organisation-Id": str(org_id),
+                **_auth(org_id),
             },
         )
         assert r.status_code == 403
@@ -306,6 +349,7 @@ def test_dsr_list_with_expired_dpa_returns_403():
             headers={
                 "X-Tenant-Id": "kebbi",
                 "X-Organisation-Id": str(org_id),
+                **_auth(org_id),
             },
         )
         assert r.status_code == 403
@@ -325,6 +369,7 @@ def test_dsr_list_with_dpa_for_different_tenant_returns_403():
             headers={
                 "X-Tenant-Id": "zamfara",
                 "X-Organisation-Id": str(org_id),
+                **_auth(org_id),
             },
         )
         assert r.status_code == 403
