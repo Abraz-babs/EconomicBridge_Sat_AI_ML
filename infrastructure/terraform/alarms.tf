@@ -101,8 +101,11 @@ resource "aws_cloudwatch_metric_alarm" "rds_cpu_high" {
   statistic           = "Average"
   threshold           = 80
 
+  # .identifier, not .id: in AWS provider v5 `id` is the resource ID
+  # (db-XXXX), which CloudWatch never reports under — the alarm sat at
+  # INSUFFICIENT_DATA from creation until 2026-09-25.
   dimensions = {
-    DBInstanceIdentifier = aws_db_instance.main.id
+    DBInstanceIdentifier = aws_db_instance.main.identifier
   }
 
   alarm_actions = [aws_sns_topic.alarms.arn]
@@ -119,8 +122,11 @@ resource "aws_cloudwatch_metric_alarm" "rds_storage_low" {
   statistic           = "Average"
   threshold           = 2 * 1024 * 1024 * 1024 # 2 GB in bytes
 
+  # .identifier, not .id: in AWS provider v5 `id` is the resource ID
+  # (db-XXXX), which CloudWatch never reports under — the alarm sat at
+  # INSUFFICIENT_DATA from creation until 2026-09-25.
   dimensions = {
-    DBInstanceIdentifier = aws_db_instance.main.id
+    DBInstanceIdentifier = aws_db_instance.main.identifier
   }
 
   alarm_actions = [aws_sns_topic.alarms.arn]
@@ -139,8 +145,11 @@ resource "aws_cloudwatch_metric_alarm" "redis_cpu_high" {
   statistic           = "Average"
   threshold           = 80
 
+  # ElastiCache publishes EngineCPUUtilization per NODE (CacheClusterId,
+  # e.g. <group>-001), not per replication group — the group dimension
+  # never received data.
   dimensions = {
-    ReplicationGroupId = aws_elasticache_replication_group.main.id
+    CacheClusterId = sort(tolist(aws_elasticache_replication_group.main.member_clusters))[0]
   }
 
   alarm_actions = [aws_sns_topic.alarms.arn]

@@ -122,9 +122,18 @@ variable "rds_backup_retention_days" {
 }
 
 variable "rds_deletion_protection" {
-  description = "Block `terraform destroy` from deleting the DB. Set to true in production."
+  description = "Block deletion of the DB (console, CLI or `terraform destroy`)."
   type        = bool
-  default     = false
+  default     = true
+
+  validation {
+    # The "staging" stack IS the live site (economicbridge.org) and holds
+    # every record the platform keeps — the operator's standing rule is that
+    # no record is ever lost. It was false until 2026-09-25. Turning it off
+    # has to be typed deliberately, in a commit that says why.
+    condition     = var.rds_deletion_protection
+    error_message = "Deletion protection must stay on: this database holds the live site's records. Remove this validation in the same commit that explains why."
+  }
 }
 
 # ─── ElastiCache Redis ────────────────────────────────────────────────
