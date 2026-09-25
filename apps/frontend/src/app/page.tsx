@@ -1,21 +1,22 @@
 'use client';
 
 /**
- * Front door (route `/`). The first thing a visitor sees is the Bizra Farms
- * Integrated corporate site, which presents the company and bridges into the
- * EconomicBridge platform. It lives as a self-contained static page at
- * `public/bizra.html` (its own styles + images under `public/bizra-assets/`);
- * we embed it full-bleed so editing it stays a single-file job. Its
- * "Enter Platform" buttons navigate the top window to the EconomicBridge
- * landing page (`/landing`), which in turn opens the dashboard (`/dashboard`).
+ * Front door (route `/`). The EconomicBridge front page (`public/home.html`,
+ * chosen 2026-09-25: the Night Survey village map as the face) is embedded
+ * full-bleed so editing it stays a single-file job. Its platform buttons
+ * navigate the top window to the EconomicBridge landing page (`/landing`),
+ * which in turn opens the dashboard (`/dashboard`). The Bizra Farms company
+ * page stays at `/bizra.html`, linked from the front page.
  *
- * Flow: `/` (Bizra) → `/landing` (EconomicBridge) → `/dashboard` (Overview).
+ * To go back to the previous front door, set src to "/bizra.html".
+ *
+ * Flow: `/` (front page) → `/landing` (EconomicBridge) → `/dashboard` (Overview).
  */
-export default function BizraFrontDoor() {
+export default function FrontDoor() {
   return (
     <iframe
-      src="/bizra.html"
-      title="Bizra Farms Integrated — EconomicBridge"
+      src="/home.html"
+      title="EconomicBridge by Bizra Farms Integrated"
       className="frame-fullbleed"
     />
   );

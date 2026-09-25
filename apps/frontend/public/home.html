@@ -503,6 +503,14 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--amber);outline-o
 </footer>
 
 <script>
+// Framed at "/": a link to /#briefing (or the older /#contact) opens the form.
+try {
+  var topHash = (window.top || window).location.hash;
+  if (topHash === '#briefing' || topHash === '#contact') {
+    document.getElementById('briefing').scrollIntoView();
+  }
+} catch (e) { /* not same-origin: nothing to do */ }
+
 // Close the phone menu after a choice.
 document.querySelectorAll('.menu nav a').forEach(function (a) {
   a.addEventListener('click', function () { a.closest('details').removeAttribute('open'); });
