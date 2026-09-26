@@ -1,16 +1,21 @@
 'use client';
 
+/**
+ * SkillsBridge — honest interim view (2026-09-26).
+ *
+ * Only the school counts are measured (UNICEF GIGA school locations). The
+ * per-LGA internet, mobile, electricity, youth-population and learning-gap
+ * figures were withdrawn: they were spread around national figures with
+ * deterministic per-LGA noise (ingestion/sources/giga_itu_stats.py), so the
+ * "largest learning gap" ranked noise. The rebuild is a school-level reach
+ * list: every school, whether its village is dark at night, the children
+ * nearby, and its connectivity. SkillsMap stays in the repo for the rebuild.
+ */
+
 import { useMemo } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
-import { sourceBadge } from '@/lib/display';
-import {
-  useSkillsBridge,
-  type ConnectivityBand,
-  type SkillsIndicatorRow,
-} from '@/hooks/useSkillsBridge';
-
-import SkillsMap from './SkillsMap';
+import { useSkillsBridge, type SkillsIndicatorRow } from '@/hooks/useSkillsBridge';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -21,42 +26,21 @@ const STATE_NAMES: Record<string, string> = {
 };
 
 
-function fmtPop(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
-  return n.toLocaleString();
-}
-
-function bandClass(b: ConnectivityBand): string {
-  return `sb-band sb-band--${b}`;
-}
-
-function bandLabel(b: ConnectivityBand): string {
-  switch (b) {
-    case 'no_signal': return 'no signal';
-    case 'limited':   return 'limited';
-    case 'basic':     return 'basic';
-    case 'broadband': return 'broadband';
-  }
-}
-
-
 export default function SkillsBridgePanel() {
   const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
   const query = useSkillsBridge({ tenantId: activeTenantId });
   const stats = query.data;
 
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
-  const badge = sourceBadge(stats?.sources, { loading: query.isLoading, error: query.isError });
 
-  // Sort LGAs by learning gap (worst first) — that's the row the
-  // education ministry wants to see at the top.
-  const sortedByGap = useMemo<SkillsIndicatorRow[]>(
-    () => [...(stats?.indicators ?? [])].sort(
-      (a, b) => b.learning_gap_index - a.learning_gap_index,
-    ),
+  // Most schools first — the one per-LGA figure that is measured.
+  const bySchools = useMemo<SkillsIndicatorRow[]>(
+    () => [...(stats?.indicators ?? [])].sort((a, b) => b.school_count - a.school_count),
     [stats?.indicators],
   );
+  const most = bySchools[0];
+  const fewest = bySchools[bySchools.length - 1];
+  const maxCount = most?.school_count ?? 0;
 
   return (
     <div>
@@ -65,11 +49,11 @@ export default function SkillsBridgePanel() {
         <div>
           <div className="cg-title">SkillsBridge</div>
           <div className="cg-subtitle">
-            School counts from live UNICEF GIGA · connectivity from World Bank
-            ICT · per-LGA estimates with a derived learning-gap index
+            Schools mapped by UNICEF GIGA · becoming a school-by-school reach list
+            for power and connectivity
           </div>
         </div>
-        <div className={`cg-mode-badge ${badge.cls}`}>{badge.label}</div>
+        <div className="cg-mode-badge cg-mode-trained">LIVE · UNICEF GIGA schools</div>
       </div>
 
       {/* TENANT SELECTOR */}
@@ -99,122 +83,71 @@ export default function SkillsBridgePanel() {
 
       {query.isError && (
         <div className="fp-alert-error">
-          Could not load skills indicators:{' '}
-          {query.error?.message ?? 'unknown'}. Run{' '}
-          <code>python -m scripts.seed_skills_indicators</code> from{' '}
-          <code>apps/api/</code> to populate seed rows.
+          Could not load school counts: {query.error?.message ?? 'unknown'}.
         </div>
       )}
 
-      {/* STATS */}
+      {/* STATS — measured school counts only */}
       <div className="fp-grid">
         <div className="fp-stat ok">
-          <div className="fp-stat-label">LGAs Mapped</div>
+          <div className="fp-stat-label">Schools mapped</div>
+          <div className="fp-stat-val">
+            {stats ? stats.total_schools.toLocaleString('en-US') : '—'}
+          </div>
+          <div className="fp-stat-sub">all levels, mostly primary · {stateLabel}</div>
+        </div>
+        <div className="fp-stat ok">
+          <div className="fp-stat-label">LGAs</div>
           <div className="fp-stat-val">{stats?.total_lgas ?? '—'}</div>
-          <div className="fp-stat-sub">in {stateLabel}</div>
+          <div className="fp-stat-sub">with schools counted</div>
+        </div>
+        <div className="fp-stat ok">
+          <div className="fp-stat-label">Most schools</div>
+          <div className="fp-stat-val sb-stat-val--small">{most?.lga ?? '—'}</div>
+          <div className="fp-stat-sub">{most ? `${most.school_count} schools` : '—'}</div>
         </div>
         <div className="fp-stat warn">
-          <div className="fp-stat-label">Median Internet Coverage</div>
-          <div className="fp-stat-val">
-            {stats ? `${stats.median_internet_coverage_pct.toFixed(0)}%` : '—'}
-          </div>
-          <div className="fp-stat-sub">% of population with reliable connectivity</div>
-        </div>
-        <div
-          className="fp-stat ok"
-          title={
-            'Every GIGA-mapped school facility — all levels, predominantly ' +
-            'primary. Nigeria has ~110,000 primary schools (~140 per LGA), so ' +
-            'per-LGA counts in the hundreds are the real figure, not an error.'
-          }
-        >
-          <div className="fp-stat-label">Schools Mapped</div>
-          <div className="fp-stat-val">
-            {stats ? fmtPop(stats.total_schools) : '—'}
-          </div>
-          <div className="fp-stat-sub">
-            {stats
-              ? `all levels · ${fmtPop(stats.total_youth_population)} youth`
-              : 'all levels · primary-dominant'}
-          </div>
-        </div>
-        <div className="fp-stat crit">
-          <div className="fp-stat-label">Largest Learning Gap</div>
-          <div className="fp-stat-val sb-stat-val--small">
-            {stats?.worst_gap_lga ?? '—'}
-          </div>
-          <div className="fp-stat-sub">Prioritise for infrastructure investment</div>
+          <div className="fp-stat-label">Fewest schools</div>
+          <div className="fp-stat-val sb-stat-val--small">{fewest?.lga ?? '—'}</div>
+          <div className="fp-stat-sub">{fewest ? `${fewest.school_count} schools` : '—'}</div>
         </div>
       </div>
 
-      {/* MAP */}
-      <div className="fp-map">
-        <div className="fp-map-header">
-          <span className="fp-map-title">
-            Connectivity Geography — {stateLabel}
-          </span>
-          <span className="ev-map-meta">
-            Best: {stats?.best_connectivity_lga ?? '—'} · Most underserved:{' '}
-            {stats?.most_underserved_lga ?? '—'} · Sources:{' '}
-            {stats?.sources.join(', ') ?? '—'}
-          </span>
-        </div>
-        <SkillsMap
-          tenant={activeTenant}
-          indicators={stats?.indicators ?? []}
-        />
-      </div>
-
-      {/* COMPARE TABLE */}
+      {/* SCHOOLS BY LGA */}
       <div className="sb-table-wrap">
         <div className="cg-section-header">
-          Per-LGA learning gap
-          <span className="ev-map-meta">worst first · click columns to read</span>
+          Schools by LGA
+          <span className="ev-map-meta">
+            UNICEF GIGA school locations · each school counted in the nearest LGA
+            centre (within ~50 km), so counts near borders are approximate
+          </span>
         </div>
-        {query.isLoading && (
-          <div className="fp-alert-empty">Loading indicators…</div>
+        {query.isLoading && <div className="fp-alert-empty">Loading school counts…</div>}
+        {stats && bySchools.length === 0 && (
+          <div className="fp-alert-empty">No schools recorded for {stateLabel} yet.</div>
         )}
-        {stats && stats.indicators.length === 0 && (
-          <div className="fp-alert-empty">
-            No skills data recorded for {stateLabel}. Run{' '}
-            <code>python -m scripts.seed_skills_indicators</code> to populate.
-          </div>
-        )}
-        {sortedByGap.length > 0 && (
+        {bySchools.length > 0 && (
           <div className="sb-table-scroll">
             <table className="sb-table">
               <thead>
                 <tr>
                   <th>LGA</th>
-                  <th>Internet</th>
-                  <th>Mobile</th>
-                  <th>Connectivity</th>
-                  <th>Schools / 10k</th>
-                  <th title="GIGA-mapped school facilities, all levels (primary-dominant). Hundreds per LGA is expected for Nigeria.">
-                    Schools
-                  </th>
-                  <th>Electricity</th>
-                  <th>Gap</th>
+                  <th>Schools mapped</th>
+                  <th aria-label="Share of the LGA with the most schools" />
                 </tr>
               </thead>
               <tbody>
-                {sortedByGap.map((row) => (
+                {bySchools.map((row) => (
                   <tr key={row.id}>
                     <td className="sb-lga-cell">{row.lga}</td>
-                    <td>{row.internet_coverage_pct.toFixed(1)}%</td>
-                    <td>{row.mobile_coverage_pct.toFixed(1)}%</td>
-                    <td>
-                      <span className={bandClass(row.connectivity_band)}>
-                        {bandLabel(row.connectivity_band)}
-                      </span>
-                    </td>
-                    <td>{row.school_density_per_10k.toFixed(2)}</td>
                     <td>{row.school_count}</td>
-                    <td>
-                      <ScoreBar score={row.electricity_reliability} />
-                    </td>
-                    <td>
-                      <ScoreBar score={row.learning_gap_index} invert />
+                    <td style={{ width: '45%' }}>
+                      <div className="sb-scorebar" aria-hidden>
+                        <div
+                          className="sb-scorebar-fill sb-scorebar-fill--high"
+                          style={{ width: `${maxCount ? Math.round((row.school_count / maxCount) * 100) : 0}%` }}
+                        />
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -224,126 +157,44 @@ export default function SkillsBridgePanel() {
         )}
       </div>
 
-      {/* HIGHLIGHTS */}
+      {/* WHAT THIS MODULE IS BECOMING */}
       <div className="fp-main-row fp-main-row--equal">
         <div className="fp-timeline">
-          <div className="fp-timeline-header">Investment signals — {stateLabel}</div>
+          <div className="fp-timeline-header">What this module is becoming</div>
           <div className="fp-timeline-body">
-            {stats?.worst_gap_lga && (
-              <div className="fp-tl-row">
-                <div className="fp-tl-dot fp-tl-crit">!</div>
-                <div className="fp-tl-content">
-                  <div className="fp-tl-time">
-                    {stats.worst_gap_lga} · highest learning gap
-                  </div>
-                  <div className="fp-tl-event">
-                    Highest combined deficit across internet, schools, and grid
-                    reliability. Top priority for digital-learning rollout.
-                  </div>
+            <div className="fp-tl-row">
+              <div className="fp-tl-dot fp-tl-ok">●</div>
+              <div className="fp-tl-content">
+                <div className="fp-tl-time">A school reach list</div>
+                <div className="fp-tl-event">
+                  Every school, with whether its village shows light at night
+                  (NASA VIIRS), how many school-age children live nearby
+                  (Meta &amp; CIESIN), and its connectivity — ranked to show the
+                  schools to power and connect first, with directions.
                 </div>
               </div>
-            )}
-            {stats?.most_underserved_lga && (
-              <div className="fp-tl-row">
-                <div className="fp-tl-dot fp-tl-warn">●</div>
-                <div className="fp-tl-content">
-                  <div className="fp-tl-time">
-                    {stats.most_underserved_lga} · fewest schools per 10k
-                  </div>
-                  <div className="fp-tl-event">
-                    School density below the GIGA benchmark. Consider mobile
-                    learning units or satellite-classroom partnerships.
-                  </div>
-                </div>
-              </div>
-            )}
-            {stats?.best_connectivity_lga && (
-              <div className="fp-tl-row">
-                <div className="fp-tl-dot fp-tl-ok">●</div>
-                <div className="fp-tl-content">
-                  <div className="fp-tl-time">
-                    {stats.best_connectivity_lga} · strongest connectivity
-                  </div>
-                  <div className="fp-tl-event">
-                    Use as a regional hub for digital-content distribution and
-                    teacher-training broadcasts to surrounding LGAs.
-                  </div>
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
 
         <div className="fp-timeline">
-          <div className="fp-timeline-header">Methodology</div>
+          <div className="fp-timeline-header">Why the LGA scores were withdrawn</div>
           <div className="fp-timeline-body">
             <div className="fp-tl-row">
-              <div className="fp-tl-dot fp-tl-ok">●</div>
+              <div className="fp-tl-dot fp-tl-warn">●</div>
               <div className="fp-tl-content">
-                <div className="fp-tl-time">Connectivity bands</div>
+                <div className="fp-tl-time">Spread, not measured</div>
                 <div className="fp-tl-event">
-                  Derived from internet coverage %: ≥ 60% broadband, 30-60%
-                  basic, 10-30% limited, &lt; 10% no signal. Mobile (2G+)
-                  coverage tracked separately for SMS-fallback planning.
-                </div>
-              </div>
-            </div>
-            <div className="fp-tl-row">
-              <div className="fp-tl-dot fp-tl-ok">●</div>
-              <div className="fp-tl-content">
-                <div className="fp-tl-time">School counts</div>
-                <div className="fp-tl-event">
-                  Real GIGA-mapped school locations, all levels and
-                  predominantly primary, binned to each LGA. Nigeria has
-                  ~110,000 primary schools across 774 LGAs (~140 each), so
-                  per-LGA counts in the hundreds are the true figure — not
-                  secondary schools alone.
-                </div>
-              </div>
-            </div>
-            <div className="fp-tl-row">
-              <div className="fp-tl-dot fp-tl-ok">●</div>
-              <div className="fp-tl-content">
-                <div className="fp-tl-time">Learning gap composite</div>
-                <div className="fp-tl-event">
-                  0..1 score: 40% weight internet coverage, 30% school density,
-                  30% grid reliability. Higher = bigger gap. Anchored to UNICEF
-                  GIGA benchmarks of ~4 primary + ~1.5 secondary schools / 10k.
-                </div>
-              </div>
-            </div>
-            <div className="fp-tl-row">
-              <div className="fp-tl-dot fp-tl-ok">●</div>
-              <div className="fp-tl-content">
-                <div className="fp-tl-time">Live data swap-in</div>
-                <div className="fp-tl-event">
-                  Today rows are tagged source=seed_v1. UNICEF GIGA + ITU
-                  ingestion will write source=giga_v1 / itu_v1 alongside,
-                  no migration needed.
+                  The earlier internet, electricity and learning-gap figures for
+                  each LGA were spread around national figures rather than
+                  measured for each LGA, so they could not rank LGAs. Only the
+                  school counts are shown until each figure is measured.
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-
-function ScoreBar({ score, invert }: { score: number; invert?: boolean }) {
-  const pct = Math.max(0, Math.min(100, Math.round(score * 100)));
-  // For invert (learning_gap_index), HIGH = bad → red. Otherwise high = good → green.
-  const effective = invert ? 1 - score : score;
-  const band = effective >= 0.7 ? 'high' : effective >= 0.4 ? 'mid' : 'low';
-  return (
-    <div className="sb-scorebar" aria-label={`${pct}%`}>
-      {/* Width is data-driven (0..100% from `score`). */}
-      <div
-        className={`sb-scorebar-fill sb-scorebar-fill--${band}`}
-        style={{ width: `${pct}%` }}
-      />
-      <span className="sb-scorebar-label">{pct}</span>
     </div>
   );
 }

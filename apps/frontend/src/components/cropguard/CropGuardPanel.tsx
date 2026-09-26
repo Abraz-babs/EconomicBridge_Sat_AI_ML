@@ -5,7 +5,6 @@ import { useMemo, useRef, useState } from 'react';
 import { useTenant } from '@/context/TenantContext';
 import {
   fileToBase64,
-  useCropModelInfo,
   useCropPredictions,
   useDeletePrediction,
   usePredictCropDisease,
@@ -22,9 +21,7 @@ import CropHealthPanel from './CropHealthPanel';
 import CropMarketPanel from './CropMarketPanel';
 import FarmCheckPanel from './FarmCheckPanel';
 import FarmCheckBulkPanel from './FarmCheckBulkPanel';
-import LeafDiagnosisPanel from './LeafDiagnosisPanel';
 import NdviAnomalyPanel from './NdviAnomalyPanel';
-import YieldForecastPanel from './YieldForecastPanel';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -124,30 +121,12 @@ export default function CropGuardPanel() {
     [recent],
   );
   const unplottedCount = recent.length - plottedCount;
-  const modelInfo = useCropModelInfo();
 
   const predictMutation = usePredictCropDisease(activeTenantId);
   const predictTiledMutation = usePredictCropDiseaseTiled(activeTenantId);
   const isPending = predictMutation.isPending || predictTiledMutation.isPending;
 
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
-  const modeBadge = useMemo(() => {
-    // The badge reports MODEL CAPABILITY (what the ml service would use for
-    // the next inference), not the provenance of historic rows — a trained
-    // model reads TRAINED on every tenant, even those whose stored rows are
-    // still seeds. Falls back to the latest row's version if the capability
-    // endpoint is unreachable.
-    const v =
-      modelInfo.data?.model_version ??
-      lastResult?.model_version ??
-      recent[0]?.model_version;
-    if (!v) return null;
-    if (v.endsWith('-trained')) return { label: 'TRAINED', cls: 'cg-mode-trained' };
-    if (v.endsWith('-untuned')) return { label: 'UNTUNED', cls: 'cg-mode-untuned' };
-    if (v.endsWith('-stub')) return { label: 'STUB', cls: 'cg-mode-stub' };
-    if (v.endsWith('-seed')) return { label: 'DEMO', cls: 'cg-mode-untuned' };
-    return { label: v, cls: 'cg-mode-stub' };
-  }, [modelInfo.data, lastResult, recent]);
 
   function handleFile(file: File) {
     setUploadError(null);
@@ -236,17 +215,13 @@ export default function CropGuardPanel() {
       {/* HEADER */}
       <div className="cg-header">
         <div>
-          <div className="cg-title">CropGuard — ResNet-50 Disease Classifier</div>
+          <div className="cg-title">CropGuard — Crop Health</div>
           <div className="cg-subtitle">
-            12-class West African crop diseases (cassava, maize, rice, tomato, plantain) · upload
-            a leaf photo for an instant on-field diagnosis
+            Vegetation health for every LGA from Copernicus Sentinel-2 · Farm Check
+            for any field or list of fields · a leaf-photo check for field officers
           </div>
         </div>
-        {modeBadge && (
-          <div className={`cg-mode-badge ${modeBadge.cls}`}>
-            MODEL: {modeBadge.label}
-          </div>
-        )}
+        <div className="cg-mode-badge cg-mode-trained">LIVE · Copernicus Sentinel-2</div>
       </div>
 
       {/* TENANT SELECTOR */}
@@ -276,234 +251,6 @@ export default function CropGuardPanel() {
         </button>
       </div>
 
-      {/* MAP — predictions geography */}
-      <div className="fp-map ac-map-wrap">
-        <div className="fp-map-header">
-          <span className="fp-map-title">
-            Disease Geography — {stateLabel}
-          </span>
-          <span className="ev-map-meta">
-            {/* Leaf photos only — this map carries NO satellite layer. The
-                statewide per-LGA Sentinel-2 coverage is the Crop Health map
-                below; claiming Sentinel-2 here read as missing LGA coverage. */}
-            {/* Count what is PLOTTED, and say what is not. The header used to
-                report every recent row while the map drew only the ones it
-                could place and diagnose, so "9 diagnoses" sat above an empty
-                map with no explanation — which reads as a broken map rather
-                than an honest one. */}
-            {plottedCount} plotted · Source: ResNet-50 on uploaded photos · one
-            pin per upload, not a statewide scan — see Statewide Crop Health
-            below for every LGA
-            {unplottedCount > 0 && (
-              <> · {unplottedCount} not shown (the model could not identify
-                them, or they carry no location)</>
-            )}
-          </span>
-        </div>
-        <CropGuardMap tenant={activeTenant} predictions={recent} />
-      </div>
-
-      <div className="cg-main-row">
-        {/* LEFT: UPLOAD + RESULT */}
-        <div className="cg-upload-col">
-          <div className="cg-section-header">
-            Analyze {analysisMode === 'leaf' ? 'a leaf photo' : 'a field photo'}
-            <div className="cg-mode-switch">
-              <button
-                type="button"
-                className={`cg-mode-btn ${analysisMode === 'leaf' ? 'is-active' : ''}`}
-                onClick={() => setAnalysisMode('leaf')}
-                disabled={isPending}
-              >
-                Leaf
-              </button>
-              <button
-                type="button"
-                className={`cg-mode-btn ${analysisMode === 'field' ? 'is-active' : ''}`}
-                onClick={() => setAnalysisMode('field')}
-                disabled={isPending}
-              >
-                Field (land photo)
-              </button>
-            </div>
-          </div>
-
-          {/* RECORD TAGS — state · LGA · crop (+ tile grid in field mode), so
-              every upload is saved as a recallable, place-tagged field record. */}
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end', margin: '0 0 12px' }}>
-            <label style={{ fontSize: '12px' }}>
-              <div className="fp-tenant-label">State</div>
-              <div style={{ ...tagInputStyle, display: 'inline-block' }}>{stateLabel}</div>
-            </label>
-            <label style={{ fontSize: '12px' }}>
-              <div className="fp-tenant-label">LGA</div>
-              <select
-                className="fp-tenant-select"
-                value={lga}
-                onChange={(e) => setLga(e.target.value)}
-                disabled={isPending}
-              >
-                <option value="">{lgasQuery.isLoading ? 'Loading…' : 'Select LGA…'}</option>
-                {(lgasQuery.data ?? []).map((l) => (
-                  <option key={l} value={l}>{l}</option>
-                ))}
-              </select>
-            </label>
-            <label style={{ fontSize: '12px' }}>
-              <div className="fp-tenant-label">Crop</div>
-              <input
-                style={tagInputStyle}
-                value={cropName}
-                onChange={(e) => setCropName(e.target.value)}
-                placeholder="e.g. maize"
-                disabled={isPending}
-              />
-            </label>
-            {analysisMode === 'field' && (
-              <label style={{ fontSize: '12px' }}>
-                <div className="fp-tenant-label">Tiles</div>
-                <select
-                  className="fp-tenant-select"
-                  value={gridDim}
-                  onChange={(e) => setGridDim(Number(e.target.value))}
-                  disabled={isPending}
-                >
-                  {TILE_OPTIONS.map((n) => (
-                    <option key={n} value={n}>{n}×{n}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-          </div>
-
-          <label
-            htmlFor="cg-file-input"
-            className={`cg-dropzone ${previewUrl ? 'cg-dropzone--has-image' : ''}`}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={onDrop}
-          >
-            {previewUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={previewUrl} alt="Selected leaf preview" className="cg-preview" />
-            ) : (
-              <div className="cg-dropzone-empty">
-                <div className="cg-dropzone-icon">📷</div>
-                <div className="cg-dropzone-text">
-                  {analysisMode === 'leaf'
-                    ? <>Drop a leaf photo here or <span className="cg-link">click to choose</span></>
-                    : <>Drop a field / land photo here or <span className="cg-link">click to choose</span></>}
-                </div>
-                <div className="cg-dropzone-hint">
-                  {analysisMode === 'leaf'
-                    ? 'Best results: ONE leaf filling the frame, top side, good light — the model is trained on single-leaf close-ups. For whole-field shots switch to Field mode.'
-                    : `Wide canopy / land shot — analysed as a ${gridDim}×${gridDim} tile grid and aggregated; the worst (hottest) tile is flagged. Pick a finer grid above to pinpoint a smaller patch.`}
-                </div>
-                <div className="cg-dropzone-hint">JPEG / PNG / WebP · max 8 MB</div>
-              </div>
-            )}
-            <input
-              ref={fileInputRef}
-              id="cg-file-input"
-              type="file"
-              accept={ACCEPTED_TYPES.join(',')}
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFile(file);
-              }}
-            />
-          </label>
-
-          {uploadError && (
-            <div className="fp-alert-error">{uploadError}</div>
-          )}
-
-          <div className="cg-upload-actions">
-            <button
-              type="button"
-              className="cg-primary-btn"
-              onClick={analyze}
-              disabled={!selectedFile || isPending}
-            >
-              {isPending ? 'Analyzing…' : 'Analyze'}
-            </button>
-            {selectedFile && (
-              <button
-                type="button"
-                className="fp-refresh-btn"
-                onClick={clearSelection}
-                disabled={isPending}
-              >
-                Clear
-              </button>
-            )}
-            {analysisMode === 'leaf' && (
-              <label className="cg-saliency-toggle">
-                <input
-                  type="checkbox"
-                  checked={requestSaliency}
-                  onChange={(e) => setRequestSaliency(e.target.checked)}
-                  disabled={isPending}
-                />
-                <span>Show Grad-CAM heatmap</span>
-              </label>
-            )}
-          </div>
-
-          {lastResult && <ResultCard result={lastResult} />}
-          {lastTiledResult && <TiledResultCard result={lastTiledResult} />}
-          {savedTag && (
-            <div className="cg-result-footnote" style={{ color: '#16a34a' }}>
-              ✓ Saved to field records — {savedTag.state}
-              {savedTag.lga ? ` · ${savedTag.lga}` : ''}
-              {savedTag.crop ? ` · ${savedTag.crop}` : ''}. Recall it in “Recent predictions”.
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT: RECENT FEED */}
-        <div className="cg-recent-col">
-          <button
-            type="button"
-            className="cg-section-header cg-section-toggle"
-            aria-expanded={recentOpen}
-            onClick={() => setRecentOpen((v) => !v)}
-          >
-            <span className="cg-caret" aria-hidden="true">{recentOpen ? '▾' : '▸'}</span>
-            Recent predictions — {stateLabel}
-            <span className="fp-alert-count">{recent.length}</span>
-          </button>
-          {recentOpen && (<>
-          {recentQuery.isLoading && (
-            <div className="fp-alert-empty">Loading recent predictions…</div>
-          )}
-          {recentQuery.isError && (
-            <div className="fp-alert-error">
-              Could not load recent predictions: {recentQuery.error?.message ?? 'unknown'}
-            </div>
-          )}
-          {!recentQuery.isLoading && !recentQuery.isError && recent.length === 0 && (
-            <div className="fp-alert-empty">
-              No predictions yet for {stateLabel}. Upload a leaf photo to populate the feed.
-            </div>
-          )}
-          {recent.map((row) => (
-            <RecentRow
-              key={row.id}
-              row={row}
-              deleting={removing === row.id}
-              onDelete={(id) => { setRemoving(id); del.mutate(id, {
-                onSettled: () => setRemoving(null),
-              }); }}
-            />
-          ))}
-          {recent.some((r) => r.nearest_place) && (
-            <div className="fp-alert-attrib">{GRID3_CREDIT}</div>
-          )}
-          </>)}
-        </div>
-      </div>
-
       {/* STATEWIDE CROP HEALTH — every LGA's NDVI health (per-LGA coverage) */}
       <CropHealthPanel />
 
@@ -513,17 +260,255 @@ export default function CropGuardPanel() {
       {/* BULK FARM CHECK — paste/upload many coordinates and check them together */}
       <FarmCheckBulkPanel />
 
-      {/* LEAF DIAGNOSIS — AI disease ID from a leaf photo (confirms the stress) */}
-      <LeafDiagnosisPanel />
-
-      {/* PRE-SYMPTOMATIC NDVI ANOMALY (Slice 04.d) */}
+      {/* VEGETATION STRESS WATCH — statewide NDVI vs its own baseline */}
       <NdviAnomalyPanel />
 
-      {/* YIELD FORECASTS (Slice 04.c) */}
-      <YieldForecastPanel />
-
-      {/* MARKET PRICES (Slice 04.b) */}
+      {/* MARKET PRICES — dated, only where a public source publishes */}
       <CropMarketPanel />
+
+      {/* LEAF-PHOTO CHECK — a field-officer tool, folded: the model is tested
+          on laboratory images only (0 of 3 on field photos). Yield forecasts
+          are not shown: that model (0.1.0-dev-synthetic) was trained on
+          synthetic data. */}
+      <details className="cg-market" data-no-bg="true">
+        <summary className="cg-section-header" style={{ cursor: 'pointer' }}>
+          Leaf-photo check — for field officers · tested on laboratory images
+        </summary>
+        <div className="fp-alert-notice" style={{ margin: '10px 0' }}>
+          Photograph ONE leaf filling the frame, top side, plain background,
+          good light. The model was validated on laboratory images; on photos
+          taken in a real field it is unreliable and tends to answer
+          &ldquo;cassava&rdquo;. Treat a result as a lead to confirm, not a
+          diagnosis. Retraining on field photographs is in progress.
+        </div>
+      {/* MAP — predictions geography */}
+        <div className="fp-map ac-map-wrap">
+          <div className="fp-map-header">
+            <span className="fp-map-title">
+              Disease Geography — {stateLabel}
+            </span>
+            <span className="ev-map-meta">
+              {/* Leaf photos only — this map carries NO satellite layer. The
+                  statewide per-LGA Sentinel-2 coverage is the Crop Health map
+                  below; claiming Sentinel-2 here read as missing LGA coverage. */}
+              {/* Count what is PLOTTED, and say what is not. The header used to
+                  report every recent row while the map drew only the ones it
+                  could place and diagnose, so "9 diagnoses" sat above an empty
+                  map with no explanation — which reads as a broken map rather
+                  than an honest one. */}
+              {plottedCount} plotted · Source: ResNet-50 on uploaded photos · one
+              pin per upload, not a statewide scan — see Statewide Crop Health
+              below for every LGA
+              {unplottedCount > 0 && (
+                <> · {unplottedCount} not shown (the model could not identify
+                  them, or they carry no location)</>
+              )}
+            </span>
+          </div>
+          <CropGuardMap tenant={activeTenant} predictions={recent} />
+        </div>
+  
+        <div className="cg-main-row">
+          {/* LEFT: UPLOAD + RESULT */}
+          <div className="cg-upload-col">
+            <div className="cg-section-header">
+              Analyze {analysisMode === 'leaf' ? 'a leaf photo' : 'a field photo'}
+              <div className="cg-mode-switch">
+                <button
+                  type="button"
+                  className={`cg-mode-btn ${analysisMode === 'leaf' ? 'is-active' : ''}`}
+                  onClick={() => setAnalysisMode('leaf')}
+                  disabled={isPending}
+                >
+                  Leaf
+                </button>
+                <button
+                  type="button"
+                  className={`cg-mode-btn ${analysisMode === 'field' ? 'is-active' : ''}`}
+                  onClick={() => setAnalysisMode('field')}
+                  disabled={isPending}
+                >
+                  Field (land photo)
+                </button>
+              </div>
+            </div>
+  
+            {/* RECORD TAGS — state · LGA · crop (+ tile grid in field mode), so
+                every upload is saved as a recallable, place-tagged field record. */}
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end', margin: '0 0 12px' }}>
+              <label style={{ fontSize: '12px' }}>
+                <div className="fp-tenant-label">State</div>
+                <div style={{ ...tagInputStyle, display: 'inline-block' }}>{stateLabel}</div>
+              </label>
+              <label style={{ fontSize: '12px' }}>
+                <div className="fp-tenant-label">LGA</div>
+                <select
+                  className="fp-tenant-select"
+                  value={lga}
+                  onChange={(e) => setLga(e.target.value)}
+                  disabled={isPending}
+                >
+                  <option value="">{lgasQuery.isLoading ? 'Loading…' : 'Select LGA…'}</option>
+                  {(lgasQuery.data ?? []).map((l) => (
+                    <option key={l} value={l}>{l}</option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ fontSize: '12px' }}>
+                <div className="fp-tenant-label">Crop</div>
+                <input
+                  style={tagInputStyle}
+                  value={cropName}
+                  onChange={(e) => setCropName(e.target.value)}
+                  placeholder="e.g. maize"
+                  disabled={isPending}
+                />
+              </label>
+              {analysisMode === 'field' && (
+                <label style={{ fontSize: '12px' }}>
+                  <div className="fp-tenant-label">Tiles</div>
+                  <select
+                    className="fp-tenant-select"
+                    value={gridDim}
+                    onChange={(e) => setGridDim(Number(e.target.value))}
+                    disabled={isPending}
+                  >
+                    {TILE_OPTIONS.map((n) => (
+                      <option key={n} value={n}>{n}×{n}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+  
+            <label
+              htmlFor="cg-file-input"
+              className={`cg-dropzone ${previewUrl ? 'cg-dropzone--has-image' : ''}`}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={onDrop}
+            >
+              {previewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={previewUrl} alt="Selected leaf preview" className="cg-preview" />
+              ) : (
+                <div className="cg-dropzone-empty">
+                  <div className="cg-dropzone-icon">📷</div>
+                  <div className="cg-dropzone-text">
+                    {analysisMode === 'leaf'
+                      ? <>Drop a leaf photo here or <span className="cg-link">click to choose</span></>
+                      : <>Drop a field / land photo here or <span className="cg-link">click to choose</span></>}
+                  </div>
+                  <div className="cg-dropzone-hint">
+                    {analysisMode === 'leaf'
+                      ? 'Best results: ONE leaf filling the frame, top side, good light — the model is trained on single-leaf close-ups. For whole-field shots switch to Field mode.'
+                      : `Wide canopy / land shot — analysed as a ${gridDim}×${gridDim} tile grid and aggregated; the worst (hottest) tile is flagged. Pick a finer grid above to pinpoint a smaller patch.`}
+                  </div>
+                  <div className="cg-dropzone-hint">JPEG / PNG / WebP · max 8 MB</div>
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                id="cg-file-input"
+                type="file"
+                accept={ACCEPTED_TYPES.join(',')}
+                hidden
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFile(file);
+                }}
+              />
+            </label>
+  
+            {uploadError && (
+              <div className="fp-alert-error">{uploadError}</div>
+            )}
+  
+            <div className="cg-upload-actions">
+              <button
+                type="button"
+                className="cg-primary-btn"
+                onClick={analyze}
+                disabled={!selectedFile || isPending}
+              >
+                {isPending ? 'Analyzing…' : 'Analyze'}
+              </button>
+              {selectedFile && (
+                <button
+                  type="button"
+                  className="fp-refresh-btn"
+                  onClick={clearSelection}
+                  disabled={isPending}
+                >
+                  Clear
+                </button>
+              )}
+              {analysisMode === 'leaf' && (
+                <label className="cg-saliency-toggle">
+                  <input
+                    type="checkbox"
+                    checked={requestSaliency}
+                    onChange={(e) => setRequestSaliency(e.target.checked)}
+                    disabled={isPending}
+                  />
+                  <span>Show Grad-CAM heatmap</span>
+                </label>
+              )}
+            </div>
+  
+            {lastResult && <ResultCard result={lastResult} />}
+            {lastTiledResult && <TiledResultCard result={lastTiledResult} />}
+            {savedTag && (
+              <div className="cg-result-footnote" style={{ color: '#16a34a' }}>
+                ✓ Saved to field records — {savedTag.state}
+                {savedTag.lga ? ` · ${savedTag.lga}` : ''}
+                {savedTag.crop ? ` · ${savedTag.crop}` : ''}. Recall it in “Recent predictions”.
+              </div>
+            )}
+          </div>
+  
+          {/* RIGHT: RECENT FEED */}
+          <div className="cg-recent-col">
+            <button
+              type="button"
+              className="cg-section-header cg-section-toggle"
+              aria-expanded={recentOpen}
+              onClick={() => setRecentOpen((v) => !v)}
+            >
+              <span className="cg-caret" aria-hidden="true">{recentOpen ? '▾' : '▸'}</span>
+              Recent predictions — {stateLabel}
+              <span className="fp-alert-count">{recent.length}</span>
+            </button>
+            {recentOpen && (<>
+            {recentQuery.isLoading && (
+              <div className="fp-alert-empty">Loading recent predictions…</div>
+            )}
+            {recentQuery.isError && (
+              <div className="fp-alert-error">
+                Could not load recent predictions: {recentQuery.error?.message ?? 'unknown'}
+              </div>
+            )}
+            {!recentQuery.isLoading && !recentQuery.isError && recent.length === 0 && (
+              <div className="fp-alert-empty">
+                No predictions yet for {stateLabel}. Upload a leaf photo to populate the feed.
+              </div>
+            )}
+            {recent.map((row) => (
+              <RecentRow
+                key={row.id}
+                row={row}
+                deleting={removing === row.id}
+                onDelete={(id) => { setRemoving(id); del.mutate(id, {
+                  onSettled: () => setRemoving(null),
+                }); }}
+              />
+            ))}
+            {recent.some((r) => r.nearest_place) && (
+              <div className="fp-alert-attrib">{GRID3_CREDIT}</div>
+            )}
+            </>)}
+          </div>
+        </div>
+      </details>
     </div>
   );
 }

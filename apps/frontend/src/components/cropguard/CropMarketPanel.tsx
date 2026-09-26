@@ -5,7 +5,6 @@ import { useState } from 'react';
 import { useTenant } from '@/context/TenantContext';
 import { NGN_PER_USD } from '@/lib/currency';
 import {
-  useCropPriceCorrelation,
   useCropPriceSeries,
   type CropPricePoint,
 } from '@/hooks/useCropPrices';
@@ -63,12 +62,8 @@ export default function CropMarketPanel() {
   const seriesQuery = useCropPriceSeries({
     tenantId: activeTenantId, crop: selectedCrop, months: 24,
   });
-  const corrQuery = useCropPriceCorrelation({
-    tenantId: activeTenantId, months: 24,
-  });
 
   const series = seriesQuery.data;
-  const corr = corrQuery.data;
 
   return (
     <div className="cg-market">
@@ -79,8 +74,8 @@ export default function CropMarketPanel() {
             was. NBS is listed as historical because its Selected Food Prices
             Watch has not been published since Oct 2024. */}
         <span className="ev-map-meta">
-          Sources: FEWS NET market prices (live) · NBS Food Price Watch
-          (to Oct 2024)
+          Sources: FEWS NET market prices · NBS Food Price Watch (to Oct
+          2024) · every price shown with its date
         </span>
       </div>
 
@@ -107,7 +102,11 @@ export default function CropMarketPanel() {
               <div className="cg-chart-sub">
                 {series ? (
                   <>
-                    Latest {fmtMoney(series.latest_price, isEcowas)} ·{' '}
+                    Last published {fmtMoney(series.latest_price, isEcowas)}
+                    {series.points.length > 0 && (
+                      <> in {new Date(series.points[series.points.length - 1].observed_at)
+                        .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}</>
+                    )} ·{' '}
                     24-mo change{' '}
                     <span
                       className={
@@ -151,32 +150,6 @@ export default function CropMarketPanel() {
           )}
         </div>
 
-        {/* CORRELATION HEATMAP */}
-        <div className="cg-chart-card">
-          <div className="cg-chart-head">
-            <div>
-              <div className="cg-chart-title">Co-movement matrix</div>
-              <div className="cg-chart-sub">
-                Pearson r on monthly log-returns · diversification guide
-              </div>
-            </div>
-          </div>
-          {corr ? (
-            <CorrelationHeatmap data={corr} highlight={selectedCrop} />
-          ) : corrQuery.isLoading ? (
-            <div className="fp-alert-empty">Loading correlation matrix…</div>
-          ) : corrQuery.isError ? (
-            /* "Need at least 2 crops with data in region='kebbi'; got 0" is a
-               true statement of a normal condition, but it reads as a fault.
-               Correlation needs two series; with no published prices there is
-               nothing to correlate, and that is not an error. */
-            <div className="fp-alert-empty">
-              Co-movement needs at least two priced crops in this state. With
-              no published price series here there is nothing to correlate —
-              try Zamfara, which FEWS NET currently covers.
-            </div>
-          ) : null}
-        </div>
       </div>
     </div>
   );
@@ -280,117 +253,6 @@ function PriceLineChart({ points, isEcowas }: { points: CropPricePoint[]; isEcow
           </text>
         );
       })}
-    </svg>
-  );
-}
-
-
-// ─── Correlation heatmap ─────────────────────────────────────────────────
-
-
-function CorrelationHeatmap({
-  data,
-  highlight,
-}: {
-  data: { crops: string[]; matrix: number[][] };
-  highlight: string;
-}) {
-  const n = data.crops.length;
-  if (n === 0) return null;
-
-  // CONSTANT viewBox, ADAPTIVE cell size.
-  //
-  // The grid used to be a fixed 22px cell with a content-sized viewBox, so the
-  // viewBox shrank as crops dropped and width:100% then upscaled it harder —
-  // going from 14 seeded crops to 8 real ones ballooned the cells and pushed
-  // the rotated labels out of the card. Capping the width fixed the overflow
-  // but left the matrix small and adrift in the box.
-  //
-  // Holding the grid span constant and dividing it by the crop count keeps the
-  // rendered proportions identical at ANY n: 14 crops give ~21px cells (what
-  // the seeded matrix looked like), 8 crops give ~37px cells, and either way
-  // the SVG fills the card the same way.
-  const labelW = 80;
-  const labelH = 80;
-  const grid = 300;
-  const cell = grid / n;
-  // The -55deg column labels rotate up-and-right, so the last one overruns the
-  // grid edge; pad the viewBox rather than let it clip.
-  const labelOverhangX = 34;
-  const w = labelW + grid + labelOverhangX;
-  const h = labelH + grid + 8;
-
-  function colour(r: number): string {
-    // r in [-1, 1]: red (neg) → white (0) → green (pos)
-    const clamped = Math.max(-1, Math.min(1, r));
-    if (clamped >= 0) {
-      const t = clamped;
-      return `rgba(45, 106, 79, ${0.10 + t * 0.85})`;
-    }
-    const t = -clamped;
-    return `rgba(224, 90, 43, ${0.10 + t * 0.85})`;
-  }
-
-  return (
-    <svg
-      viewBox={`0 0 ${w} ${h}`}
-      width="100%"
-      preserveAspectRatio="xMidYMid meet"
-      role="img"
-      aria-label="Crop price correlation matrix"
-    >
-      {/* Column labels (rotated) */}
-      {data.crops.map((c, j) => {
-        const x = labelW + j * cell + cell / 2;
-        return (
-          <text
-            key={c}
-            x={x} y={labelH - 6}
-            fontSize="9"
-            fill={c === highlight ? 'var(--ink)' : 'var(--muted)'}
-            fontWeight={c === highlight ? 700 : 400}
-            textAnchor="start"
-            transform={`rotate(-55, ${x}, ${labelH - 6})`}
-          >
-            {CROP_LABEL[c] ?? c}
-          </text>
-        );
-      })}
-
-      {/* Row labels + heatmap cells */}
-      {data.crops.map((c, i) => (
-        <g key={c}>
-          <text
-            x={labelW - 4} y={labelH + i * cell + cell / 2 + 3}
-            fontSize="9"
-            fill={c === highlight ? 'var(--ink)' : 'var(--muted)'}
-            fontWeight={c === highlight ? 700 : 400}
-            textAnchor="end"
-          >
-            {CROP_LABEL[c] ?? c}
-          </text>
-          {data.crops.map((c2, j) => {
-            const r = data.matrix[i]?.[j] ?? 0;
-            return (
-              <g key={c2}>
-                <rect
-                  x={labelW + j * cell}
-                  y={labelH + i * cell}
-                  width={Math.max(cell - 1.5, cell * 0.85)}
-                  height={Math.max(cell - 1.5, cell * 0.85)}
-                  fill={colour(r)}
-                  stroke={
-                    c === highlight || c2 === highlight
-                      ? 'var(--ink)' : 'transparent'
-                  }
-                  strokeWidth={c === highlight || c2 === highlight ? 1 : 0}
-                />
-                <title>{`${CROP_LABEL[c] ?? c} × ${CROP_LABEL[c2] ?? c2}: r=${r.toFixed(2)}`}</title>
-              </g>
-            );
-          })}
-        </g>
-      ))}
     </svg>
   );
 }

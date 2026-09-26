@@ -8,9 +8,8 @@ import {
   useShockEvents,
   useShockScan,
   useStorms,
-  type DataSource,
-  type ShockEventType,
   type ShockScanData,
+  type StormRow,
 } from '@/hooks/useShockGuard';
 import FieldDirections, { GRID3_CREDIT } from '@/components/common/FieldDirections';
 import ShockEventsMap from './ShockEventsMap';
@@ -85,9 +84,9 @@ function sevClass(s: string): string {
 
 export default function ShockGuardPanel() {
   const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
-  const [eventType, setEventType] = useState<ShockEventType>('flood');
-  const [demoMode, setDemoMode] = useState(true);
-  const [dataSource, setDataSource] = useState<DataSource>('synthetic');
+  // Live data only. The synthetic series and the demo "inject an anomaly"
+  // switch were removed from the product on 2026-09-26: they opened the panel
+  // on a fabricated "critical · 99% · 25K at risk" alert.
   const [lastScan, setLastScan] = useState<ShockScanData | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
 
@@ -96,50 +95,26 @@ export default function ShockGuardPanel() {
   // The alerts column carries two views. Storms are a MEASUREMENT feed and
   // events are a claim that something went wrong, so they stay separate lists
   // rather than being merged into one stream.
-  const [sideTab, setSideTab] = useState<'events' | 'storms'>('events');
+  const [sideTab, setSideTab] = useState<'events' | 'storms'>('storms');
   const stormsQuery = useStorms({ tenantId: activeTenantId, limit: 12 });
 
-  // Live mode for drought stays a Phase B story (MODIS LST not ingested
-  // yet) — flip the switch back when the user picks drought.
-  const effectiveDataSource: DataSource =
-    dataSource === 'live' && eventType === 'drought' ? 'synthetic' : dataSource;
-  // Demo injection is meaningless against real satellite data — can't
-  // inject into rows you don't own.
-  const demoEffective = effectiveDataSource === 'live' ? false : demoMode;
-
-  // Auto-scan on tenant/event-type/demo-mode/source change so the chart isn't empty.
+  // The radar check runs only when an analyst asks for it — never on load.
   useEffect(() => {
-    if (!activeTenantId) return;
-    let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setScanError(null);
     setLastScan(null);
-    scanMutation
-      .mutateAsync({
-        event_type: eventType, persist: false,
-        demo_inject_anomaly: demoEffective,
-        data_source: effectiveDataSource,
-      })
-      .then((data) => { if (!cancelled) setLastScan(data); })
-      .catch((err) => {
-        if (cancelled) return;
-        setScanError(err instanceof Error ? err.message : 'Scan failed');
-      });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTenantId, eventType, demoEffective, effectiveDataSource]);
+    setScanError(null);
+  }, [activeTenantId]);
 
-  async function persistScan() {
+  async function runRadarCheck() {
     setScanError(null);
     try {
       const result = await scanMutation.mutateAsync({
-        event_type: eventType, persist: true,
-        demo_inject_anomaly: demoEffective,
-        data_source: effectiveDataSource,
+        event_type: 'flood', persist: false,
+        demo_inject_anomaly: false, data_source: 'live',
       });
       setLastScan(result);
     } catch (err) {
-      setScanError(err instanceof Error ? err.message : 'Scan failed');
+      setScanError(err instanceof Error ? err.message : 'Radar check failed');
     }
   }
 
@@ -152,21 +127,13 @@ export default function ShockGuardPanel() {
       {/* HEADER */}
       <div className="cg-header">
         <div>
-          <div className="cg-title">ShockGuard — Disaster Early Warning</div>
+          <div className="cg-title">ShockGuard — Storms &amp; Extreme Rainfall</div>
           <div className="cg-subtitle">
-            Storms &amp; extreme rainfall · GPM IMERG · radar surface-water and
-            Sentinel-2 vegetation signals (unconfirmed)
+            Rain measured every half hour for every LGA (NASA GPM IMERG) and
+            graded against each LGA&rsquo;s own history · recorded disasters with sources
           </div>
         </div>
-        <div
-          className={`cg-mode-badge ${
-            effectiveDataSource === 'live' ? 'cg-mode-trained' : 'cg-mode-untuned'
-          }`}
-        >
-          {effectiveDataSource === 'live'
-            ? 'LIVE · sentinel_stat_v1'
-            : 'DETECTOR · synthetic series'}
-        </div>
+        <div className="cg-mode-badge cg-mode-trained">LIVE · NASA GPM IMERG</div>
       </div>
 
       {/* TENANT SELECTOR */}
@@ -249,121 +216,41 @@ export default function ShockGuardPanel() {
         </div>
       )}
 
-      {/* STATS */}
-      {lastScan && (
-        <div className="fp-grid">
-          <div className={`fp-stat ${lastScan.triggered ? 'crit' : 'ok'}`}>
-            <div className="fp-stat-label">Event Status</div>
-            <div className="fp-stat-val">
-              {lastScan.triggered ? '⚠' : '✓'}
-            </div>
-            <div className="fp-stat-sub">
-              {lastScan.triggered
-                ? `${eventLabel(lastScan.event_type).toUpperCase()} flagged · ${lastScan.severity}`
-                : `No ${eventLabel(lastScan.event_type).toLowerCase()} signal · baseline holding`}
-            </div>
-          </div>
-          <div className="fp-stat warn">
-            <div className="fp-stat-label">Lead Time</div>
-            <div className="fp-stat-val">{lastScan.projected_onset_hours}h</div>
-            <div className="fp-stat-sub">Projected onset window</div>
-          </div>
-          <div className="fp-stat crit">
-            <div className="fp-stat-label">Population at Risk</div>
-            <div className="fp-stat-val">{fmtNum(lastScan.population_at_risk)}</div>
-            <div className="fp-stat-sub">
-              ~{lastScan.affected_area_km2.toFixed(0)} km² affected
-            </div>
-          </div>
-          <div className="fp-stat ok">
-            <div className="fp-stat-label">Confidence</div>
-            <div className="fp-stat-val">{Math.round(lastScan.confidence * 100)}%</div>
-            <div className="fp-stat-sub">
-              <span className={bandClass(lastScan.confidence_band)}>
-                {lastScan.confidence_band}
-              </span>
-            </div>
-          </div>
+      {/* STATS — measured storm facts for the state. */}
+      <StormFacts
+        storms={stormsQuery.data?.storms ?? []}
+        rateable={stormsQuery.data?.rateableLgas ?? 0}
+        known={stormsQuery.data?.knownLgas ?? 0}
+        lastScanAt={stormsQuery.data?.lastScanAt ?? null}
+        loading={stormsQuery.isLoading}
+      />
+
+      {/* RADAR CHECK — experimental, folded, on request only. */}
+      <details className="cg-market" data-no-bg="true">
+        <summary className="cg-section-header" style={{ cursor: 'pointer' }}>
+          Radar surface-water signal — {stateLabel} · experimental
+        </summary>
+        <div className="fp-alert-notice" style={{ margin: '10px 0' }}>
+          Sentinel-1 radar can show standing water, but this check is not a
+          flood detection: tested against the September 2024 Kebbi floods, it
+          found none of the 11 affected LGAs. Use it only as a lead to verify.
         </div>
-      )}
-
-      {/* DETECTOR CONTROLS */}
-      <div className="cg-market" data-no-bg="true">
-        <div className="cg-section-header">Run Detector — {stateLabel}</div>
-
         <div className="cg-ndvi-controls">
-          <div className="cg-mode-switch">
-            <button
-              type="button"
-              className={`cg-mode-btn ${eventType === 'flood' ? 'is-active' : ''}`}
-              onClick={() => setEventType('flood')}
-              disabled={scanMutation.isPending}
-            >
-              Surface water
-            </button>
-            <button
-              type="button"
-              className={`cg-mode-btn ${eventType === 'drought' ? 'is-active' : ''}`}
-              onClick={() => setEventType('drought')}
-              disabled={scanMutation.isPending}
-            >
-              Drought
-            </button>
-          </div>
-          <div className="cg-mode-switch" aria-label="ShockGuard data source">
-            <button
-              type="button"
-              className={`cg-mode-btn ${effectiveDataSource === 'synthetic' ? 'is-active' : ''}`}
-              onClick={() => setDataSource('synthetic')}
-              disabled={scanMutation.isPending}
-              title="Deterministic per-tenant series (no live API calls)"
-            >
-              Synthetic
-            </button>
-            <button
-              type="button"
-              className={`cg-mode-btn ${effectiveDataSource === 'live' ? 'is-active' : ''}`}
-              onClick={() => setDataSource('live')}
-              disabled={scanMutation.isPending || eventType === 'drought'}
-              title={
-                eventType === 'drought'
-                  ? 'Live drought needs MODIS LST ingestion (Phase B)'
-                  : 'Read real Sentinel-1 SAR from satellite_observations'
-              }
-            >
-              Live
-            </button>
-          </div>
-          <label className="cg-saliency-toggle">
-            <input
-              type="checkbox"
-              checked={demoMode}
-              onChange={(e) => setDemoMode(e.target.checked)}
-              disabled={scanMutation.isPending || effectiveDataSource === 'live'}
-            />
-            <span>
-              Demo mode (inject synthetic anomaly)
-              {effectiveDataSource === 'live' && ' — N/A in live mode'}
-            </span>
-          </label>
           <button
             type="button"
             className="cg-yield-btn"
-            onClick={persistScan}
+            onClick={runRadarCheck}
             disabled={scanMutation.isPending}
           >
-            {scanMutation.isPending ? 'Scanning…' : 'Persist scan to audit log'}
+            {scanMutation.isPending ? 'Checking…' : 'Run radar check (live)'}
           </button>
         </div>
-
         {scanError && <div className="fp-alert-error">{scanError}</div>}
-
         {lastScan?.notice && (
           <div className="fp-alert-notice">{lastScan.notice}</div>
         )}
-
         {lastScan && <ShockScanCard scan={lastScan} />}
-      </div>
+      </details>
 
       {/* MAP + EVENTS */}
       <div className="fp-main-row">
@@ -374,7 +261,7 @@ export default function ShockGuardPanel() {
             </span>
             <span className="ev-map-meta">
               {events.length} event{events.length === 1 ? '' : 's'} ·
-              live per-LGA Sentinel scan + labelled historical examples
+              recorded disasters (with sources) + unconfirmed radar signals
             </span>
           </div>
           <ShockEventsMap tenant={activeTenant} events={events} />
@@ -389,7 +276,7 @@ export default function ShockGuardPanel() {
                 className="fp-alerts-tab"
                 aria-pressed={sideTab === 'events'}
               >
-                Recent Events
+                Recorded &amp; radar
               </button>
               <span aria-hidden style={{ opacity: 0.35 }}>·</span>
               <button
@@ -451,7 +338,9 @@ export default function ShockGuardPanel() {
                 </span>
               </div>
               <div className="fp-alert-desc">
-                {ev.population_at_risk != null && ev.affected_area_km2 != null ? (
+                {isHistorical ? (
+                  ev.zone_name ?? 'Recorded disaster — see the source below.'
+                ) : ev.population_at_risk != null && ev.affected_area_km2 != null ? (
                   <>
                     ~{fmtNum(ev.population_at_risk)} at risk over{' '}
                     {ev.affected_area_km2.toFixed(0)} km²
@@ -509,13 +398,72 @@ export default function ShockGuardPanel() {
 }
 
 
+// ─── Storm facts (headline cards) ─────────────────────────────────────────
+
+
+function fmtDay(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', timeZone: 'Africa/Lagos',
+  });
+}
+
+function StormFacts(props: {
+  storms: StormRow[];
+  rateable: number;
+  known: number;
+  lastScanAt: string | null;
+  loading: boolean;
+}) {
+  const { storms, rateable, known, lastScanAt, loading } = props;
+  if (loading) return null;
+  const latest = storms.length
+    ? storms.reduce((a, b) => (a.peak_at > b.peak_at ? a : b))
+    : null;
+  const wettest = storms.length
+    ? storms.reduce((a, b) => (a.total_mm > b.total_mm ? a : b))
+    : null;
+  return (
+    <div className="fp-grid">
+      <div className="fp-stat ok">
+        <div className="fp-stat-label">LGAs watched</div>
+        <div className="fp-stat-val">{known || '—'}</div>
+        <div className="fp-stat-sub">
+          {known ? `every half hour · ${rateable} with enough rain history to grade` : 'every half hour'}
+        </div>
+      </div>
+      <div className="fp-stat warn">
+        <div className="fp-stat-label">Latest storm</div>
+        <div className="fp-stat-val">{latest ? latest.lga : '—'}</div>
+        <div className="fp-stat-sub">
+          {latest
+            ? `${fmtDay(latest.peak_at)} · ${Math.round(latest.total_mm)} mm · peak ${latest.peak_mm_hr.toFixed(0)} mm/h`
+            : 'No storm in the recent record'}
+        </div>
+      </div>
+      <div className="fp-stat warn">
+        <div className="fp-stat-label">Heaviest recent</div>
+        <div className="fp-stat-val">{wettest ? `${Math.round(wettest.total_mm)} mm` : '—'}</div>
+        <div className="fp-stat-sub">
+          {wettest ? `${wettest.lga} · ${fmtDay(wettest.peak_at)}` : 'Nothing exceptional recorded'}
+        </div>
+      </div>
+      <div className="fp-stat ok">
+        <div className="fp-stat-label">Last read</div>
+        <div className="fp-stat-val">{lastScanAt ? fmtAge(lastScanAt) : '—'}</div>
+        <div className="fp-stat-sub">NASA GPM IMERG · half-hourly</div>
+      </div>
+    </div>
+  );
+}
+
+
 // ─── Inline scan-result card ──────────────────────────────────────────────
 
 
 function ShockScanCard({ scan }: { scan: ShockScanData }) {
   const headline = scan.triggered
-    ? `${hazardIcon(scan.event_type)} ${eventLabel(scan.event_type).toUpperCase()} DETECTED · ${scan.severity}`
-    : `No ${eventLabel(scan.event_type).toLowerCase()} signal · baseline holding`;
+    ? 'Radar change flagged — unconfirmed, verify on the ground'
+    : 'No unusual radar change · baseline holding';
 
   const metricsLine = useMemo(() => {
     if (scan.event_type === 'flood') {
@@ -532,16 +480,8 @@ function ShockScanCard({ scan }: { scan: ShockScanData }) {
         <div>
           <div className="cg-result-class">{headline}</div>
           <div className="cg-result-sub">
-            Onset in {scan.projected_onset_hours}h ·{' '}
-            <span className={bandClass(scan.confidence_band)}>
-              {scan.confidence_band}
-            </span>
-            {scan.persisted && ' · saved to audit log'}
+            Sentinel-1 backscatter, recent passes vs this state&rsquo;s own baseline
           </div>
-        </div>
-        <div className={`cg-result-score ${scan.triggered ? 'cg-result-score--bad' : 'cg-result-score--ok'}`}>
-          {Math.round(scan.confidence * 100)}
-          <span className="cg-result-score-unit">/100</span>
         </div>
       </div>
       <div className="cg-result-footnote">

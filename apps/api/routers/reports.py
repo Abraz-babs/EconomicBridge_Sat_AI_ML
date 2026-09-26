@@ -126,27 +126,27 @@ REPORT_SPECS: dict[str, ReportSpec] = {
             Metric("LGAs", "distinct", "lga"),
         ],
         breakdown_col="event_type", breakdown_title="By event type"),
+    # The per-LGA mobility and skills scores were withdrawn on 2026-09-26:
+    # they were spread from state/national anchors with per-LGA noise, not
+    # measured. Mobility is kept only so existing subscriptions resolve; it is
+    # not listed. SkillsBridge reports only the measured school counts.
     "mobility-compass": ReportSpec(
         label="Mobility Compass", table="mobility_indicators", date_col="observed_at",
-        columns=["observed_at", "lga", "cost_of_living_index", "avg_household_income_ngn",
-                 "avg_household_income_usd", "income_opportunity_score", "population", "source"],
+        columns=["observed_at", "lga", "source"],
         metrics=[
-            Metric("LGA observations", "rows"),
-            Metric("Avg cost-of-living index", "avg", "cost_of_living_index", "float1"),
-            Metric("Avg household income (₦)", "avg", "avg_household_income_ngn", "ngn"),
-            Metric("Avg opportunity score", "avg", "income_opportunity_score", "float1"),
+            Metric("LGAs", "distinct", "lga"),
         ]),
     "skillsbridge": ReportSpec(
         label="SkillsBridge", table="skills_indicators", date_col="observed_at",
-        columns=["observed_at", "lga", "school_count", "school_density_per_10k",
-                 "internet_coverage_pct", "mobile_coverage_pct", "learning_gap_index", "source"],
+        columns=["observed_at", "lga", "school_count", "source"],
         metrics=[
             Metric("LGA observations", "rows"),
             Metric("Schools mapped", "sum", "school_count"),
-            Metric("Avg internet coverage", "avg", "internet_coverage_pct", "pct"),
-            Metric("Avg learning-gap index", "avg", "learning_gap_index", "float1"),
         ]),
 }
+
+# Modules not offered in the Reports list (kept resolvable for old subscriptions).
+UNLISTED_REPORTS = frozenset({"mobility-compass"})
 
 
 def _spec(module: str) -> ReportSpec:
@@ -255,7 +255,8 @@ def _summary(module: str, spec: ReportSpec, rows: list[dict],
 @router.get("/modules", response_model=SuccessResponse[list[ReportModuleInfo]])
 async def report_modules() -> SuccessResponse[list[ReportModuleInfo]]:
     return SuccessResponse(
-        data=[ReportModuleInfo(key=k, label=s.label) for k, s in REPORT_SPECS.items()],
+        data=[ReportModuleInfo(key=k, label=s.label) for k, s in REPORT_SPECS.items()
+              if k not in UNLISTED_REPORTS],
         meta=build_meta(),
     )
 

@@ -33,8 +33,10 @@ export default function NdviAnomalyPanel() {
   // (it degrades gracefully to a modelled series + notice if a tenant has no
   // usable acquisitions yet). Synthetic stays available as an explicit demo
   // toggle. Demo anomaly-injection off by default — meaningless on real data.
-  const [demoMode, setDemoMode] = useState(false);
-  const [dataSource, setDataSource] = useState<NdviDataSource>('live');
+  // Live Sentinel-2 only (2026-09-26): the synthetic series and the demo
+  // "inject an 18% drop" switch were removed from the product.
+  const dataSource: NdviDataSource = 'live';
+  const demoMode = false;
 
   const scanMutation = useScanNdviAnomaly(activeTenantId);
   const listQuery = useNdviAnomalies({ tenantId: activeTenantId, limit: 6 });
@@ -79,58 +81,30 @@ export default function NdviAnomalyPanel() {
     }
   }
 
+  // The same window saved twice is one reading, not three.
+  const logRows = (listQuery.data?.anomalies ?? []).filter((a, i, all) =>
+    all.findIndex((b) =>
+      b.window_start === a.window_start && b.window_end === a.window_end
+      && b.z_score === a.z_score) === i);
+
   return (
     <div className="cg-market">
       <div className="cg-section-header">
-        Pre-symptomatic Disease Detection — NDVI Anomaly
+        Vegetation Stress Watch — statewide
         <span className="ev-map-meta">
-          14-day early warning · Sentinel-2 NDVI vs detrended baseline ·{' '}
-          <span className={`cg-band ${dataSource === 'live' ? 'cg-band-high' : 'cg-band-low'}`}>
-            {dataSource === 'live' ? 'LIVE · sentinel_stat_v1' : 'SYNTHETIC'}
-          </span>
+          Sentinel-2 NDVI, last 14 days vs this state&rsquo;s own detrended baseline ·{' '}
+          <span className="cg-band cg-band-high">LIVE</span>
         </span>
       </div>
 
       <div className="cg-ndvi-controls">
-        <div className="cg-mode-switch" aria-label="NDVI data source">
-          <button
-            type="button"
-            className={`cg-mode-btn ${dataSource === 'synthetic' ? 'is-active' : ''}`}
-            onClick={() => setDataSource('synthetic')}
-            disabled={scanMutation.isPending}
-            title="Deterministic per-tenant seasonal sinusoid (no live API calls)"
-          >
-            Synthetic
-          </button>
-          <button
-            type="button"
-            className={`cg-mode-btn ${dataSource === 'live' ? 'is-active' : ''}`}
-            onClick={() => setDataSource('live')}
-            disabled={scanMutation.isPending}
-            title="Read real Sentinel-2 NDVI from satellite_observations"
-          >
-            Live
-          </button>
-        </div>
-        <label className="cg-saliency-toggle">
-          <input
-            type="checkbox"
-            checked={demoMode}
-            onChange={(e) => setDemoMode(e.target.checked)}
-            disabled={scanMutation.isPending || dataSource === 'live'}
-          />
-          <span>
-            Demo mode (inject 18% NDVI drop in last 14 days)
-            {dataSource === 'live' && ' — N/A in live mode'}
-          </span>
-        </label>
         <button
           type="button"
           className="cg-yield-btn"
           onClick={runConfirmedScan}
           disabled={scanMutation.isPending}
         >
-          {scanMutation.isPending ? 'Scanning…' : 'Persist scan to audit log'}
+          {scanMutation.isPending ? 'Saving…' : 'Save this reading to the log'}
         </button>
       </div>
 
@@ -148,19 +122,19 @@ export default function NdviAnomalyPanel() {
       )}
 
       <div className="cg-section-header cg-ndvi-log-head">
-        Recent anomaly audit log
-        <span className="ev-map-meta">last {listQuery.data?.anomalies.length ?? 0} scans</span>
+        Saved readings
+        <span className="ev-map-meta">last {logRows.length} distinct readings</span>
       </div>
       {listQuery.isLoading && (
         <div className="fp-alert-empty">Loading audit log…</div>
       )}
       {listQuery.data?.anomalies.length === 0 && (
         <div className="fp-alert-empty">
-          No persisted scans yet. Run a scan above and click &ldquo;Persist&rdquo; to log it.
+          No saved readings yet.
         </div>
       )}
       <div className="cg-ndvi-log">
-        {listQuery.data?.anomalies.map((a) => (
+        {logRows.map((a) => (
           <div key={a.id} className="cg-ndvi-log-row">
             <span className={a.anomaly ? 'cg-ndvi-flag-bad' : 'cg-ndvi-flag-ok'}>
               {a.anomaly ? '⚠' : '✓'}
@@ -170,9 +144,6 @@ export default function NdviAnomalyPanel() {
             </span>
             <span className="cg-ndvi-log-z">z = {a.z_score.toFixed(2)}</span>
             <span className={bandClass(a.confidence_band)}>{a.confidence_band}</span>
-            <span className="cg-ndvi-log-dp">
-              dp {Math.round(a.disease_probability * 100)}%
-            </span>
           </div>
         ))}
       </div>
@@ -188,24 +159,16 @@ function ScanSummary({ scan }: { scan: NdviScanData }) {
         <div>
           <div className="cg-result-class">
             {scan.anomaly
-              ? '⚠ NDVI anomaly detected'
-              : 'No anomaly · vegetation tracking baseline'}
+              ? '⚠ Vegetation below its usual level for this time of year'
+              : 'Vegetation tracking its usual level'}
           </div>
           <div className="cg-result-sub">
-            z-score {scan.z_score.toFixed(2)} ·{' '}
-            <span className={bandClass(scan.confidence_band)}>{scan.confidence_band}</span> ·
-            Disease probability {Math.round(scan.disease_probability * 100)}% ·
-            Early-warning lead: {scan.days_early_warning} days
-            {scan.persisted && ' · saved to audit log'}
+            {/* A statewide greenness dip is a reason to look, not a disease
+                finding — so no "disease probability" is shown. */}
+            Change from baseline z = {scan.z_score.toFixed(2)} ·{' '}
+            <span className={bandClass(scan.confidence_band)}>{scan.confidence_band}</span>
+            {scan.persisted && ' · saved to the log'}
           </div>
-        </div>
-        <div
-          className={`cg-result-score ${
-            scan.anomaly ? 'cg-result-score--bad' : 'cg-result-score--ok'
-          }`}
-        >
-          {Math.round(scan.disease_probability * 100)}
-          <span className="cg-result-score-unit">/100</span>
         </div>
       </div>
       <div className="cg-result-footnote">
