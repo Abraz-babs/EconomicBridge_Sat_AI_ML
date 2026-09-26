@@ -10,6 +10,8 @@ number traces to a real row) and subtitles never fabricate a trend.
 """
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -26,6 +28,7 @@ from schemas.overview import (
     ActiveResponseRow,
     CropHealthData,
     CropHealthRow,
+    LastAdvisory,
     OverviewStatCard,
     OverviewStatsData,
 )
@@ -33,6 +36,8 @@ from services.lga_geo import all_lgas
 from services.tenants import PILOT_TENANT_IDS, tenant_schema_name
 from services.data_source import NOT_SYNTHETIC
 
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/overview", tags=["overview"])
 
@@ -78,6 +83,100 @@ LIVE_SOURCES: list[str] = [
 ]
 
 
+# Tables that arrived with later migrations. Only tables that exist are
+# queried, so one tenant without them cannot abort the whole roll-up.
+_LATER_TABLES = (
+    "lga_season_vegetation", "alert_events",
+    "rainfall_advisory_history", "alert_subscribers",
+)
+LAND_CHANGE_MODEL = "land_change_v1"
+
+
+def _latest_advisory(found: list[LastAdvisory]) -> LastAdvisory | None:
+    """The most recent advisory across every tenant, or None."""
+    return max(found, key=lambda a: a.sent_at) if found else None
+
+
+@dataclass
+class _Figures:
+    farmland_ha: float = 0.0
+    land_changes: int = 0
+    sms_subscribers: int = 0
+    advisories_sent: int = 0
+    last: LastAdvisory | None = None
+
+
+async def _front_page_figures(
+    session: AsyncSession, t: str, schema: str, present: set[tuple[str, str]]
+) -> _Figures:
+    """One tenant's front-page figures (search_path already set to it)."""
+    f = _Figures()
+    if (schema, "lga_season_vegetation") in present:
+        # Farmland = crops + rangeland that greened in the latest season
+        # (the figure the briefing quotes; trees and built-up excluded).
+        f.farmland_ha = float(
+            (
+                await session.execute(
+                    text(
+                        "SELECT COALESCE(SUM(COALESCE(greened_on_crops_ha, 0)"
+                        " + COALESCE(greened_on_rangeland_ha, 0)), 0) "
+                        "FROM lga_season_vegetation WHERE detector_version = :dv "
+                        "AND season_year = (SELECT max(season_year) "
+                        "FROM lga_season_vegetation WHERE detector_version = :dv)"
+                    ),
+                    {"dv": LAND_CHANGE_MODEL},
+                )
+            ).scalar()
+            or 0
+        )
+    if (schema, "alert_events") in present:
+        f.land_changes = int(
+            (
+                await session.execute(
+                    text("SELECT COUNT(*) FROM alert_events WHERE model_version = :m"),
+                    {"m": LAND_CHANGE_MODEL},
+                )
+            ).scalar()
+            or 0
+        )
+    if (schema, "alert_subscribers") in present:
+        f.sms_subscribers = int(
+            (
+                await session.execute(
+                    text("SELECT COUNT(*) FROM alert_subscribers WHERE is_active")
+                )
+            ).scalar()
+            or 0
+        )
+    if (schema, "rainfall_advisory_history") in present:
+        f.advisories_sent = int(
+            (
+                await session.execute(
+                    text(
+                        "SELECT COUNT(*) FROM rainfall_advisory_history "
+                        "WHERE sms_recipients > 0"
+                    )
+                )
+            ).scalar()
+            or 0
+        )
+        last = (
+            await session.execute(
+                text(
+                    "SELECT sms_dispatched_at, lga, sms_recipients "
+                    "FROM rainfall_advisory_history WHERE sms_recipients > 0 "
+                    "ORDER BY sms_dispatched_at DESC LIMIT 1"
+                )
+            )
+        ).first()
+        if last and last[0] is not None:
+            f.last = LastAdvisory(
+                sent_at=last[0], region=_region(t),
+                lga=str(last[1]), recipients=int(last[2]),
+            )
+    return f
+
+
 def _fmt(n: int) -> str:
     """Compact human number: 447, 1.2K, 3.4M."""
     if n >= 1_000_000:
@@ -102,7 +201,25 @@ async def overview_stats(
     settlements = 0
     crop_detections = 0
     sat_obs = 0
+    farmland_ha = 0.0
+    land_changes = 0
+    sms_subscribers = 0
+    advisories_sent = 0
+    advisories: list[LastAdvisory] = []
+    present = {
+        (row[0], row[1])
+        for row in (
+            await session.execute(
+                text(
+                    "SELECT table_schema, table_name FROM information_schema.tables "
+                    "WHERE table_name = ANY(:names)"
+                ),
+                {"names": list(_LATER_TABLES)},
+            )
+        ).all()
+    }
     for t in tenants:
+        schema = tenant_schema_name(t)
         await session.execute(
             text(f"SET search_path TO {tenant_schema_name(t)}, public")
         )
@@ -126,6 +243,21 @@ async def overview_stats(
             settlements += int(row[0] or 0)
             crop_detections += int(row[1] or 0)
             sat_obs += int(row[2] or 0)
+
+        try:
+            # A savepoint: if any of these later-table reads fails, only they
+            # are lost — the dashboard Overview cards above still render.
+            async with session.begin_nested():
+                f = await _front_page_figures(session, t, schema, present)
+        except Exception:  # noqa: BLE001 — degrade, never fail the Overview
+            log.warning("overview: front-page figures failed for %s", t, exc_info=True)
+            continue
+        farmland_ha += f.farmland_ha
+        land_changes += f.land_changes
+        sms_subscribers += f.sms_subscribers
+        advisories_sent += f.advisories_sent
+        if f.last is not None:
+            advisories.append(f.last)
 
     cards = [
         OverviewStatCard(
@@ -170,6 +302,11 @@ async def overview_stats(
         live_sources=LIVE_SOURCES,
         cards=cards,
         generated_at=datetime.now(timezone.utc),
+        farmland_greened_ha=round(farmland_ha),
+        land_changes=land_changes,
+        sms_subscribers=sms_subscribers,
+        advisories_sent=advisories_sent,
+        last_advisory=_latest_advisory(advisories),
     )
     return SuccessResponse(
         data=data,

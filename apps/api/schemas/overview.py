@@ -19,6 +19,18 @@ class OverviewStatCard(BaseModel):
     tone: str  # "ok" | "warn" | "neg" | "" — drives the delta colour
 
 
+class LastAdvisory(BaseModel):
+    """The most recent farmer rainfall advisory that reached anyone.
+
+    Aggregate only: when, where (LGA) and how many recipients. Never a name
+    or a number — the front page reads this.
+    """
+    sent_at: datetime
+    region: str
+    lga: str
+    recipients: int
+
+
 class OverviewStatsData(BaseModel):
     tenants_live: int
     lgas_mapped: int
@@ -28,6 +40,13 @@ class OverviewStatsData(BaseModel):
     live_sources: list[str]
     cards: list[OverviewStatCard]
     generated_at: datetime
+    # Front-page figures that move with each scan or send (defaults keep older
+    # clients and tests valid).
+    farmland_greened_ha: float = 0.0     # crops + rangeland, latest season
+    land_changes: int = 0                # live land_change_v1 detections
+    sms_subscribers: int = 0             # active SMS subscribers (count only)
+    advisories_sent: int = 0             # rainfall advisories that reached >= 1 person
+    last_advisory: LastAdvisory | None = None
 
 
 class CropHealthRow(BaseModel):
