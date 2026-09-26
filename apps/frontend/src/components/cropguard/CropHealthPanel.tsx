@@ -70,8 +70,9 @@ export default function CropHealthPanel() {
       <div className="cg-section-header">Statewide Crop Health — every LGA (Sentinel-2 NDVI)</div>
       <div className="cg-subtitle" style={{ marginBottom: '8px' }}>
         Each LGA&apos;s current vegetation health from live Sentinel-2 NDVI, refreshed
-        on the satellite revisit. (Disease <em>diagnosis</em> is the leaf-photo /
-        Farm Check layer above — satellite shows where stress is; a photo shows which disease.)
+        on the satellite revisit. Satellite shows where vegetation is under stress;
+        Farm Check below reads any single field, and the leaf-photo check further
+        down helps an officer on the ground.
       </div>
 
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', margin: '4px 0 10px' }}>
