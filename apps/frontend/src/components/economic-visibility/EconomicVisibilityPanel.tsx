@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 
 import { DirectionsLink } from '@/components/common/FieldDirections';
+import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
 import { formatLatLon } from '@/lib/display';
 import { downloadVillageList, useVillageLight, type UnlitVillage } from '@/hooks/useVillageLight';
@@ -39,6 +40,9 @@ export default function EconomicVisibilityPanel() {
   const s = data?.stats ?? null;
   const [season, setSeason] = useState<Season>('dry');
   const [focus, setFocus] = useState<{ lng: number; lat: number; zoom?: number } | null>(null);
+  // Data downloads are a paid service: only the super-admin sees the buttons
+  // (the API refuses everyone else too).
+  const { isSuperAdmin } = useAuth();
   const [downloading, setDownloading] = useState<'unlit' | 'all' | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const download = async (scope: 'unlit' | 'all') => {
@@ -243,16 +247,20 @@ export default function EconomicVisibilityPanel() {
               <div className="fp-alerts-header">
                 Unlit villages, most people first
                 <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <button type="button" className="fp-alerts-tab" disabled={downloading !== null}
-                    onClick={() => download('unlit')}
-                    title="Every unlit village, most people first: coordinates, estimated people and under-fives, directions link">
-                    {downloading === 'unlit' ? 'Preparing…' : '↓ CSV'}
-                  </button>
-                  <button type="button" className="fp-alerts-tab" disabled={downloading !== null}
-                    onClick={() => download('all')}
-                    title="Every named village, lit or not">
-                    {downloading === 'all' ? 'Preparing…' : 'All'}
-                  </button>
+                  {isSuperAdmin && (
+                    <>
+                      <button type="button" className="fp-alerts-tab" disabled={downloading !== null}
+                        onClick={() => download('unlit')}
+                        title="Every unlit village, most people first: coordinates, estimated people and under-fives, directions link">
+                        {downloading === 'unlit' ? 'Preparing…' : '↓ CSV'}
+                      </button>
+                      <button type="button" className="fp-alerts-tab" disabled={downloading !== null}
+                        onClick={() => download('all')}
+                        title="Every named village, lit or not">
+                        {downloading === 'all' ? 'Preparing…' : 'All'}
+                      </button>
+                    </>
+                  )}
                   <span className="fp-alert-count">{fmt(s.unlit)} UNLIT</span>
                 </span>
               </div>

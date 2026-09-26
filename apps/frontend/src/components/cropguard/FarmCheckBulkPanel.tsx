@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 
 import { apiFetch, ingestionFetch } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
 import { type FarmCheckResult, type FarmHealth } from '@/hooks/useFarmCheck';
 import { parseCoord } from './FarmCheckPanel';
@@ -91,6 +92,7 @@ function parseBulk(text: string): BulkRow[] {
 
 export default function FarmCheckBulkPanel() {
   const { activeTenant, pilotTenants } = useTenant();
+  const { isSuperAdmin } = useAuth();
   const [pilotId, setPilotId] = useState(activeTenant.id);
   const [halfM, setHalfM] = useState(60);
   const [text, setText] = useState('');
@@ -314,7 +316,8 @@ export default function FarmCheckBulkPanel() {
             ↻ Retry {stats.errored} failed
           </button>
         )}
-        {(stats.done + stats.errored) > 0 && !running && (
+        {/* Data downloads are a paid service: super-admin only. */}
+        {isSuperAdmin && (stats.done + stats.errored) > 0 && !running && (
           <button type="button" className="fp-refresh-btn" onClick={downloadCsv}>
             ⬇ Download results (CSV)
           </button>

@@ -344,6 +344,10 @@ async def report_summary(
 async def report_export_csv(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
+    # Data downloads are a paid service: only the platform operator
+    # (super-admin) may take a file away. Everyone else — including partner
+    # accounts such as NASRDA staff — views on the dashboard only.
+    _admin: Annotated[CurrentUser, Depends(require_super_admin)],
     module: Annotated[str, Query()] = "farmland",
     from_: Annotated[str | None, Query(alias="from")] = None,
     to: Annotated[str | None, Query()] = None,
@@ -370,6 +374,7 @@ async def report_export_csv(
 async def report_export_pdf(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
+    _admin: Annotated[CurrentUser, Depends(require_super_admin)],
     module: Annotated[str, Query()] = "farmland",
     from_: Annotated[str | None, Query(alias="from")] = None,
     to: Annotated[str | None, Query()] = None,

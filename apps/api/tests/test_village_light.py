@@ -23,7 +23,17 @@ def test_export_columns_say_the_people_figures_are_estimates():
 
 
 def test_export_requires_a_tenant():
+    # The export is super-admin only (paid data); even the operator must name
+    # a tenant. Anonymous and partner callers are covered in
+    # test_data_downloads_super_admin.py.
+    from uuid import uuid4
+
     from fastapi.testclient import TestClient
+
+    from core.security import create_access_token
     from main import app
-    r = TestClient(app).get("/api/v1/economic_visibility/village-light/export.csv")
+    token = create_access_token(user_id=uuid4(), role="super_admin", org_id=uuid4(),
+                                permitted_tenants=[])
+    r = TestClient(app).get("/api/v1/economic_visibility/village-light/export.csv",
+                            headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 400

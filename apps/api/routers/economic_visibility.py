@@ -26,6 +26,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.engine import get_session
+from dependencies import CurrentUser, require_super_admin
 from schemas.envelope import ResponseMeta, SuccessResponse
 from schemas.poverty import (
     LgaLightRow,
@@ -316,6 +317,10 @@ def export_rows(rows: list[tuple], period: str, sources: str | None) -> list[lis
 async def village_light_export(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
+    # Data downloads are a paid service: only the platform operator
+    # (super-admin) may take a file away. Everyone else — including partner
+    # accounts such as NASRDA staff — views on the dashboard only.
+    _admin: Annotated[CurrentUser, Depends(require_super_admin)],
     scope: Annotated[Literal["unlit", "all"], Query()] = "unlit",
     period: Annotated[str | None, Query(max_length=16)] = None,
 ) -> StreamingResponse:

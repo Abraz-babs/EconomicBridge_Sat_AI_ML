@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 
+import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
 import {
   useReportModules,
@@ -61,12 +62,15 @@ export default function ReportsPanel() {
   }
 
   const empty = (data?.total_rows ?? 0) === 0;
+  // Data downloads are a paid service: only the super-admin exports files
+  // (the API refuses everyone else too). Others read the summary here.
+  const { isSuperAdmin } = useAuth();
 
   return (
     <div className="panel rep-card">
       <div className="panel-header">
         <span className="panel-title">Reports &amp; Export — {activeTenant.name}</span>
-        <span className="panel-meta">historical summary · CSV / PDF</span>
+        <span className="panel-meta">{isSuperAdmin ? 'historical summary · CSV / PDF' : 'historical summary'}</span>
       </div>
       <div className="upload-body">
         <div className="rep-controls">
@@ -94,6 +98,7 @@ export default function ReportsPanel() {
             <input type="date" value={to} min={from} max={TODAY()}
               onChange={(e) => { setTo(e.target.value); setPreset('custom'); }} />
           </label>
+          {isSuperAdmin ? (
           <div className="rep-dl-group">
             <button type="button" className="sms-btn sms-btn--go"
               title="Formatted report with charts (trend + breakdown)"
@@ -106,6 +111,11 @@ export default function ReportsPanel() {
               {busy === 'csv' ? 'Preparing…' : '⤓ CSV data (Excel)'}
             </button>
           </div>
+          ) : (
+            <div className="rep-dl-group">
+              <span className="panel-meta">Report downloads are part of a subscription.</span>
+            </div>
+          )}
         </div>
 
         {isLoading && <div className="fp-alert-empty">Loading report…</div>}
