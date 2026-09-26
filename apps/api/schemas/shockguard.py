@@ -268,3 +268,58 @@ class StormListData(BaseModel):
     known_lgas: int = 0
     min_baseline_days: int = 21
     last_scan_at: datetime | None = None
+
+
+# ─── Storm impact (the redesigned ShockGuard, 2026-09-27) ───────────────────
+#
+# One storm DAY, LGA by LGA: what fell (IMERG), who lives there (village layer:
+# GRID3 names, VIIRS light, HRSL people), what happened there before (cited
+# disasters) and whether farmers were told (SMS dispatch). Measurements and
+# exposure only — never a flood claim.
+
+
+class ImpactStorm(BaseModel):
+    started_at: datetime
+    ended_at: datetime
+    peak_at: datetime
+    total_mm: float
+    peak_mm_hr: float
+    percentile_3h: float | None = None
+    baseline_days: int | None = None
+
+
+class ImpactHistory(BaseModel):
+    event_type: str
+    event_date: str | None = None
+    summary: str | None = None
+    source: str | None = None
+    source_url: str | None = None
+
+
+class ImpactRow(BaseModel):
+    lga: str
+    location: LonLat | None = None
+    # Daily total from the rainfall advisory feed, when the LGA crossed its own
+    # extreme (per-LGA 99th percentile of rain days).
+    rain_day_mm: float | None = None
+    advisory_severity: str | None = None
+    sms_recipients: int | None = None
+    sms_sent_at: datetime | None = None
+    # The heaviest storm reconstructed that day from half-hourly rain.
+    storm: ImpactStorm | None = None
+    people: int = 0
+    under5: int = 0
+    villages: int = 0
+    dark_villages: int = 0
+    history: list[ImpactHistory] = Field(default_factory=list)
+
+
+class StormImpactData(BaseModel):
+    day: date | None = None
+    days_available: list[date] = Field(default_factory=list)
+    rows: list[ImpactRow] = Field(default_factory=list)
+    people: int = 0
+    under5: int = 0
+    villages: int = 0
+    dark_villages: int = 0
+    advisories_sent: int = 0

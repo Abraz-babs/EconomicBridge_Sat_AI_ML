@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Annotated, Any
 from uuid import UUID, uuid4
 
@@ -31,6 +31,10 @@ from schemas.shockguard import (
     ShockEventRow,
     ShockScanData,
     ShockScanRequest,
+    ImpactHistory,
+    ImpactRow,
+    ImpactStorm,
+    StormImpactData,
     StormListData,
     StormMeasurement,
     StormRow,
@@ -666,3 +670,180 @@ async def _persist_event(
         },
     )
     return event_id
+
+
+# ─── Storm impact ────────────────────────────────────────────────────────────
+
+# Storm days are counted in Nigeria time: a storm that peaks at 00:30 WAT on
+# the 20th belongs to the 20th, not to 23:30 UTC on the 19th.
+IMPACT_TZ = "Africa/Lagos"
+IMPACT_DAYS_OFFERED = 10
+IMPACT_HISTORY_PER_LGA = 2
+
+
+def _merge_impact(
+    advisories: list[Mapping[str, Any]],
+    storms: list[Mapping[str, Any]],
+    exposure: dict[str, Mapping[str, Any]],
+    history: dict[str, list[Mapping[str, Any]]],
+    centroid: Any = None,
+) -> list[ImpactRow]:
+    """One row per LGA that crossed its own extreme or had a storm that day.
+
+    Pure: it takes already-fetched rows, so the merge is testable without a
+    database. Heaviest rain first. `centroid(lga)` is the last-resort pin.
+    """
+    by_lga: dict[str, dict[str, Any]] = {}
+    for a in advisories:
+        row = by_lga.setdefault(a["lga"], {"lga": a["lga"]})
+        row["rain_day_mm"] = a.get("rain_mm_day")
+        row["advisory_severity"] = a.get("severity")
+        row["sms_recipients"] = a.get("sms_recipients")
+        row["sms_sent_at"] = a.get("sms_dispatched_at")
+    for st in storms:
+        row = by_lga.setdefault(st["lga"], {"lga": st["lga"]})
+        prev = row.get("storm")
+        if prev is None or st["total_mm"] > prev.total_mm:
+            row["storm"] = ImpactStorm(
+                started_at=st["started_at"], ended_at=st["ended_at"], peak_at=st["peak_at"],
+                total_mm=st["total_mm"], peak_mm_hr=st["peak_mm_hr"],
+                percentile_3h=st.get("percentile_3h"), baseline_days=st.get("baseline_days"),
+            )
+            if st.get("lon") is not None and st.get("lat") is not None:
+                row["location"] = LonLat(lon=st["lon"], lat=st["lat"])
+    rows: list[ImpactRow] = []
+    for lga, row in by_lga.items():
+        ex = exposure.get(lga) or {}
+        if "location" not in row:
+            if ex.get("lon") is not None and ex.get("lat") is not None:
+                row["location"] = LonLat(lon=ex["lon"], lat=ex["lat"])
+            elif centroid is not None:
+                c = centroid(lga)
+                if c is not None:
+                    row["location"] = LonLat(lon=c[0], lat=c[1])
+        hist = []
+        for h in (history.get(lga) or [])[:IMPACT_HISTORY_PER_LGA]:
+            m = h.get("metrics") or {}
+            hist.append(ImpactHistory(
+                event_type=h.get("event_type") or "event",
+                event_date=m.get("event_date"), summary=h.get("zone_name"),
+                source=m.get("source"), source_url=m.get("source_url"),
+            ))
+        rows.append(ImpactRow(
+            **row,
+            people=int(ex.get("people") or 0), under5=int(ex.get("under5") or 0),
+            villages=int(ex.get("villages") or 0), dark_villages=int(ex.get("dark") or 0),
+            history=hist,
+        ))
+
+    def heaviest(r: ImpactRow) -> float:
+        return max(r.rain_day_mm or 0.0, r.storm.total_mm if r.storm else 0.0)
+
+    rows.sort(key=heaviest, reverse=True)
+    return rows
+
+
+def _impact_meta(request: Request) -> ResponseMeta:
+    return ResponseMeta(
+        tenant_id=None, trace_id=_trace_id(request),
+        timestamp=datetime.now(timezone.utc), pagination=None,
+    )
+
+
+@router.get(
+    "/impact",
+    response_model=SuccessResponse[StormImpactData],
+    summary="One storm day, LGA by LGA: rain, the people under it, history, advisories",
+)
+async def storm_impact(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    day: Annotated[
+        date | None, Query(description="Storm day, Nigeria time. Default: the latest.")
+    ] = None,
+) -> SuccessResponse[StormImpactData]:
+    """Where extreme rain fell on one day, and who lives there.
+
+    Rain from NASA GPM IMERG (the half-hourly storm engine and the daily
+    advisory feed); people and villages from the village layer; history from
+    cited disasters; and whether cooperative leaders were sent an SMS. It
+    reports rain and exposure — whether a place flooded is confirmed on the
+    ground.
+    """
+    tenant_id = _require_tenant(request)
+
+    days = [r[0] for r in (await session.execute(text(
+        """
+        SELECT d FROM (
+            SELECT observed_date AS d FROM rainfall_advisory_history
+            UNION
+            SELECT (peak_at AT TIME ZONE :tz)::date FROM storm_events
+        ) x WHERE d IS NOT NULL ORDER BY d DESC LIMIT :n
+        """
+    ), {"tz": IMPACT_TZ, "n": IMPACT_DAYS_OFFERED})).all()]
+    chosen = day or (days[0] if days else None)
+    if chosen is None:
+        return SuccessResponse(data=StormImpactData(), meta=_impact_meta(request))
+
+    advisories = (await session.execute(text(
+        """
+        SELECT lga, rain_mm_day, severity, sms_recipients, sms_dispatched_at
+          FROM rainfall_advisory_history WHERE observed_date = :d
+        """
+    ), {"d": chosen})).mappings().all()
+    storms = (await session.execute(text(
+        """
+        SELECT lga, lon, lat, started_at, ended_at, peak_at, total_mm, peak_mm_hr,
+               percentile_3h, baseline_days
+          FROM storm_events
+         WHERE (peak_at AT TIME ZONE :tz)::date = :d
+        """
+    ), {"tz": IMPACT_TZ, "d": chosen})).mappings().all()
+    lgas = sorted({a["lga"] for a in advisories} | {st["lga"] for st in storms})
+
+    exposure: dict[str, Mapping[str, Any]] = {}
+    has_villages = (await session.execute(
+        text("SELECT to_regclass('village_light') IS NOT NULL")
+    )).scalar()
+    if lgas and has_villages:
+        exposure = {r["lga"]: r for r in (await session.execute(text(
+            """
+            SELECT lga, count(*) AS villages, sum(people) AS people, sum(under5) AS under5,
+                   count(*) FILTER (WHERE light_class = 'unlit') AS dark,
+                   ST_X(ST_Centroid(ST_Collect(geom))) AS lon,
+                   ST_Y(ST_Centroid(ST_Collect(geom))) AS lat
+              FROM village_light
+             WHERE period = (SELECT max(period) FROM village_light)
+               AND lga = ANY(:lgas)
+             GROUP BY lga
+            """
+        ), {"lgas": lgas})).mappings().all()}
+
+    history: dict[str, list[Mapping[str, Any]]] = {}
+    if lgas:
+        for r in (await session.execute(text(
+            """
+            SELECT lga, event_type, zone_name, metrics
+              FROM shock_events
+             WHERE source = 'historical_v1' AND lga = ANY(:lgas)
+             ORDER BY created_at DESC
+            """
+        ), {"lgas": lgas})).mappings().all():
+            history.setdefault(r["lga"], []).append(r)
+
+    def centroid(lga: str) -> tuple[float, float] | None:
+        try:
+            return lga_geo.centroid_for(tenant_id, lga)
+        except KeyError:
+            return None
+
+    rows = _merge_impact(advisories, storms, exposure, history, centroid)
+    data = StormImpactData(
+        day=chosen, days_available=days, rows=rows,
+        people=sum(r.people for r in rows), under5=sum(r.under5 for r in rows),
+        villages=sum(r.villages for r in rows),
+        dark_villages=sum(r.dark_villages for r in rows),
+        advisories_sent=sum(1 for r in rows if (r.sms_recipients or 0) > 0),
+    )
+    return SuccessResponse(data=data, meta=_impact_meta(request))
+
