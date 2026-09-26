@@ -314,13 +314,13 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--amber);outline-o
     <div class="wrap">
       <div class="measured-head">
         <h2 id="measured-title">Measured, not asserted.</h2>
-        <span class="src">Figures as of 25 September 2026</span>
+        <span class="src" id="asOf">Figures as of 25 September 2026</span>
       </div>
       <div class="cells">
-        <div class="cell"><b style="color:var(--leaf-d)">18.3M ha</b><span>of farmland measured greening in the 2026 rains</span><span class="src">Sentinel-2 · every pixel of 142 LGAs</span></div>
+        <div class="cell"><b style="color:var(--leaf-d)" data-live="farmland_greened_ha">18.3M ha</b><span>of farmland measured greening in the 2026 rains</span><span class="src">Sentinel-2 · every pixel of 142 LGAs</span></div>
         <div class="cell"><b>64%</b><span>measured precision of land-change detections, each at its own coordinates</span><span class="src">Random sample · 95% interval 45–80%</span></div>
-        <div class="cell"><b style="color:var(--rain-d)">447</b><span>LGAs watched every day for storms and extreme rain</span><span class="src">NASA GPM IMERG · half-hourly</span></div>
-        <div class="cell"><b>0 of 11</b><span>floods found by our 2024 radar backtest — so we report storms and extreme rain, not floods</span><span class="src">Tested on the September 2024 Kebbi floods</span></div>
+        <div class="cell"><b style="color:var(--rain-d)" data-live="lgas_mapped">447</b><span>LGAs watched every day for storms and extreme rain</span><span class="src">NASA GPM IMERG · half-hourly</span></div>
+        <div class="cell"><b style="color:var(--amber)" data-live="sms_subscribers">11</b><span>farmer cooperative leaders receive rainfall advisories by SMS — in Hausa and English</span><span class="src">Live in Kebbi · sent automatically since August 2026</span></div>
       </div>
     </div>
   </section>
@@ -354,7 +354,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--amber);outline-o
               </div>
               <div class="item">
                 <div class="item-head"><b>Rainfall advisory sent</b><span class="chip chip-rain">SMS</span></div>
-                <p>11 farmer cooperative leaders · 22 September 2026</p>
+                <p id="lastAdvisory">11 farmer cooperative leaders · 22 September 2026</p>
                 <span class="src">NASA GPM IMERG · the LGA's own rainfall history</span>
               </div>
               <div class="item">
@@ -396,10 +396,10 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--amber);outline-o
       <div class="wrap">
         <div>
           <h2>What we measured</h2>
-          <div class="row"><span class="n leaf">62</span><div><span>land changes on farmland, each at its own coordinates</span><div class="src">64% precision on a random sample · 95% interval 45–80%</div></div></div>
-          <div class="row"><span class="n">76,995</span><div><span>named villages checked for light at night — 84% dark</span><div class="src">NASA VIIRS Black Marble · GRID3 · Meta &amp; CIESIN HRSL</div></div></div>
-          <div class="row"><span class="n">447</span><div><span>LGAs watched daily for storms and extreme rain</span><div class="src">NASA GPM IMERG · half-hourly rainfall</div></div></div>
-          <div class="row"><span class="n">11</span><div><span>farmer cooperative leaders in Kebbi receiving rainfall advisories by SMS</span><div class="src">Sent automatically since August 2026</div></div></div>
+          <div class="row"><span class="n leaf" data-live="land_changes">62</span><div><span>land changes on farmland, each at its own coordinates</span><div class="src">64% precision on a random sample · 95% interval 45–80%</div></div></div>
+          <div class="row"><span class="n" data-live="settlements_scored">76,995</span><div><span>named villages checked for light at night — 84% dark</span><div class="src">NASA VIIRS Black Marble · GRID3 · Meta &amp; CIESIN HRSL</div></div></div>
+          <div class="row"><span class="n">5.0M</span><div><span>children under five live in villages with no light at night</span><div class="src">Meta &amp; CIESIN HRSL under-five layer · NASA VIIRS · 2026 round</div></div></div>
+          <div class="row"><span class="n" data-live="lgas_mapped">447</span><div><span>LGAs watched daily for storms and extreme rain</span><div class="src">NASA GPM IMERG · half-hourly rainfall</div></div></div>
         </div>
         <div>
           <h2>How we report</h2>
@@ -517,9 +517,38 @@ document.querySelectorAll('.menu nav a').forEach(function (a) {
 });
 
 // Briefing request -> POST /api/v1/contact (the same pipeline as the Bizra site's form).
+var API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? 'http://localhost:8000/api/v1' : '/api/v1';
+
+// Live figures. The numbers that move with each scan or send come from the
+// platform; the text already in the page is the verified fallback. A zero or
+// a failed request keeps the fallback rather than printing 0.
 (function () {
-  var API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-    ? 'http://localhost:8000/api/v1' : '/api/v1';
+  function day(iso) {
+    return new Date(iso).toLocaleDateString('en-GB',
+      { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Lagos' });
+  }
+  fetch(API + '/overview/stats').then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      var d = j && j.data;
+      if (!d) return;
+      document.querySelectorAll('[data-live]').forEach(function (el) {
+        var k = el.getAttribute('data-live'), v = d[k];
+        if (typeof v !== 'number' || v <= 0) return;
+        el.textContent = k === 'farmland_greened_ha'
+          ? (v / 1e6).toFixed(1) + 'M ha' : v.toLocaleString('en-US');
+      });
+      var a = d.last_advisory, adv = document.getElementById('lastAdvisory');
+      if (a && adv && a.region === 'Kebbi' && a.recipients > 0) {
+        adv.textContent = a.lga + ' LGA · ' + a.recipients + ' farmer cooperative leaders · ' + day(a.sent_at);
+      }
+      var asOf = document.getElementById('asOf');
+      if (asOf && d.generated_at) asOf.textContent = 'Figures as of ' + day(d.generated_at);
+    })
+    .catch(function () { /* keep the verified fallbacks */ });
+})();
+
+(function () {
   var form = document.getElementById('briefForm');
   var note = document.getElementById('briefNote');
   var btn = form.querySelector('button[type="submit"]');
