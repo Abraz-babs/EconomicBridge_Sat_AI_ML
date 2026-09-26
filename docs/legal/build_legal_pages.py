@@ -4,7 +4,8 @@
 
 The Markdown files beside this script are the source of truth for
 economicbridge.org/privacy and /terms (approved by the directors on
-25 September 2026). This writes apps/frontend/src/components/legal/content.ts,
+25 September 2026; Terms amended 26 September 2026 — permission to use
+information, paid downloads). This writes apps/frontend/src/components/legal/content.ts,
 which the two pages render. To change a page: edit the .md, run this, commit
 both, deploy the frontend.
 

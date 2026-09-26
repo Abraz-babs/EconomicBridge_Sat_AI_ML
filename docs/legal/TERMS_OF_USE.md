@@ -1,7 +1,7 @@
 # Terms of Use
 
 **EconomicBridge**, operated by **Bizra Farms Integrated Nigeria Limited** (RC 1929412), Kebbi State, Nigeria
-Last updated: 25 September 2026
+Last updated: 26 September 2026
 
 These terms apply to anyone who uses economicbridge.org and the EconomicBridge platform. By using it you accept them. If you use it for an organisation, you accept them on its behalf.
 
@@ -40,6 +40,7 @@ You must not:
 - use the platform to target, harass, discriminate against or incite violence against any person, community or group;
 - try to gain access you have not been given, test or bypass its security, or disrupt the service;
 - scrape, bulk-download or resell the platform's content, or build a competing service from it, without a written agreement with us;
+- use the platform's information in a project, programme, proposal, report or publication without our written permission (see section 5);
 - remove source attributions or licence notices from information you reuse;
 - use it for anything unlawful under Nigerian law or the law where you are.
 
@@ -47,15 +48,17 @@ We may suspend access that breaks these rules.
 
 ## 5. Ownership
 
-**The platform belongs to Bizra Farms Integrated Nigeria Limited.** That covers its software, methods, models and presentation.
+**The platform belongs to Bizra Farms Integrated Nigeria Limited.** That covers its software, methods, models and presentation, and the information it produces: its analyses, detections, scores, maps and lists.
+
+**Viewing is not permission to use.** You may view the platform as these terms allow. To use its information in a project, programme, proposal, report or publication, you need a signed service agreement with us or our written permission. That applies however the information is taken, including screenshots and copying by hand. Where we give permission, credit EconomicBridge and keep the source attributions shown with the information.
 
 **Your uploads remain yours.** When you upload data, you give us the right to process it to provide the service to you.
 
-**Open datasets keep their own licences.** These include Copernicus Sentinel, NASA, GRID3, Meta and CIESIN HRSL, Esri land cover and IATI. When you reuse information derived from them, keep the attributions shown with it.
+**Open datasets keep their own licences.** These include Copernicus Sentinel, NASA, GRID3, Meta and CIESIN HRSL, Esri land cover and IATI. These terms do not limit your rights in those datasets taken from their original sources. Our analyses of them are ours.
 
 ## 6. Fees
 
-Open views are free. Services for institutions are provided under the service agreement we sign with your organisation, which sets the fees and payment terms.
+The public pages are free to view, as a preview of the service. Using the platform's information, and downloading data, are paid services. They are provided under the service agreement we sign with your organisation, which sets the fees and payment terms.
 
 ## 7. Availability
 
