@@ -16,6 +16,7 @@
 import { useTenant } from '@/context/TenantContext';
 import { localCurrencyFor } from '@/lib/currency';
 import { formatIncome, useEconomicMobility } from '@/hooks/useEconomicMobility';
+import ModuleSources from '@/components/common/ModuleSources';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -43,6 +44,10 @@ export default function MobilityCompassPanel() {
           <div className="cg-subtitle">
             Livelihoods and displacement · being rebuilt on measured data, LGA by LGA
           </div>
+          <ModuleSources sources={[
+            { name: 'World Bank', role: 'national income' },
+            { name: 'NBS living-standards survey', role: 'scaled to the state' },
+          ]} />
         </div>
         <div className="cg-mode-badge cg-mode-untuned">ESTIMATE · state level</div>
       </div>

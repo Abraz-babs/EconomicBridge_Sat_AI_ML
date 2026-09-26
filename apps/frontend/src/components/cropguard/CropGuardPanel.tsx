@@ -22,6 +22,7 @@ import CropMarketPanel from './CropMarketPanel';
 import FarmCheckPanel from './FarmCheckPanel';
 import FarmCheckBulkPanel from './FarmCheckBulkPanel';
 import NdviAnomalyPanel from './NdviAnomalyPanel';
+import ModuleSources from '@/components/common/ModuleSources';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -220,6 +221,12 @@ export default function CropGuardPanel() {
             Vegetation health for every LGA from Copernicus Sentinel-2 · Farm Check
             for any field or list of fields · a leaf-photo check for field officers
           </div>
+          <ModuleSources sources={[
+            { name: 'Copernicus Sentinel-2', role: 'crop health, every LGA, 10 m' },
+            { name: 'Copernicus Sentinel-1', role: 'radar, Farm Check' },
+            { name: 'FEWS NET · NBS', role: 'market prices, where published' },
+            { name: 'EconomicBridge leaf model', role: 'leaf-photo check, tested on lab images' },
+          ]} />
         </div>
         <div className="cg-mode-badge cg-mode-trained">LIVE · Copernicus Sentinel-2</div>
       </div>

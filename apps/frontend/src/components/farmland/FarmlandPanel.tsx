@@ -16,6 +16,7 @@ import AlertRecord from './AlertRecord';
 import AlertSpotlight from './AlertSpotlight';
 import FarmlandMap, { type FarmlandAlertPoint } from './FarmlandMap';
 import FieldDirections, { GRID3_CREDIT } from '@/components/common/FieldDirections';
+import ModuleSources from '@/components/common/ModuleSources';
 
 /** A record entry in the shape the Spotlight already renders, so a revisited
  *  alert gets the same imagery deep-dive as a live one without the Spotlight
@@ -560,7 +561,14 @@ export default function FarmlandPanel() {
       <div className="fp-header">
         <div>
           <div className="fp-title">Farmland Protection &amp; Livelihood Alert System</div>
-          <div className="fp-subtitle">Encroachment prediction · Copernicus Sentinel-1 SAR · 48–72hr conflict-risk window · Heat &amp; NDVI as supporting signals</div>
+          <div className="fp-subtitle">Encroachment watch · land that stopped growing, found across every farmland pixel · heat and fire as supporting signals</div>
+          <ModuleSources sources={[
+            { name: 'Copernicus Sentinel-2', role: 'greenness, every farmland pixel, three rainy seasons' },
+            { name: 'Copernicus Sentinel-1', role: 'radar, encroachment watch' },
+            { name: 'Esri land cover (2023)', role: 'which ground is farmland' },
+            { name: 'NASA FIRMS', role: 'active fires, supporting signal' },
+            { name: 'GRID3', role: 'nearest village names' },
+          ]} />
         </div>
         <div
           className={`fp-live-badge ${
@@ -902,7 +910,10 @@ export default function FarmlandPanel() {
       <div className="fp-main-row fp-main-row--equal">
         <div className="fp-timeline">
           <div className="fp-timeline-header">
-            48–72 Hour Conflict Prediction Timeline — {stateLabel}
+            {/* Was "48–72 Hour Conflict Prediction Timeline": the conflict
+                window was never validated against recorded incidents, so the
+                panel is named for what it shows. */}
+            Alert timeline — {stateLabel}
           </div>
           <div className="fp-timeline-body">
             {timelineEvents.length === 0 ? (
@@ -932,10 +943,10 @@ export default function FarmlandPanel() {
           <div className="fp-timeline-body fp-impact-body">
             <div className="fp-impact-row fp-impact-row--bordered">
               <div>
-                <div className="fp-impact-label">Conflicts Prevented</div>
+                <div className="fp-impact-label">Alerts resolved</div>
                 <div className="fp-impact-val">{liveStats.resolvedCount}</div>
                 <div className="fp-impact-desc">
-                  Verified resolutions via mediation or rerouting
+                  Closed by an officer after checking on the ground
                 </div>
               </div>
               <div>

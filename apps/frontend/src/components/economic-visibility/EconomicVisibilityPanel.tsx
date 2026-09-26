@@ -8,6 +8,7 @@ import { useTenant } from '@/context/TenantContext';
 import { formatLatLon } from '@/lib/display';
 import { downloadVillageList, useVillageLight, type UnlitVillage } from '@/hooks/useVillageLight';
 import VillageLightMap, { type Season } from './VillageLightMap';
+import ModuleSources from '@/components/common/ModuleSources';
 
 /**
  * Economic Visibility — the villages the grid does not reach.
@@ -109,6 +110,11 @@ export default function EconomicVisibilityPanel() {
             Every GRID3-named village, read from space at night · NASA VIIRS Black Marble ·
             Meta &amp; CIESIN HRSL population
           </div>
+          <ModuleSources sources={[
+            { name: 'NASA VIIRS Black Marble', role: 'night light, Suomi NPP satellite' },
+            { name: 'Meta & CIESIN HRSL', role: 'people and under-fives, 30 m' },
+            { name: 'GRID3', role: 'named villages and wards' },
+          ]} />
         </div>
         <div className={`cg-mode-badge ${badge.cls}`}>{badge.label}</div>
       </div>

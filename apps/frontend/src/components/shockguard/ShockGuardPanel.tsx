@@ -14,6 +14,7 @@ import {
 import FieldDirections, { GRID3_CREDIT } from '@/components/common/FieldDirections';
 import ShockEventsMap from './ShockEventsMap';
 import StormSection from './StormSection';
+import ModuleSources from '@/components/common/ModuleSources';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -132,6 +133,11 @@ export default function ShockGuardPanel() {
             Rain measured every half hour for every LGA (NASA GPM IMERG) and
             graded against each LGA&rsquo;s own history · recorded disasters with sources
           </div>
+          <ModuleSources sources={[
+            { name: 'NASA GPM IMERG', role: 'rainfall, every half hour' },
+            { name: 'Copernicus Sentinel-1', role: 'radar surface-water check, experimental' },
+            { name: 'NEMA · IOM DTM · press', role: 'recorded disasters, cited per event' },
+          ]} />
         </div>
         <div className="cg-mode-badge cg-mode-trained">LIVE · NASA GPM IMERG</div>
       </div>

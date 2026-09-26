@@ -3323,3 +3323,17 @@ nav::-webkit-scrollbar {
   .legal-logo { width: 120px; }
   .legal-company { font-size: 15px; }
 }
+
+/* "Fed by" — every module names its satellites and datasets under its title. */
+.module-sources {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px;
+  margin-top: 7px; max-width: 900px;
+  font-family: var(--font-mono, 'IBM Plex Mono', ui-monospace, monospace);
+  font-size: 11px; line-height: 1.5; color: var(--muted);
+}
+.module-sources-label {
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--ink2); margin-right: 2px;
+}
+.module-source strong { color: var(--ink2); font-weight: 600; }
+.module-source-sep { margin-left: 8px; color: var(--dim); }

@@ -16,6 +16,7 @@ import { useMemo } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
 import { useSkillsBridge, type SkillsIndicatorRow } from '@/hooks/useSkillsBridge';
+import ModuleSources from '@/components/common/ModuleSources';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -52,6 +53,9 @@ export default function SkillsBridgePanel() {
             Schools mapped by UNICEF GIGA · becoming a school-by-school reach list
             for power and connectivity
           </div>
+          <ModuleSources sources={[
+            { name: 'UNICEF GIGA', role: 'school locations' },
+          ]} />
         </div>
         <div className="cg-mode-badge cg-mode-trained">LIVE · UNICEF GIGA schools</div>
       </div>

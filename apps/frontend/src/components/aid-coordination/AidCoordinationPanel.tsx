@@ -5,6 +5,7 @@ import { sourceBadge } from '@/lib/display';
 import { useAidCoordination } from '@/hooks/useAidCoordination';
 
 import AidCoverageMap from './AidCoverageMap';
+import ModuleSources from '@/components/common/ModuleSources';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -44,6 +45,10 @@ export default function AidCoordinationPanel() {
             Who reports aid activity where · coverage gaps + same-sector overlap ·
             published by the organisations themselves (IATI)
           </div>
+          <ModuleSources sources={[
+            { name: 'IATI', role: 'activities reported by the organisations themselves' },
+            { name: 'geoBoundaries', role: 'LGA boundaries' },
+          ]} />
         </div>
         <div className={`cg-mode-badge ${badge.cls}`}>{badge.label}</div>
       </div>
