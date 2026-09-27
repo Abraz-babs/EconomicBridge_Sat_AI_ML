@@ -19,10 +19,11 @@ and the area lit at >= 1 nW/cm²/sr, per year and composite. For every GRID3
 village of the latest village_light round (Nigerian pilots): the yearly
 radiance at its pixel on both composites and a status:
 
-  gone_dark  clearly lit at the start (2012-14 average >= 1 nW) and below
-             detection since (latest-three average < 0.5) on BOTH composites
-  newly_lit  dark every year at the start (< 0.5) and clearly lit now
-             (latest-three average >= 1 nW) on BOTH composites
+  gone_dark  lit every year of 2012-14 (average >= 1 nW) and no light in any
+             of the last three years on the near-nadir composite, confirmed
+             below detection on average by the all-angle composite
+  newly_lit  no light in any of 2012-14 and lit every one of the last three
+             years (average >= 1 nW) on near-nadir, confirmed by all-angle
   steady     anything else
 
 Light is activity, not income: a village can go dark because people left, a
@@ -102,32 +103,52 @@ def village_status(near: list[float | None], allang: list[float | None],
                    first_year: int) -> tuple[str, int | None]:
     """(status, since_year) for one village from its yearly series.
 
-    since_year: for gone_dark, the first year from which the near-nadir light
-    stays below detection; for newly_lit, the first year it was detected.
+    The page says "lit in 2012-14, no light for the last three years" (and
+    the reverse), so the rule says exactly that on the near-nadir composite —
+    detected EVERY start year (average >= 1 nW) and in NONE of the last three
+    years — and the all-angle composite, which keeps a faint residual glow
+    from its many off-nadir passes, must confirm it on average.
+
+    since_year: for gone_dark, the first year of the final run with no light;
+    for newly_lit, the first year the light was detected.
     """
+    def vals(xs: list[float | None]) -> list[float]:
+        return [x for x in xs if x is not None]
+
     def avg(xs: list[float | None]) -> float | None:
-        v = [x for x in xs if x is not None]
+        v = vals(xs)
         return sum(v) / len(v) if v else None
 
-    def gone(s: list[float | None]) -> bool:
-        a, b = avg(s[:WINDOW]), avg(s[-WINDOW:])
-        return a is not None and b is not None and a >= LIT_NW and b < DARK_NW
+    def gone(s: list[float | None], strict: bool) -> bool:
+        head, tail = s[:WINDOW], s[-WINDOW:]
+        a, b = avg(head), avg(tail)
+        if a is None or b is None or a < LIT_NW:
+            return False
+        if strict:
+            return (len(vals(head)) == WINDOW and min(vals(head)) >= DARK_NW
+                    and len(vals(tail)) == WINDOW and max(vals(tail)) < DARK_NW)
+        return b < DARK_NW
 
-    def new(s: list[float | None]) -> bool:
-        head = [x for x in s[:WINDOW] if x is not None]
-        b = avg(s[-WINDOW:])
-        return bool(head) and max(head) < DARK_NW and b is not None and b >= LIT_NW
+    def new(s: list[float | None], strict: bool) -> bool:
+        head, tail = s[:WINDOW], s[-WINDOW:]
+        b = avg(tail)
+        if not vals(head) or max(vals(head)) >= DARK_NW or b is None or b < LIT_NW:
+            return False
+        if strict:
+            return (len(vals(head)) == WINDOW and len(vals(tail)) == WINDOW
+                    and min(vals(tail)) >= DARK_NW)
+        return True
 
     if len(near) < 2 * WINDOW or len(allang) != len(near):
         return "steady", None
-    if gone(near) and gone(allang):
+    if gone(near, strict=True) and gone(allang, strict=False):
         since = None
         for i in range(len(near) - 1, -1, -1):
-            if (near[i] or 0.0) >= DARK_NW:
+            if near[i] is None or near[i] >= DARK_NW:
                 since = first_year + i + 1
                 break
         return "gone_dark", since
-    if new(near) and new(allang):
+    if new(near, strict=True) and new(allang, strict=False):
         first = next((first_year + i for i, x in enumerate(near) if (x or 0.0) >= DARK_NW), None)
         return "newly_lit", first
     return "steady", None

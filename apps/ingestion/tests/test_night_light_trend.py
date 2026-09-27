@@ -70,3 +70,26 @@ def test_missing_years_are_unknown_not_dark():
 
 def test_short_series_is_steady():
     assert village_status([1.0] * 4, [1.0] * 4, 2012) == ("steady", None)
+
+
+def test_gone_dark_means_no_light_in_each_of_the_last_three_years():
+    # Faintly lit again in the third-last year: not "no light for three years"
+    near = [1.3, 1.2, 1.1, 1.0, 0.9, 0.8, 0.8, 0.7, 0.6, 0.5, 0.5, 0.6, 0.0, 0.0]
+    allang = [1.5] * 3 + [1.0] * 8 + [0.3, 0.1, 0.1]
+    assert village_status(near, allang, 2012) == ("steady", None)
+
+
+def test_gone_dark_needs_light_every_start_year():
+    near = [0.0, 2.0, 2.4] + [1.5] * 8 + [0.0, 0.0, 0.0]
+    assert village_status(near, near, 2012) == ("steady", None)
+
+
+def test_newly_lit_needs_light_every_recent_year():
+    near = [0.0] * 3 + [0.0] * 8 + [1.8, 0.0, 1.9]
+    assert village_status(near, near, 2012) == ("steady", None)
+
+
+def test_since_year_is_within_the_record():
+    near = [3.0, 3.0, 3.0] + [2.0] * 8 + [0.0, 0.0, 0.0]
+    status, since = village_status(near, near, 2012)
+    assert status == "gone_dark" and since == 2023
