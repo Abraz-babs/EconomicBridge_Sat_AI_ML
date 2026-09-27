@@ -306,3 +306,75 @@ export function useStorms(params: {
     },
   });
 }
+
+
+// ─── Storm impact (the redesigned ShockGuard, 2026-09-27) ───────────────────
+// Mirrors apps/api/schemas/shockguard.py StormImpactData — keep in sync.
+
+export interface ImpactStorm {
+  started_at: string;
+  ended_at: string;
+  peak_at: string;
+  total_mm: number;
+  peak_mm_hr: number;
+  percentile_3h: number | null;
+  baseline_days: number | null;
+}
+
+export interface ImpactHistory {
+  event_type: string;
+  event_date: string | null;
+  summary: string | null;
+  source: string | null;
+  source_url: string | null;
+}
+
+export interface ImpactRow {
+  lga: string;
+  location: { lon: number; lat: number } | null;
+  rain_day_mm: number | null;
+  advisory_severity: string | null;
+  sms_recipients: number | null;
+  sms_sent_at: string | null;
+  storm: ImpactStorm | null;
+  people: number;
+  under5: number;
+  villages: number;
+  dark_villages: number;
+  history: ImpactHistory[];
+}
+
+export interface StormImpact {
+  day: string | null;
+  days_available: string[];
+  rows: ImpactRow[];
+  people: number;
+  under5: number;
+  villages: number;
+  dark_villages: number;
+  advisories_sent: number;
+}
+
+/** GET /shockguard/impact — one storm day, LGA by LGA. */
+export function useStormImpact(
+  tenantId: string,
+  day: string | null,
+): UseQueryResult<StormImpact, ApiException> {
+  return useQuery<StormImpact, ApiException>({
+    queryKey: ['shockguard-impact', tenantId, day],
+    enabled: Boolean(tenantId),
+    queryFn: async ({ signal }) => {
+      const qs = day ? `?day=${encodeURIComponent(day)}` : '';
+      const envelope: SuccessEnvelope<StormImpact> = await apiFetch<StormImpact>(
+        `/shockguard/impact${qs}`,
+        { tenantId, signal },
+      );
+      return envelope.data;
+    },
+  });
+}
+
+/** Heaviest rain an impact row records: the daily total or the storm, whichever is larger. */
+export function impactRainMm(r: ImpactRow): number {
+  return Math.max(r.rain_day_mm ?? 0, r.storm?.total_mm ?? 0);
+}

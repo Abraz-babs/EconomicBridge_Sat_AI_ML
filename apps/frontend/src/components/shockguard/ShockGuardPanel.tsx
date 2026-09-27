@@ -9,12 +9,10 @@ import {
   useShockScan,
   useStorms,
   type ShockScanData,
-  type StormRow,
 } from '@/hooks/useShockGuard';
 import FieldDirections, { GRID3_CREDIT } from '@/components/common/FieldDirections';
-import ShockEventsMap from './ShockEventsMap';
 import StormSection from './StormSection';
-import ModuleSources from '@/components/common/ModuleSources';
+import StormDayView from './StormDayView';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -125,23 +123,6 @@ export default function ShockGuardPanel() {
 
   return (
     <div>
-      {/* HEADER */}
-      <div className="cg-header">
-        <div>
-          <div className="cg-title">ShockGuard — Storms &amp; Extreme Rainfall</div>
-          <div className="cg-subtitle">
-            Rain measured every half hour for every LGA (NASA GPM IMERG) and
-            graded against each LGA&rsquo;s own history · recorded disasters with sources
-          </div>
-          <ModuleSources sources={[
-            { name: 'NASA GPM IMERG', role: 'rainfall, every half hour' },
-            { name: 'Copernicus Sentinel-1', role: 'radar surface-water check, experimental' },
-            { name: 'NEMA · IOM DTM · press', role: 'recorded disasters, cited per event' },
-          ]} />
-        </div>
-        <div className="cg-mode-badge cg-mode-trained">LIVE · NASA GPM IMERG</div>
-      </div>
-
       {/* TENANT SELECTOR */}
       <div className="fp-tenant-bar">
         <label htmlFor="sg-tenant-select" className="fp-tenant-label">Viewing tenant</label>
@@ -165,6 +146,11 @@ export default function ShockGuardPanel() {
         </button>
       </div>
 
+      {/* STORM DAY — the redesigned view: rain, people under it, history,
+          advisories, on an interactive map (operator-approved, 2026-09-26). */}
+      <StormDayView tenant={activeTenant} stateLabel={stateLabel} />
+
+      <div className="cg-section-header" style={{ marginTop: '18px' }}>Feeds</div>
       {/* MONITORING STATUS — one row PER DETECTOR.
           A single aggregated "last scan" let a healthy feed mask a silent
           one: the SAR scan failed every run for weeks while this line kept
@@ -222,15 +208,6 @@ export default function ShockGuardPanel() {
         </div>
       )}
 
-      {/* STATS — measured storm facts for the state. */}
-      <StormFacts
-        storms={stormsQuery.data?.storms ?? []}
-        rateable={stormsQuery.data?.rateableLgas ?? 0}
-        known={stormsQuery.data?.knownLgas ?? 0}
-        lastScanAt={stormsQuery.data?.lastScanAt ?? null}
-        loading={stormsQuery.isLoading}
-      />
-
       {/* RADAR CHECK — experimental, folded, on request only. */}
       <details className="cg-market" data-no-bg="true">
         <summary className="cg-section-header" style={{ cursor: 'pointer' }}>
@@ -258,21 +235,8 @@ export default function ShockGuardPanel() {
         {lastScan && <ShockScanCard scan={lastScan} />}
       </details>
 
-      {/* MAP + EVENTS */}
-      <div className="fp-main-row">
-        <div className="fp-map">
-          <div className="fp-map-header">
-            <span className="fp-map-title">
-              Event Map — {stateLabel}
-            </span>
-            <span className="ev-map-meta">
-              {events.length} event{events.length === 1 ? '' : 's'} ·
-              recorded disasters (with sources) + unconfirmed radar signals
-            </span>
-          </div>
-          <ShockEventsMap tenant={activeTenant} events={events} />
-        </div>
-
+      {/* RECORD — recorded disasters, radar signals and every recent storm. */}
+      <div className="sgr-record">
         <div className="fp-alerts">
           <div className="fp-alerts-header">
             <span style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
@@ -398,65 +362,6 @@ export default function ShockGuardPanel() {
             <div className="fp-alert-attrib">{GRID3_CREDIT}</div>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-
-// ─── Storm facts (headline cards) ─────────────────────────────────────────
-
-
-function fmtDay(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', {
-    day: 'numeric', month: 'short', timeZone: 'Africa/Lagos',
-  });
-}
-
-function StormFacts(props: {
-  storms: StormRow[];
-  rateable: number;
-  known: number;
-  lastScanAt: string | null;
-  loading: boolean;
-}) {
-  const { storms, rateable, known, lastScanAt, loading } = props;
-  if (loading) return null;
-  const latest = storms.length
-    ? storms.reduce((a, b) => (a.peak_at > b.peak_at ? a : b))
-    : null;
-  const wettest = storms.length
-    ? storms.reduce((a, b) => (a.total_mm > b.total_mm ? a : b))
-    : null;
-  return (
-    <div className="fp-grid">
-      <div className="fp-stat ok">
-        <div className="fp-stat-label">LGAs watched</div>
-        <div className="fp-stat-val">{known || '—'}</div>
-        <div className="fp-stat-sub">
-          {known ? `every half hour · ${rateable} with enough rain history to grade` : 'every half hour'}
-        </div>
-      </div>
-      <div className="fp-stat warn">
-        <div className="fp-stat-label">Latest storm</div>
-        <div className="fp-stat-val">{latest ? latest.lga : '—'}</div>
-        <div className="fp-stat-sub">
-          {latest
-            ? `${fmtDay(latest.peak_at)} · ${Math.round(latest.total_mm)} mm · peak ${latest.peak_mm_hr.toFixed(0)} mm/h`
-            : 'No storm in the recent record'}
-        </div>
-      </div>
-      <div className="fp-stat warn">
-        <div className="fp-stat-label">Heaviest recent</div>
-        <div className="fp-stat-val">{wettest ? `${Math.round(wettest.total_mm)} mm` : '—'}</div>
-        <div className="fp-stat-sub">
-          {wettest ? `${wettest.lga} · ${fmtDay(wettest.peak_at)}` : 'Nothing exceptional recorded'}
-        </div>
-      </div>
-      <div className="fp-stat ok">
-        <div className="fp-stat-label">Last read</div>
-        <div className="fp-stat-val">{lastScanAt ? fmtAge(lastScanAt) : '—'}</div>
-        <div className="fp-stat-sub">NASA GPM IMERG · half-hourly</div>
       </div>
     </div>
   );

@@ -65,7 +65,15 @@ export interface EBMapProps {
   /** "Back to full map" was pressed — lets the caller drop its focus, so
    *  showing the same point again flies there again. */
   onResetView?: () => void;
+  /** A card pinned to a map point (a clicked halo's detail). It follows the
+   *  point as the map pans and zooms, and opens beside the point where it
+   *  fits, otherwise above or below it. */
+  card?: { lng: number; lat: number; node: ReactNode } | null;
 }
+
+/** Pinned-card width, and a first-frame height estimate before it is measured. */
+const CARD_W = 340;
+const CARD_H_EST = 380;
 
 
 /**
@@ -92,7 +100,7 @@ export default function EBMap(props: EBMapProps) {
     zoom = 6,
     ariaLabel = `Satellite intelligence map — ${tenant.name}`,
     overlay, legend, errorOverlay, getTooltip, onMapClick,
-    mapStyle = MAPBOX_STYLE, focus, onResetView,
+    mapStyle = MAPBOX_STYLE, focus, onResetView, card,
   } = props;
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -246,6 +254,65 @@ export default function EBMap(props: EBMapProps) {
     onResetView?.();
   };
 
+  // Switch map style in place (Satellite / Dark / Light). The deck.gl overlay
+  // is its own canvas, so data layers survive the swap untouched.
+  const styleRef = useRef(mapStyle);
+  useEffect(() => {
+    if (status !== 'ready' || styleRef.current === mapStyle) return;
+    styleRef.current = mapStyle;
+    const map = mapRef.current as { setStyle?: (s: unknown) => void } | null;
+    map?.setStyle?.(mapStyle);
+  }, [mapStyle, status]);
+
+  // Keep a pinned card next to its point while the map moves.
+  const [cardPos, setCardPos] = useState<{ left: number; top: number } | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const cardMounted = cardPos !== null;
+  const cardLng = card?.lng;
+  const cardLat = card?.lat;
+  useEffect(() => {
+    if (status !== 'ready' || cardLng == null || cardLat == null) return;
+    const map = mapRef.current as {
+      project: (ll: [number, number]) => { x: number; y: number };
+      on: (e: string, f: () => void) => void;
+      off: (e: string, f: () => void) => void;
+    } | null;
+    const host = containerRef.current;
+    if (!map || !host) return;
+    const place = () => {
+      const p = map.project([cardLng, cardLat]);
+      const W = host.clientWidth;
+      const H = host.clientHeight;
+      // The card's real height once rendered; the estimate only for frame one.
+      const CARD_H = Math.min(cardRef.current?.offsetHeight || CARD_H_EST, H - 16);
+      let left: number;
+      let top: number;
+      if (p.x + 22 + CARD_W <= W - 8) {
+        left = p.x + 22;
+        top = Math.max(8, Math.min(p.y - 40, H - CARD_H - 8));
+      } else if (p.x - 22 - CARD_W >= 8) {
+        left = p.x - 22 - CARD_W;
+        top = Math.max(8, Math.min(p.y - 40, H - CARD_H - 8));
+      } else {
+        left = Math.max(8, Math.min(W - CARD_W - 8, p.x - CARD_W / 2));
+        top = p.y + 26 + CARD_H <= H ? p.y + 26 : Math.max(8, p.y - 26 - CARD_H);
+      }
+      setCardPos({ left, top });
+    };
+    // First placement on the next frame, then follow every move and every
+    // change in the card's own size (content arriving, a different point).
+    const raf = requestAnimationFrame(place);
+    map.on('move', place);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => place()) : null;
+    if (ro && cardRef.current) ro.observe(cardRef.current);
+    return () => {
+      cancelAnimationFrame(raf);
+      map.off('move', place);
+      ro?.disconnect();
+    };
+    // Re-run once the card has mounted, so its real height is observed.
+  }, [status, cardLng, cardLat, cardMounted]);
+
   // Push layer updates to deck.gl.
   useEffect(() => {
     if (status !== 'ready') return;
@@ -277,6 +344,11 @@ export default function EBMap(props: EBMapProps) {
       {overlay && <div className="fp-map-overlay">{overlay}</div>}
       {status === 'ready' && awayFromFullView && (
         <FullViewButton areaName={tenant.name} onClick={backToFullView} />
+      )}
+      {card && cardPos && (
+        <div ref={cardRef} className="mm-card-anchor" style={{ left: cardPos.left, top: cardPos.top, width: CARD_W }}>
+          {card.node}
+        </div>
       )}
     </div>
   );
