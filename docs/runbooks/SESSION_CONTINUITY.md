@@ -273,6 +273,17 @@ python -m scripts.load_grid3_settlements --dry-run  # download + count, no DB
 It never deletes; a changed name keeps its old version in `deleted_records`.
 A new pilot state needs its GRID3 name (FCT is `Fct`) passed with `--states`.
 
+**School register for SkillsBridge — refresh twice a year, same way.**
+`public.school_register` (migration 0057) is our copy of GRID3 NGA Schools
+with LGA names (CC BY 4.0; 24,327 schools in the 8 pilots, Kebbi 2,075).
+`GET /skills/reach` joins it at request time to `village_light`: a school is
+"dark" when no village within 2 km is lit or dim. One-shot ingestion task,
+default memory, under a minute:
+```sh
+python -m scripts.load_grid3_schools            # 8 Nigerian pilots, upsert only
+python -m scripts.load_grid3_schools --dry-run  # download + count, no DB
+```
+
 > **On Windows the AWS CLI cannot read `--overrides file:///tmp/...`** — it is a
 > Windows binary and `/tmp` is not a Windows path. Write the JSON into the
 > scratchpad and pass its Windows path.

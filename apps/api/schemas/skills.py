@@ -57,3 +57,65 @@ class SkillsStatsData(BaseModel):
     most_schools_lga: str | None
     indicators: list[SkillsIndicatorRow] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
+
+
+# ─── School reach list (GET /skills/reach) ────────────────────────────────
+
+SchoolLight = Literal["dark", "lit", "unknown"]
+
+
+class ReachSchool(BaseModel):
+    """One GRID3 school and the villages around it.
+
+    `light` is "dark" when no village within 2 km shows light at night (lit
+    or dim), "lit" when at least one does, "unknown" when no named village
+    lies within 2 km. `rank` places a dark school on the reach list — one
+    school per village, most people first; None for every other school.
+    """
+
+    name: str
+    category: str | None = None
+    management: str | None = None
+    lga: str | None = None
+    location: LonLat
+    light: SchoolLight
+    rank: int | None = None
+    village: str | None = None
+    ward: str | None = None
+    village_km: float | None = None
+    village_light: str | None = None
+    people: int | None = None                # living nearest the school's village
+    under5: int | None = None
+    villages_2km: int = 0
+    lit_villages_2km: int = 0
+    people_2km: int = 0                      # every village within 2 km
+    under5_2km: int = 0
+
+
+class ReachLga(BaseModel):
+    lga: str
+    schools: int
+    assessed: int                            # with a named village within 2 km
+    dark: int
+    dark_pct: float | None = None            # of assessed
+
+
+class SchoolReachData(BaseModel):
+    """Body of GET /skills/reach."""
+
+    available: bool = False
+    reason: str | None = None                # why not, when unavailable
+    state: str | None = None
+    light_round: str | None = None           # village-light period, e.g. "2026"
+    light_window: str | None = None          # the dry-season nights measured
+    schools: int = 0
+    assessed: int = 0
+    dark: int = 0
+    dark_pct: float | None = None
+    primary: int = 0
+    secondary: int = 0
+    dark_villages: int = 0                   # distinct villages on the reach list
+    people: int = 0                          # living in those villages
+    under5: int = 0
+    lgas: list[ReachLga] = Field(default_factory=list)
+    rows: list[ReachSchool] = Field(default_factory=list)
