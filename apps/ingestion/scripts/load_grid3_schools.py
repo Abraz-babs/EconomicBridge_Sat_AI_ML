@@ -10,7 +10,7 @@ a third-party server being up.
     python -m scripts.load_grid3_schools --states Kebbi,Fct
     python -m scripts.load_grid3_schools --dry-run        # download + count only
 
-Measured 2026-09-27: 24,327 schools for the pilots (Kebbi 2,075), 13 pages of
+Measured 2026-09-27: 24,127 schools for the pilots (Kebbi 2,075), 15 pages of
 2,000.
 
 UPSERT, NEVER DELETE. A refresh updates a row only when GRID3 actually changed

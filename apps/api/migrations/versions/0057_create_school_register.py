@@ -11,7 +11,7 @@ school-by-school reach list: which schools have no light at night within 2 km,
 and how many people and young children live in their villages.
 
 GRID3 NGA Schools with LGA names is the school side of that: 107,902 schools
-nationally, 24,327 in our eight pilot states, each already carrying the same
+nationally, 24,127 in our eight pilot states, each already carrying the same
 LGA names our boundaries use (checked 2026-09-27: 142 of 142 match). Licence
 CC BY 4.0. Pupil and teacher counts exist in the layer but are filled for only
 127 pilot schools, so they are stored and not shown.

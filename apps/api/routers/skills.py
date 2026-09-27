@@ -181,10 +181,22 @@ GRID3_STATE = {
     "kebbi": "Kebbi", "zamfara": "Zamfara", "niger": "Niger", "kaduna": "Kaduna",
     "benue": "Benue", "plateau": "Plateau", "nasarawa": "Nasarawa", "fct": "Fct",
 }
-REACH_RADIUS_M = 2000
+REACH_RADIUS_KM = 2.0
 # A degree box that always contains the 2 km circle at our latitudes (4-14°N),
-# so the GiST index narrows the search before the exact distance test.
+# so the GiST index narrows the search before the distance test.
 REACH_BOX_DEG = 0.02
+# Distance in km on the WGS84 ellipsoid's local scale at the school's latitude
+# (km per degree of latitude and of longitude). Measured 2026-09-27 on all
+# 5,380 Kaduna schools against geography distance: the same nearest village
+# for every school, the same 2 km ring for all but two (one village at the
+# edge), and 1.3 s instead of 4.5 s.
+_KM = """
+    sqrt(power((ST_Y(v.geom) - ST_Y(s.geom)) * (111.132954
+            - 0.559822 * cos(radians(2 * ST_Y(s.geom)))
+            + 0.001175 * cos(radians(4 * ST_Y(s.geom)))), 2)
+       + power((ST_X(v.geom) - ST_X(s.geom)) * (111.41284 * cos(radians(ST_Y(s.geom)))
+            - 0.0935 * cos(radians(3 * ST_Y(s.geom)))), 2))
+"""
 
 
 def _build_reach(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
@@ -311,41 +323,38 @@ async def school_reach(
             reason="Night light has not been measured at this state's villages yet.",
         ), meta=meta)
 
+    # One pass per school: every village of the latest round within 2 km,
+    # its nearest one first.
     rows = (await session.execute(text(
-        """
+        f"""
         SELECT s.name, s.category, s.management, s.lga,
-               ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat,
-               nv.settlement_id, nv.name AS village, nv.ward,
-               nv.light_class AS village_light, nv.people, nv.under5, nv.km AS village_km,
-               ring.villages AS villages_2km, ring.lit AS lit_2km, ring.unlit AS unlit_2km,
-               ring.people AS people_2km, ring.under5 AS under5_2km
+               ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat, ring.*
           FROM public.school_register s
           LEFT JOIN LATERAL (
-              SELECT v.settlement_id, v.name, v.ward, v.light_class, v.people, v.under5,
-                     ST_Distance(v.geom::geography, s.geom::geography) / 1000.0 AS km
-                FROM village_light v
-               WHERE v.period = :period
-                 AND ST_DWithin(v.geom, s.geom, :box)
-                 AND ST_DWithin(v.geom::geography, s.geom::geography, :radius)
-               ORDER BY km
-               LIMIT 1
-          ) nv ON TRUE
-          LEFT JOIN LATERAL (
-              SELECT count(*) AS villages,
-                     count(*) FILTER (WHERE v.light_class IN ('lit', 'dim')) AS lit,
-                     count(*) FILTER (WHERE v.light_class = 'unlit') AS unlit,
-                     coalesce(sum(v.people), 0) AS people,
-                     coalesce(sum(v.under5), 0) AS under5
-                FROM village_light v
-               WHERE v.period = :period
-                 AND ST_DWithin(v.geom, s.geom, :box)
-                 AND ST_DWithin(v.geom::geography, s.geom::geography, :radius)
+              SELECT (array_agg(c.settlement_id ORDER BY c.km))[1] AS settlement_id,
+                     (array_agg(c.name ORDER BY c.km))[1] AS village,
+                     (array_agg(c.ward ORDER BY c.km))[1] AS ward,
+                     (array_agg(c.light_class ORDER BY c.km))[1] AS village_light,
+                     (array_agg(c.people ORDER BY c.km))[1] AS people,
+                     (array_agg(c.under5 ORDER BY c.km))[1] AS under5,
+                     min(c.km) AS village_km,
+                     count(*) AS villages_2km,
+                     count(*) FILTER (WHERE c.light_class IN ('lit', 'dim')) AS lit_2km,
+                     count(*) FILTER (WHERE c.light_class = 'unlit') AS unlit_2km,
+                     coalesce(sum(c.people), 0) AS people_2km,
+                     coalesce(sum(c.under5), 0) AS under5_2km
+                FROM (SELECT v.settlement_id, v.name, v.ward, v.light_class,
+                             v.people, v.under5, {_KM} AS km
+                        FROM village_light v
+                       WHERE v.period = :period
+                         AND v.geom && ST_Expand(s.geom, :box)) c
+               WHERE c.km <= :radius
           ) ring ON TRUE
          WHERE s.state = :state
          ORDER BY s.lga, s.name
         """
     ), {"period": period_row["period"], "box": REACH_BOX_DEG,
-        "radius": REACH_RADIUS_M, "state": state})).mappings().all()
+        "radius": REACH_RADIUS_KM, "state": state})).mappings().all()
 
     if not rows:
         return SuccessResponse(data=SchoolReachData(

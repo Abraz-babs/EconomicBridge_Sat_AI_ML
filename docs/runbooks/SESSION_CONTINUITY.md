@@ -275,7 +275,7 @@ A new pilot state needs its GRID3 name (FCT is `Fct`) passed with `--states`.
 
 **School register for SkillsBridge — refresh twice a year, same way.**
 `public.school_register` (migration 0057) is our copy of GRID3 NGA Schools
-with LGA names (CC BY 4.0; 24,327 schools in the 8 pilots, Kebbi 2,075).
+with LGA names (CC BY 4.0; 24,127 schools in the 8 pilots, Kebbi 2,075).
 `GET /skills/reach` joins it at request time to `village_light`: a school is
 "dark" when no village within 2 km is lit or dim. One-shot ingestion task,
 default memory, under a minute:
