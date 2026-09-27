@@ -59,3 +59,73 @@ class MobilityStatsData(BaseModel):
     best_capacity_lga: str | None
     indicators: list[MobilityIndicatorRow] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
+
+
+# ─── Night-light trend (GET /economic_mobility/light-trend) ──────────────
+
+LightCategory = Literal["dimmer", "brighter", "new_light", "steady", "still_dark", "mixed"]
+
+
+class LightTrendLga(BaseModel):
+    """One LGA's light at night each year, on both of NASA's yearly composites."""
+
+    lga: str
+    location: LonLat | None = None
+    years: list[int] = Field(default_factory=list)
+    near_nadir: list[float | None] = Field(default_factory=list)   # summed radiance per year
+    all_angle: list[float | None] = Field(default_factory=list)
+    change_pct: float | None = None       # near-nadir: latest three years vs first three
+    category: LightCategory
+    lit_km2_start: float | None = None
+    lit_km2_now: float | None = None
+    people: int = 0
+    villages: int = 0
+    gone_dark: int = 0
+    newly_lit: int = 0
+
+
+class TrendVillage(BaseModel):
+    """A village that went dark, or was newly lit, on both composites."""
+
+    name: str
+    ward: str | None = None
+    lga: str | None = None
+    location: LonLat
+    people: int = 0
+    since_year: int | None = None
+    near_nadir: list[float | None] = Field(default_factory=list)
+
+
+class StaplePrice(BaseModel):
+    month: DateType
+    price_ngn_per_kg: float
+
+
+class StapleSeries(BaseModel):
+    crop: str
+    source: str
+    points: list[StaplePrice] = Field(default_factory=list)
+
+
+class LightTrendData(BaseModel):
+    """Body of GET /economic_mobility/light-trend."""
+
+    available: bool = False
+    reason: str | None = None
+    first_year: int | None = None
+    last_year: int | None = None
+    window: int = 3
+    lgas: list[LightTrendLga] = Field(default_factory=list)
+    dimmer: int = 0
+    brighter: int = 0
+    steady: int = 0
+    still_dark: int = 0
+    mixed: int = 0
+    people_in_dimmer: int = 0
+    gone_dark: int = 0
+    gone_dark_people: int = 0
+    newly_lit: int = 0
+    newly_lit_people: int = 0
+    villages_gone_dark: list[TrendVillage] = Field(default_factory=list)
+    villages_newly_lit: list[TrendVillage] = Field(default_factory=list)
+    prices: list[StapleSeries] = Field(default_factory=list)

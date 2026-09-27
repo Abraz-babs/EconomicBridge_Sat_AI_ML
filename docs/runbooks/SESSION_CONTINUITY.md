@@ -284,6 +284,21 @@ python -m scripts.load_grid3_schools            # 8 Nigerian pilots, upsert only
 python -m scripts.load_grid3_schools --dry-run  # download + count, no DB
 ```
 
+**Night-light trend for Mobility Compass — once a year, when NASA publishes
+the previous year.** `tenant_<id>.lga_night_light` and `village_light_trend`
+(migration 0058) hold NASA Black Marble YEARLY light (VNP46A4, both the
+near-nadir and all-angle composites) per LGA and per GRID3 village since 2012.
+`GET /economic_mobility/light-trend` shows a change only when both composites
+agree, compares three-year averages (single years are noisy), and gives no
+percentage where the start was only faint light. Villages come from the latest
+`village_light` round, so run the village-light scan first for a new state.
+One-shot ingestion task, **6 GB memory**, about 30 minutes for the 8 Nigerian
+pilots:
+```sh
+python -m scripts.run_night_light_trend              # Nigerian pilots, 2012 → last year
+python -m scripts.run_night_light_trend --no-write   # measure only
+```
+
 > **On Windows the AWS CLI cannot read `--overrides file:///tmp/...`** — it is a
 > Windows binary and `/tmp` is not a Windows path. Write the JSON into the
 > scratchpad and pass its Windows path.
