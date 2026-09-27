@@ -17,12 +17,11 @@ import {
 } from '@/hooks/useCropPredictions';
 import FieldDirections, { GRID3_CREDIT } from '@/components/common/FieldDirections';
 import CropGuardMap from './CropGuardMap';
-import CropHealthPanel from './CropHealthPanel';
 import CropMarketPanel from './CropMarketPanel';
+import SeasonWatch from './SeasonWatch';
 import FarmCheckPanel from './FarmCheckPanel';
 import FarmCheckBulkPanel from './FarmCheckBulkPanel';
 import NdviAnomalyPanel from './NdviAnomalyPanel';
-import ModuleSources from '@/components/common/ModuleSources';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -213,24 +212,6 @@ export default function CropGuardPanel() {
 
   return (
     <div>
-      {/* HEADER */}
-      <div className="cg-header">
-        <div>
-          <div className="cg-title">CropGuard — Crop Health</div>
-          <div className="cg-subtitle">
-            Vegetation health for every LGA from Copernicus Sentinel-2 · Farm Check
-            for any field or list of fields · a leaf-photo check for field officers
-          </div>
-          <ModuleSources sources={[
-            { name: 'Copernicus Sentinel-2', role: 'crop health, every LGA, 10 m' },
-            { name: 'Copernicus Sentinel-1', role: 'radar, Farm Check' },
-            { name: 'FEWS NET · NBS', role: 'market prices, where published' },
-            { name: 'EconomicBridge leaf model', role: 'leaf-photo check, tested on lab images' },
-          ]} />
-        </div>
-        <div className="cg-mode-badge cg-mode-trained">LIVE · Copernicus Sentinel-2</div>
-      </div>
-
       {/* TENANT SELECTOR */}
       <div className="fp-tenant-bar">
         <label htmlFor="cg-tenant-select" className="fp-tenant-label">
@@ -258,8 +239,10 @@ export default function CropGuardPanel() {
         </button>
       </div>
 
-      {/* STATEWIDE CROP HEALTH — every LGA's NDVI health (per-LGA coverage) */}
-      <CropHealthPanel />
+      {/* SEASON WATCH — the redesigned view (operator-approved mock): season
+          change by LGA on an interactive map, where to send officers, the
+          patches that stopped growing. Statewide crop health is a layer on it. */}
+      <SeasonWatch tenant={activeTenant} stateLabel={stateLabel} />
 
       {/* FARM CHECK — per-coordinate vegetation health + stress early-warning */}
       <FarmCheckPanel />
