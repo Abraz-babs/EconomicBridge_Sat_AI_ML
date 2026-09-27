@@ -7,6 +7,10 @@ selects the tenant — middleware/tenant.py sets search_path so the bare
 """
 from __future__ import annotations
 
+import re
+from collections.abc import Mapping
+from typing import Any
+
 from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID, uuid4
@@ -19,6 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.engine import get_session
 from schemas.cropguard import (
+    CropSeasonData,
+    CropSeasonLga,
+    CropSeasonPatch,
     CropHealthListData,
     CropHealthRow,
     CropPredictionListData,
@@ -411,3 +418,149 @@ async def delete_prediction(
         )
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ─── Season watch ────────────────────────────────────────────────────────────
+
+LAND_CHANGE_MODEL = "land_change_v1"
+SEASON_PATCHES = 30
+_PEAKS = re.compile(r"peak greenness ([0-9.]+) to ([0-9.]+)")
+
+
+def _patch_kind(summary: str | None) -> str:
+    s = (summary or "").lower()
+    if "crops that" in s:
+        return "crops"
+    if "rangeland that" in s:
+        return "rangeland"
+    return "farmland"
+
+
+def _season_lgas(
+    veg: list[Mapping[str, Any]],
+    changes: dict[str, int],
+    centroid: Any = None,
+) -> tuple[list[CropSeasonLga], int | None, int | None]:
+    """One row per LGA across the seasons held. Pure, for testing.
+
+    Farmland = crops + rangeland that greened. The like-for-like change is the
+    latest season against the one before, over the ground BOTH saw — the only
+    honest comparison when cloud hides seasons unequally.
+    """
+    years = sorted({int(v["season_year"]) for v in veg})
+    latest = years[-1] if years else None
+    prev = years[-2] if len(years) > 1 else None
+    by: dict[str, dict[str, Any]] = {}
+    for v in veg:
+        row = by.setdefault(v["lga"], {"lga": v["lga"], "farmland_ha": {}})
+        y = int(v["season_year"])
+        crops = v.get("greened_on_crops_ha")
+        rng = v.get("greened_on_rangeland_ha")
+        if crops is not None or rng is not None:
+            row["farmland_ha"][y] = round(float(crops or 0) + float(rng or 0), 1)
+        if y == latest:
+            row["crops_ha"] = round(float(crops), 1) if crops is not None else None
+            common, prev_common = v.get("greened_ha_common"), v.get("prev_greened_ha_common")
+            if common and prev_common:
+                row["like_for_like_pct"] = round(100.0 * (float(common) / float(prev_common) - 1.0), 1)
+            if v.get("common_observed_ha") and v.get("lga_ha"):
+                row["seen_pct"] = round(100.0 * float(v["common_observed_ha"]) / float(v["lga_ha"]))
+    out = []
+    for lga, row in by.items():
+        loc = None
+        if centroid is not None:
+            c = centroid(lga)
+            if c is not None:
+                loc = LonLat(lon=c[0], lat=c[1])
+        out.append(CropSeasonLga(**row, location=loc, stopped_growing=int(changes.get(lga, 0))))
+    out.sort(key=lambda r: (r.like_for_like_pct is None, r.like_for_like_pct if r.like_for_like_pct is not None else 0.0))
+    return out, latest, prev
+
+
+@router.get(
+    "/season",
+    response_model=SuccessResponse[CropSeasonData],
+    summary="This rainy season against the last, LGA by LGA, and the land that stopped growing",
+)
+async def crop_season(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> SuccessResponse[CropSeasonData]:
+    """Season watch: farmland greenness this rainy season against the last,
+    over the ground both could see (Copernicus Sentinel-2, every farmland
+    pixel), and the patches that stopped growing, each with its nearest named
+    village. Greenness is a lead for an officer to check, not a diagnosis.
+    """
+    tenant_id = _require_tenant(request)
+    meta = ResponseMeta(tenant_id=None, trace_id=getattr(request.state, "trace_id", uuid4()),
+                        timestamp=datetime.now(timezone.utc), pagination=None)
+    has = (await session.execute(text(
+        "SELECT to_regclass('lga_season_vegetation') IS NOT NULL"
+    ))).scalar()
+    if not has:
+        return SuccessResponse(data=CropSeasonData(), meta=meta)
+
+    veg = (await session.execute(text(
+        """
+        SELECT lga, season_year, lga_ha, greened_on_crops_ha, greened_on_rangeland_ha,
+               greened_ha_common, prev_greened_ha_common, common_observed_ha, window_end
+          FROM lga_season_vegetation
+         WHERE detector_version = :dv
+        """
+    ), {"dv": LAND_CHANGE_MODEL})).mappings().all()
+    alerts = (await session.execute(text(
+        """
+        SELECT lga, zone_name, affected_area_ha, created_at,
+               ST_X(location) AS lon, ST_Y(location) AS lat
+          FROM alert_events WHERE model_version = :m
+         ORDER BY affected_area_ha DESC NULLS LAST
+        """
+    ), {"m": LAND_CHANGE_MODEL})).mappings().all()
+
+    changes: dict[str, int] = {}
+    for a in alerts:
+        if a["lga"]:
+            changes[a["lga"]] = changes.get(a["lga"], 0) + 1
+
+    def centroid(lga: str) -> tuple[float, float] | None:
+        try:
+            return lga_geo.centroid_for(tenant_id, lga)
+        except KeyError:
+            return None
+
+    lgas, latest, prev = _season_lgas(veg, changes, centroid)
+
+    top = alerts[:SEASON_PATCHES]
+    places = await nearest_places(session, [
+        (a["lon"], a["lat"]) if a["lon"] is not None and a["lat"] is not None else None for a in top
+    ])
+    patches = []
+    for a, place in zip(top, places):
+        m = _PEAKS.search(a["zone_name"] or "")
+        patches.append(CropSeasonPatch(
+            lga=a["lga"], kind=_patch_kind(a["zone_name"]),
+            area_ha=a["affected_area_ha"],
+            peak_before=float(m.group(1)) if m else None,
+            peak_now=float(m.group(2)) if m else None,
+            location=LonLat(lon=a["lon"], lat=a["lat"]) if a["lon"] is not None else None,
+            detected_at=a["created_at"], summary=a["zone_name"], nearest_place=place,
+        ))
+
+    latest_rows = [v for v in veg if latest is not None and int(v["season_year"]) == latest]
+    common = sum(float(v["greened_ha_common"] or 0) for v in latest_rows)
+    prev_common = sum(float(v["prev_greened_ha_common"] or 0) for v in latest_rows)
+    kinds = [_patch_kind(a["zone_name"]) for a in alerts]
+    data = CropSeasonData(
+        season_year=latest, previous_year=prev,
+        years=sorted({int(v["season_year"]) for v in veg}),
+        window_end=max((v["window_end"] for v in latest_rows), default=None),
+        lgas=lgas,
+        farmland_ha=round(sum(r.farmland_ha.get(latest, 0.0) for r in lgas), 1) if latest else 0.0,
+        like_for_like_pct=round(100.0 * (common / prev_common - 1.0), 1) if prev_common else None,
+        stopped_growing=len(alerts),
+        stopped_crops=kinds.count("crops"),
+        stopped_rangeland=kinds.count("rangeland"),
+        patches=patches,
+    )
+    return SuccessResponse(data=data, meta=meta)
+

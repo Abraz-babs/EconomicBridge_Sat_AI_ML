@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from schemas.places import NearestPlace
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -291,3 +291,51 @@ class BulkPriceUploadResult(BaseModel):
     crops_seen: list[str] = Field(default_factory=list)
     regions_seen: list[str] = Field(default_factory=list)
     errors: list[BulkPriceRowError] = Field(default_factory=list)
+
+
+# ─── Season watch (the redesigned CropGuard, 2026-09-27) ────────────────────
+#
+# This rainy season against the last, LGA by LGA, over the ground both seasons
+# could see (Copernicus Sentinel-2, every farmland pixel; farmland = crops +
+# rangeland on the Esri land-cover map). Plus the patches that stopped growing,
+# each pinned to the nearest named village.
+
+
+class CropSeasonLga(BaseModel):
+    lga: str
+    location: LonLat | None = None
+    # Farmland (crops + rangeland) that greened, by season year.
+    farmland_ha: dict[int, float] = Field(default_factory=dict)
+    crops_ha: float | None = None
+    # This season vs the last over the ground both saw; None when the seasons
+    # could not be compared (cloud).
+    like_for_like_pct: float | None = None
+    seen_pct: float | None = None
+    stopped_growing: int = 0
+
+
+class CropSeasonPatch(BaseModel):
+    lga: str | None = None
+    kind: str  # "crops" | "rangeland" | "farmland"
+    area_ha: float | None = None
+    peak_before: float | None = None
+    peak_now: float | None = None
+    location: LonLat | None = None
+    detected_at: datetime | None = None
+    summary: str | None = None
+    nearest_place: NearestPlace | None = None
+
+
+class CropSeasonData(BaseModel):
+    season_year: int | None = None
+    previous_year: int | None = None
+    years: list[int] = Field(default_factory=list)
+    window_end: date | None = None
+    lgas: list[CropSeasonLga] = Field(default_factory=list)
+    farmland_ha: float = 0.0
+    like_for_like_pct: float | None = None
+    stopped_growing: int = 0
+    stopped_crops: int = 0
+    stopped_rangeland: int = 0
+    patches: list[CropSeasonPatch] = Field(default_factory=list)
+
