@@ -721,7 +721,7 @@ export default function Compass({ tenant, stateLabel }: { tenant: Tenant; stateL
           {far.length > 0 && (
             <VillageColumn
               head="Farthest from care" dot="mcx-dot--rust"
-              why="Modelled walking time to the nearest health facility, on roads, tracks and open ground. Villages of 300 people or more; longest first."
+              why="Modelled walking time to the nearest health facility, on roads, tracks and open ground. Villages of 300 people or more; longest first. The longest times often mark places with no mapped roads — somewhere to check, not a measured journey."
               empty=""
               items={far.slice(0, 6).map((v, i) => ({
                 key: `f-${i}`, name: v.name,
@@ -916,7 +916,7 @@ function FarCard({ v, onClose }: { v: FarVillage; onClose: () => void }) {
         { k: 'Lives here', v: `${n0(v.people)} people` },
         { k: 'Location', v: <>{v.location.lat.toFixed(4)}°N {v.location.lon.toFixed(4)}°E · <DirectionsLink lat={v.location.lat} lon={v.location.lon} /></> },
       ]}
-      why="Modelled time to the nearest health facility, walking on roads, tracks and open ground (Data for Children Collaborative, 2024). A first stop for mobile clinics and outreach."
+      why="Modelled time to the nearest health facility, walking on roads, tracks and open ground (Data for Children Collaborative, 2024). Very long times often mean no roads are mapped here, so confirm on the ground. A first stop for mobile clinics and outreach."
       onClose={onClose}
     />
   );
