@@ -316,11 +316,12 @@ def export_rows(rows: list[tuple], period: str, sources: str | None) -> list[lis
 )
 async def village_light_export(
     request: Request,
-    session: Annotated[AsyncSession, Depends(get_session)],
     # Data downloads are a paid service: only the platform operator
     # (super-admin) may take a file away. Everyone else — including partner
-    # accounts such as NASRDA staff — views on the dashboard only.
+    # accounts such as NASRDA staff — views on the dashboard only. Declared
+    # before `session` so a refused caller never opens a database connection.
     _admin: Annotated[CurrentUser, Depends(require_super_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
     scope: Annotated[Literal["unlit", "all"], Query()] = "unlit",
     period: Annotated[str | None, Query(max_length=16)] = None,
 ) -> StreamingResponse:

@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from core.security import create_access_token
 from main import app
+from services.modules import MODULE_KEYS
 
 
 
@@ -21,8 +22,17 @@ def client():
     # One event loop for the whole module: the tenant middleware reads the
     # database, and a bare TestClient opens a new loop per request, which the
     # asyncpg pool (bound to the first loop) cannot survive.
-    with TestClient(app) as c:
-        yield c
+    #
+    # These tests are about who may download, not which modules a tenant has:
+    # the module-access middleware would look entitlements up in the database
+    # (absent in CI), so it is told every module is enabled.
+    async def all_modules(_tenant: str) -> frozenset[str]:
+        return frozenset(MODULE_KEYS)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("middleware.module_access.enabled_modules_for", all_modules)
+        with TestClient(app) as c:
+            yield c
 
 DOWNLOADS = [
     "/api/v1/economic_visibility/village-light/export.csv?scope=unlit",
