@@ -163,3 +163,10 @@ def test_every_report_metric_column_is_exported_or_derived_from_the_view():
     for key in ("mobility-compass", "skillsbridge"):
         spec = REPORT_SPECS[key]
         assert spec.date_col in spec.columns
+
+
+def test_no_report_total_double_counts_people_around_schools():
+    # Rings around neighbouring schools overlap, so summing people_2km over
+    # schools counts a village once per school near it.
+    assert all(m.column != "people_2km" for m in REPORT_SPECS["skillsbridge"].metrics)
+    assert "people_2km" in REPORT_SPECS["skillsbridge"].columns

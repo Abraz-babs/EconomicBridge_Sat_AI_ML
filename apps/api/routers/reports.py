@@ -158,7 +158,9 @@ REPORT_SPECS: dict[str, ReportSpec] = {
         metrics=[
             Metric("Schools", "rows"),
             Metric("No light within 2 km", "sum", "no_light_2km"),
-            Metric("People within 2 km", "sum", "people_2km"),
+            # No "people within 2 km" total: a village near several schools
+            # would be counted once per school (Kebbi summed to 18.6M against
+            # 4.6M people). people_2km stays a per-school column in the CSV.
             Metric("LGAs", "distinct", "lga"),
         ],
         breakdown_col="light", breakdown_title="By light within 2 km"),
