@@ -93,6 +93,9 @@ def test_every_daily_feed_has_a_staleness_budget() -> None:
 
 def test_monthly_feed_is_not_judged_on_a_daily_budget() -> None:
     assert FEED_MAX_AGE_HOURS["food_prices_v1"] > 24 * 31
+    # World Bank market prices (Mobility Compass), monthly on the 17th — the
+    # key is the RUN_SOURCE the task writes, tasks/market_prices_ingest.py.
+    assert FEED_MAX_AGE_HOURS["wb_rtp_v1"] > 24 * 31
 
 
 # ─── reporting ────────────────────────────────────────────────────────────

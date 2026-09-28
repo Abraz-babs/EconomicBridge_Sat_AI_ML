@@ -3,7 +3,9 @@
 /**
  * ShockGuard's storm day — the redesigned view (operator-approved mock,
  * 2026-09-26): where extreme rain fell on one day, who lives under it, what
- * happened there before, and whether farmers were told.
+ * happened there before, and whether farmers were told. The "Recorded &
+ * detected" layer puts the disaster register (cited) and the live detections
+ * back on the map, as the earlier events map did.
  *
  * Rain is measured (NASA GPM IMERG, half-hourly, graded against each LGA's own
  * record); people and villages come from the village layer (GRID3 · VIIRS ·
@@ -15,6 +17,7 @@ import { useMemo, useState } from 'react';
 import { GeoJsonLayer, ScatterplotLayer } from '@deck.gl/layers';
 
 import EBMap from '@/components/map/EBMap';
+import { DirectionsLink } from '@/components/common/FieldDirections';
 import HaloCard from '@/components/map/HaloCard';
 import MapToolbar from '@/components/map/MapToolbar';
 import ModuleSources from '@/components/common/ModuleSources';
@@ -26,7 +29,21 @@ import {
   impactRainMm,
   useStormImpact,
   type ImpactRow,
+  type ShockEventRow,
 } from '@/hooks/useShockGuard';
+import { eventLabel, hazardStyle, isRecordedEvent } from './hazard';
+
+/** Approved wording for the vegetation drought check (2026-08 validation):
+ *  weak, consistent, and never an accuracy figure. */
+export const DROUGHT_SENTENCE =
+  'Flagged LGAs are consistently drier than their own seasonal normal, though the relationship is weak and does not strengthen with accumulated deficit as a purely rainfall-driven signal would.';
+
+const INSTRUMENT: Record<string, string> = {
+  shockguard_scan_v1: 'Sentinel-1 radar / Sentinel-2 greenness',
+  rainstorm_scan_v1: 'NASA GPM IMERG daily rainfall',
+  storm_scan_v1: 'NASA GPM IMERG half-hourly rainfall',
+  sentinel1_unet_v1: 'Sentinel-1 radar (U-Net)',
+};
 
 const TZ = 'Africa/Lagos';
 const RAIN_RAMP: [number, number, number][] = [
@@ -70,15 +87,20 @@ function millions(v: number): string {
 }
 
 
-export default function StormDayView({ tenant, stateLabel }: { tenant: Tenant; stateLabel: string }) {
+export default function StormDayView({ tenant, stateLabel, events = [] }: {
+  tenant: Tenant; stateLabel: string; events?: ShockEventRow[];
+}) {
   const [day, setDay] = useState<string | null>(null);
   const impact = useStormImpact(tenant.id, day);
   const villagesQ = useVillageLight(tenant.id);
   const lgasQ = useLgaBoundaries(tenant.id);
 
   const [basemap, setBasemap] = useState<Basemap>('dark');
-  const [layersOn, setLayersOn] = useState({ rain: true, villages: true, storms: true });
+  const [layersOn, setLayersOn] = useState({ rain: true, villages: true, storms: true, record: true });
   const [selected, setSelected] = useState<string | null>(null);
+  const [selEvent, setSelEvent] = useState<string | null>(null);
+  const pinned = useMemo(() => events.filter((e) => e.location), [events]);
+  const pickLga = (lga: string | null) => { setSelEvent(null); setSelected(lga); };
 
   const data = impact.data;
   const rows = useMemo(() => data?.rows ?? [], [data]);
@@ -107,7 +129,7 @@ export default function StormDayView({ tenant, stateLabel }: { tenant: Tenant; s
         lineWidthMinPixels: 1,
         onClick: (info: { object?: { properties: { lga: string } } }) => {
           const lga = info.object?.properties.lga;
-          if (lga && rainBy.has(lga)) setSelected(lga);
+          if (lga && rainBy.has(lga)) pickLga(lga);
         },
         updateTriggers: { getFillColor: [rainBy, alpha], getLineColor: [onDark] },
       }));
@@ -150,18 +172,52 @@ export default function StormDayView({ tenant, stateLabel }: { tenant: Tenant; s
         radiusUnits: 'pixels',
         pickable: true,
         onClick: (info: { object?: ImpactRow }) => {
-          if (info.object) setSelected(info.object.lga);
+          if (info.object) pickLga(info.object.lga);
+        },
+      }));
+    }
+    if (layersOn.record && pinned.length) {
+      // Recorded disasters (cited) are hollow rings; live detections are solid.
+      out.push(new ScatterplotLayer({
+        id: 'sg-record-halo',
+        data: pinned,
+        getPosition: (e: ShockEventRow) => [e.location!.lon, e.location!.lat],
+        getFillColor: (e: ShockEventRow) => [...hazardStyle(e.event_type).rgb, e.id === selEvent ? 110 : 45],
+        getRadius: (e: ShockEventRow) => (e.id === selEvent ? 20 : 13),
+        radiusUnits: 'pixels',
+        pickable: false,
+        updateTriggers: { getFillColor: [selEvent], getRadius: [selEvent] },
+      }));
+      out.push(new ScatterplotLayer({
+        id: 'sg-record-core',
+        data: pinned,
+        getPosition: (e: ShockEventRow) => [e.location!.lon, e.location!.lat],
+        getFillColor: (e: ShockEventRow) => (isRecordedEvent(e.source)
+          ? [255, 255, 255, 235] : [...hazardStyle(e.event_type).rgb, 255]),
+        getLineColor: (e: ShockEventRow) => [...hazardStyle(e.event_type).rgb, 255],
+        stroked: true,
+        lineWidthMinPixels: 2.5,
+        getRadius: 6,
+        radiusUnits: 'pixels',
+        pickable: true,
+        onClick: (info: { object?: ShockEventRow }) => {
+          if (info.object) { setSelected(null); setSelEvent(info.object.id); }
         },
       }));
     }
     return out;
-  }, [basemap, layersOn, lgasQ.data, villagesQ.data, rows, rainBy, selected, onDark]);
+  }, [basemap, layersOn, lgasQ.data, villagesQ.data, rows, rainBy, selected, onDark, pinned, selEvent]);
 
   const heaviest = rows[0];
   const sharedTop = rows.filter((r) => heaviest && Math.abs(impactRainMm(r) - impactRainMm(heaviest)) < 0.05);
   const smsRow = rows.find((r) => (r.sms_recipients ?? 0) > 0);
 
-  const card = sel?.location ? {
+  const evSel = selEvent ? pinned.find((e) => e.id === selEvent) ?? null : null;
+  const card = evSel?.location ? {
+    lng: evSel.location.lon,
+    lat: evSel.location.lat,
+    node: <EventCard ev={evSel} stateLabel={stateLabel} onClose={() => setSelEvent(null)} />,
+  } : sel?.location ? {
     lng: sel.location.lon,
     lat: sel.location.lat,
     node: <ImpactCard row={sel} onClose={() => setSelected(null)} />,
@@ -201,7 +257,7 @@ export default function StormDayView({ tenant, stateLabel }: { tenant: Tenant; s
           {data && data.days_available.length > 1 && (
             <label className="sgr-day">
               Storm day
-              <select value={shownDay ?? ''} onChange={(e) => { setDay(e.target.value); setSelected(null); }}>
+              <select value={shownDay ?? ''} onChange={(e) => { setDay(e.target.value); pickLga(null); }}>
                 {data.days_available.map((d) => <option key={d} value={d}>{dayLong(d)}</option>)}
               </select>
             </label>
@@ -252,6 +308,7 @@ export default function StormDayView({ tenant, stateLabel }: { tenant: Tenant; s
               { id: 'rain', label: shownDay ? `Rain on ${dayShort(`${shownDay}T12:00:00+01:00`)}` : 'Rain', dot: '#5d63cf', on: layersOn.rain },
               { id: 'villages', label: 'Villages', dot: '#d2dee9', on: layersOn.villages },
               { id: 'storms', label: 'Storm LGAs', dot: '#f2b54a', on: layersOn.storms },
+              ...(pinned.length ? [{ id: 'record', label: 'Recorded & detected', dot: '#e8edf2', on: layersOn.record }] : []),
             ]}
             onToggle={(id) => setLayersOn((s) => ({ ...s, [id]: !s[id as keyof typeof s] }))}
           />
@@ -268,6 +325,10 @@ export default function StormDayView({ tenant, stateLabel }: { tenant: Tenant; s
                 const mm = rainBy.get(r.properties.lga);
                 return mm ? `${r.properties.lga} · ${mm.toFixed(0)} mm\nClick for detail` : null;
               }
+              const ev = o as ShockEventRow;
+              if (ev?.event_type && ev?.id) {
+                return `${eventLabel(ev.event_type, ev.source)} · ${ev.lga ?? stateLabel}\n${isRecordedEvent(ev.source) ? 'Recorded' : 'Detected'} · click for detail`;
+              }
               return r?.lga ? `${r.lga} · ${impactRainMm(r).toFixed(0)} mm\nClick for detail` : null;
             }}
             card={card}
@@ -276,6 +337,9 @@ export default function StormDayView({ tenant, stateLabel }: { tenant: Tenant; s
             <span><i className="sgr-ramp" /> 25 → 105 mm in the day</span>
             <span><i className="sgr-dot sgr-dot--amber" /> Storm LGA — click for detail</span>
             <span><i className="sgr-dot sgr-dot--lit" /> Village with light at night</span>
+            {layersOn.record && pinned.length > 0 && (
+              <span><i className="sgr-dot sgr-dot--ring" /> Recorded disaster · <i className="sgr-dot sgr-dot--event" /> live detection</span>
+            )}
           </div>
         </div>
 
@@ -287,7 +351,7 @@ export default function StormDayView({ tenant, stateLabel }: { tenant: Tenant; s
               key={r.lga}
               type="button"
               className={`sgr-card ${selected === r.lga ? 'is-on' : ''}`}
-              onClick={() => setSelected(r.lga)}
+              onClick={() => pickLga(r.lga)}
               aria-pressed={selected === r.lga}
             >
               <span className="sgr-card-lga">{r.lga}</span>
@@ -329,7 +393,7 @@ export default function StormDayView({ tenant, stateLabel }: { tenant: Tenant; s
             const s1 = Math.min(24, hoursInto(shownDay, r.storm!.ended_at));
             const pk = Math.max(0, Math.min(24, hoursInto(shownDay, r.storm!.peak_at)));
             return (
-              <button key={r.lga} type="button" className="sgr-tl-row" onClick={() => setSelected(r.lga)}>
+              <button key={r.lga} type="button" className="sgr-tl-row" onClick={() => pickLga(r.lga)}>
                 <span className="sgr-tl-lga">{r.lga}</span>
                 <span className="sgr-tl-track">
                   <span
@@ -373,6 +437,45 @@ function ImpactCard({ row, onClose }: { row: ImpactRow; onClose: () => void }) {
       big={`${impactRainMm(row).toFixed(0)} mm`}
       rows={rowsOut}
       why="Rain is measured from space every half hour and compared with this LGA's own record. It shows where extreme rain fell and who lives there; whether it flooded is confirmed on the ground."
+      onClose={onClose}
+    />
+  );
+}
+
+
+function EventCard({ ev, stateLabel, onClose }: { ev: ShockEventRow; stateLabel: string; onClose: () => void }) {
+  const recorded = isRecordedEvent(ev.source);
+  const cite = ev.metrics as { source?: string; source_url?: string; event_date?: string; note?: string } | undefined;
+  const when = cite?.event_date ?? ev.created_at.slice(0, 10);
+  const drought = ev.event_type === 'drought' && !recorded;
+  const rowsOut = [
+    { k: 'What', v: ev.zone_name ?? eventLabel(ev.event_type, ev.source) },
+    { k: 'When', v: new Date(`${when.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) },
+    ...(recorded
+      ? [{ k: 'Reported by', v: cite?.source_url
+        ? <a href={cite.source_url} target="_blank" rel="noopener noreferrer">{cite.source ?? 'source'}</a>
+        : (cite?.source ?? 'Recorded event') }]
+      : [
+        { k: 'Found by', v: INSTRUMENT[ev.source] ?? ev.detector_name },
+        { k: 'Confidence', v: `${ev.confidence_band.toLowerCase()} · for an analyst to verify` },
+      ]),
+    { k: 'Severity', v: ev.severity.charAt(0).toUpperCase() + ev.severity.slice(1) },
+    ...(ev.location ? [{
+      k: 'Location',
+      v: <>{ev.location.lat.toFixed(4)}°N {ev.location.lon.toFixed(4)}°E · <DirectionsLink lat={ev.location.lat} lon={ev.location.lon} /></>,
+    }] : []),
+  ];
+  return (
+    <HaloCard
+      tone="dark"
+      title={`${eventLabel(ev.event_type, ev.source)} · ${ev.lga ?? stateLabel}`}
+      big={recorded ? 'Recorded disaster' : 'Live detection'}
+      rows={rowsOut}
+      why={recorded
+        ? (cite?.note ?? 'A documented disaster from the public record, with its source — the history each storm is read against.')
+        : drought
+          ? `Sentinel-2 greenness in this LGA fell well below its own normal for the month. ${DROUGHT_SENTENCE}`
+          : 'A reading from the daily satellite checks. It is a lead for someone on the ground to confirm, not a confirmed disaster.'}
       onClose={onClose}
     />
   );

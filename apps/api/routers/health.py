@@ -30,7 +30,6 @@ async def health(request: Request) -> SuccessResponse[HealthData]:
 
     settings = get_settings()
     trace_id: UUID = getattr(request.state, "trace_id", uuid4())
-    tenant_id: UUID | None = getattr(request.state, "tenant_id", None)
 
     return SuccessResponse(
         data=HealthData(
@@ -40,7 +39,10 @@ async def health(request: Request) -> SuccessResponse[HealthData]:
             app_env=settings.app_env,
         ),
         meta=ResponseMeta(
-            tenant_id=tenant_id,
+            # The tenant is a slug ("kebbi"), not a UUID, so it cannot go in
+            # this field: passing it turned a liveness probe into a 500 for
+            # any caller that sends X-Tenant-Id (the dashboard always does).
+            tenant_id=None,
             trace_id=trace_id,
             timestamp=datetime.now(timezone.utc),
         ),

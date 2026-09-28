@@ -60,6 +60,10 @@ class ReportSpec:
     metrics: list[Metric]
     breakdown_col: str | None = None
     breakdown_title: str | None = None
+    # SQL predicate a row must meet to be reported: the SAME filter the
+    # module's page applies. A report must never show rows the page hides
+    # (seed fixtures, synthetic scan output).
+    real_only: str | None = None
 
 
 # Module key → report spec. Keys match the dashboard module/tab ids.
@@ -113,7 +117,9 @@ REPORT_SPECS: dict[str, ReportSpec] = {
             Metric("Crop classes seen", "distinct", "predicted_class"),
             Metric("LGAs", "distinct", "lga"),
         ],
-        breakdown_col="predicted_class", breakdown_title="By predicted class"),
+        breakdown_col="predicted_class", breakdown_title="By predicted class",
+        # routers/cropguard.py SEED_VERSION_PATTERN — placeholder rows are never served.
+        real_only="COALESCE(model_version, '') NOT LIKE '%-seed'"),
     "shockguard": ReportSpec(
         label="ShockGuard", table="shock_events", date_col="created_at",
         columns=["created_at", "event_type", "severity", "confidence",
@@ -125,28 +131,41 @@ REPORT_SPECS: dict[str, ReportSpec] = {
             Metric("Area affected (km²)", "sum", "affected_area_km2", "float1"),
             Metric("LGAs", "distinct", "lga"),
         ],
-        breakdown_col="event_type", breakdown_title="By event type"),
-    # The per-LGA mobility and skills scores were withdrawn on 2026-09-26:
-    # they were spread from state/national anchors with per-LGA noise, not
-    # measured. Mobility is kept only so existing subscriptions resolve; it is
-    # not listed. SkillsBridge reports only the measured school counts.
+        breakdown_col="event_type", breakdown_title="By event type",
+        # services/data_source.py NOT_SYNTHETIC, and the retired fixtures.
+        real_only="COALESCE(data_source, '') <> 'synthetic' AND source <> 'seed_v1'"),
+    # Rebuilt 2026-09-28 on what the pages measure. The withdrawn per-LGA
+    # mobility and skills estimates (spread from state anchors with noise, and
+    # GIGA counts binned to the nearest LGA centroid) are no longer reported.
+    # Both views are defined in migration 0059.
     "mobility-compass": ReportSpec(
-        label="Mobility Compass", table="mobility_indicators", date_col="observed_at",
-        columns=["observed_at", "lga", "source"],
+        label="Mobility Compass — villages", table="mobility_villages", date_col="measured_at",
+        columns=["measured_at", "name", "ward", "lga", "people", "light_status", "since_year",
+                 "walk_min", "drive_min", "lat", "lon"],
         metrics=[
+            Metric("Villages", "rows"),
+            Metric("Gone dark", "sum", "gone_dark"),
+            Metric("Newly lit", "sum", "newly_lit"),
+            Metric("People over an hour's walk from care", "sum", "people_over_hour_walk"),
             Metric("LGAs", "distinct", "lga"),
-        ]),
+        ],
+        breakdown_col="light_status", breakdown_title="By night-light trend"),
     "skillsbridge": ReportSpec(
-        label="SkillsBridge", table="skills_indicators", date_col="observed_at",
-        columns=["observed_at", "lga", "school_count", "source"],
+        label="SkillsBridge — school reach", table="school_reach", date_col="loaded_at",
+        columns=["loaded_at", "name", "category", "management", "lga", "ward_code",
+                 "students", "teachers", "light", "villages_2km", "lit_villages_2km",
+                 "people_2km", "lat", "lon"],
         metrics=[
-            Metric("LGA observations", "rows"),
-            Metric("Schools mapped", "sum", "school_count"),
-        ]),
+            Metric("Schools", "rows"),
+            Metric("No light within 2 km", "sum", "no_light_2km"),
+            Metric("People within 2 km", "sum", "people_2km"),
+            Metric("LGAs", "distinct", "lga"),
+        ],
+        breakdown_col="light", breakdown_title="By light within 2 km"),
 }
 
 # Modules not offered in the Reports list (kept resolvable for old subscriptions).
-UNLISTED_REPORTS = frozenset({"mobility-compass"})
+UNLISTED_REPORTS: frozenset[str] = frozenset()
 
 
 def _spec(module: str) -> ReportSpec:
@@ -187,10 +206,11 @@ def _window(from_: str | None, to: str | None) -> tuple[datetime, datetime]:
 async def _fetch(session: AsyncSession, spec: ReportSpec, cols: list[str],
                  start: datetime, end: datetime) -> list[dict]:
     select = ", ".join(dict.fromkeys(cols))  # de-dupe, preserve order
+    real = f"AND ({spec.real_only}) " if spec.real_only else ""
     rows = await session.execute(
         text(
             f"SELECT {select} FROM {spec.table} "  # noqa: S608 — table+cols from fixed specs
-            f"WHERE {spec.date_col} BETWEEN :start AND :end "
+            f"WHERE {spec.date_col} BETWEEN :start AND :end {real}"
             f"ORDER BY {spec.date_col} DESC"
         ),
         {"start": start, "end": end},

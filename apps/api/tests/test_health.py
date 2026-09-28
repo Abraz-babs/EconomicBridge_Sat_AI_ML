@@ -56,3 +56,11 @@ def test_trace_id_changes_per_request() -> None:
     first = client.get("/api/v1/health").headers["X-Trace-Id"]
     second = client.get("/api/v1/health").headers["X-Trace-Id"]
     assert first != second
+
+
+def test_health_with_tenant_header_is_still_200() -> None:
+    # The dashboard sends X-Tenant-Id on every call. The tenant is a slug, and
+    # ResponseMeta.tenant_id is a UUID, so echoing it back raised a 500.
+    response = client.get("/api/v1/health", headers={"X-Tenant-Id": "kebbi"})
+    assert response.status_code == 200
+    assert response.json()["meta"]["tenant_id"] is None

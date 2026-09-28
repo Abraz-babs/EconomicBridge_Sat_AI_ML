@@ -189,6 +189,9 @@ export default function SeasonWatch({ tenant, stateLabel }: { tenant: Tenant; st
   const seen = lgas.map((r) => r.seen_pct).filter((v): v is number => v != null);
   const lookFirst = comparable.slice(0, 5);
   const healthCounts = healthRows.reduce<Record<string, number>>((m, h) => ({ ...m, [h.health]: (m[h.health] ?? 0) + 1 }), {});
+  // A row exists once the sweep visited an LGA, but a reading is real only when
+  // NDVI came back — so coverage is stated, not implied (as the old crop-health panel did).
+  const withReading = healthRows.filter((h) => h.ndvi != null).length;
 
   return (
     <section className="swt" aria-labelledby="swt-title">
@@ -284,6 +287,7 @@ export default function SeasonWatch({ tenant, stateLabel }: { tenant: Tenant; st
             {layersOn.health && (
               <span>
                 Crop health: {Object.entries(healthCounts).map(([k, v]) => `${k.replace('_', ' ')} ${v}`).join(' · ')}
+                {' '}— {withReading} of {healthRows.length} LGAs with a current reading
               </span>
             )}
           </div>

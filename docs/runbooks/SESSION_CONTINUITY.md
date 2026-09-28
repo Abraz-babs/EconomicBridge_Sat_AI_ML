@@ -299,6 +299,30 @@ python -m scripts.run_night_light_trend              # Nigerian pilots, 2012 →
 python -m scripts.run_night_light_trend --no-write   # measure only
 ```
 
+**Compass factors for Mobility Compass (migration 0059, 2026-09-28).**
+`GET /economic_mobility/compass` sets five measured factors side by side per
+LGA; signals are a COUNT, never a score. Three new inputs:
+
+* **World Bank market prices — automatic, monthly (17th, 09:00 UTC).**
+  `public.market_prices`, run source `wb_rtp_v1` (watchdog budget 45 days).
+  Two tags per series: `wb_rtp_estimate_v1` (the model's monthly close — what
+  the page plots) and `wb_rtp_survey_v1` (the surveyed price, where one exists
+  — the page says when a market was last surveyed). Petrol has not been
+  surveyed at any market in the file since Jan 2023: the page shows 12 months
+  of it, as an estimate, never as a headline. Run now if needed:
+  `python -c "import asyncio; from tasks.market_prices_ingest import ingest; print(asyncio.run(ingest()))"`
+* **GRID3 health facilities — refresh twice a year.** `public.health_facilities`
+  keeps both releases: v3.0 (Aug 2026, 24 states — not Benue or Plateau) and
+  v2.0 (2024, all 37). A state reads v3.0 where it has it. Facilities GRID3
+  lists without coordinates are kept with no point and counted for the state
+  only. Default memory, about a minute:
+  `python -m scripts.load_grid3_health_facilities` (`--dry-run` to count only).
+* **Travel time to care — rarely** (when the village layer gains villages or
+  Data for Children republishes). `tenant_<id>.village_access`, modelled walking
+  and motorised minutes to the nearest health facility at every village.
+  One-shot ingestion task, **4 GB memory**:
+  `python -m scripts.run_village_access` (`--tenant zamfara`, `--no-write`).
+
 > **On Windows the AWS CLI cannot read `--overrides file:///tmp/...`** — it is a
 > Windows binary and `/tmp` is not a Windows path. Write the JSON into the
 > scratchpad and pass its Windows path.

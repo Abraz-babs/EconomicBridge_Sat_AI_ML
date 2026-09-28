@@ -12,7 +12,7 @@ import {
 } from '@/hooks/useShockGuard';
 import FieldDirections, { GRID3_CREDIT } from '@/components/common/FieldDirections';
 import StormSection from './StormSection';
-import StormDayView from './StormDayView';
+import StormDayView, { DROUGHT_SENTENCE } from './StormDayView';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -91,6 +91,9 @@ export default function ShockGuardPanel() {
 
   const scanMutation = useShockScan(activeTenantId);
   const eventsQuery = useShockEvents({ tenantId: activeTenantId, limit: 10 });
+  // The map shows the whole register and every live detection; the list
+  // below it stays at the latest ten so the page does not grow.
+  const mapEventsQuery = useShockEvents({ tenantId: activeTenantId, limit: 100 });
   // The alerts column carries two views. Storms are a MEASUREMENT feed and
   // events are a claim that something went wrong, so they stay separate lists
   // rather than being merged into one stream.
@@ -120,6 +123,12 @@ export default function ShockGuardPanel() {
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
   const events = eventsQuery.data?.events ?? [];
   const feeds = eventsQuery.data?.feeds ?? [];
+  const mapEvents = mapEventsQuery.data?.events ?? [];
+  // The vegetation drought check runs daily in the scheduled satellite scan
+  // (per-LGA Sentinel-2 greenness against its own monthly normal) — real
+  // data, unlike the synthetic drought scan retired on 2026-09-26.
+  const droughtFlags = mapEvents.filter((e) => e.event_type === 'drought' && e.source === 'shockguard_scan_v1');
+  const satFeed = feeds.find((f) => f.source === 'shockguard_scan_v1');
 
   return (
     <div>
@@ -139,7 +148,7 @@ export default function ShockGuardPanel() {
         <button
           type="button"
           className="fp-refresh-btn"
-          onClick={() => eventsQuery.refetch()}
+          onClick={() => { eventsQuery.refetch(); mapEventsQuery.refetch(); }}
           disabled={eventsQuery.isFetching}
         >
           {eventsQuery.isFetching ? 'Refreshing…' : 'Refresh'}
@@ -148,7 +157,7 @@ export default function ShockGuardPanel() {
 
       {/* STORM DAY — the redesigned view: rain, people under it, history,
           advisories, on an interactive map (operator-approved, 2026-09-26). */}
-      <StormDayView tenant={activeTenant} stateLabel={stateLabel} />
+      <StormDayView tenant={activeTenant} stateLabel={stateLabel} events={mapEvents} />
 
       <div className="cg-section-header" style={{ marginTop: '18px' }}>Feeds</div>
       {/* MONITORING STATUS — one row PER DETECTOR.
@@ -211,8 +220,24 @@ export default function ShockGuardPanel() {
       {/* RADAR CHECK — experimental, folded, on request only. */}
       <details className="cg-market" data-no-bg="true">
         <summary className="cg-section-header" style={{ cursor: 'pointer' }}>
-          Radar surface-water signal — {stateLabel} · experimental
+          Radar surface-water and vegetation drought checks — {stateLabel} · experimental
         </summary>
+        <div className="sg-drought">
+          <div className="sg-drought-head">
+            <strong>Vegetation drought check · daily</strong>
+            <span>
+              {satFeed?.lastSuccessAt ? `last run ${fmtAge(satFeed.lastSuccessAt)}` : 'not run yet'}
+              {' · '}Sentinel-2 greenness in each LGA against its own normal for the month
+            </span>
+          </div>
+          <div className="sg-drought-body">
+            {droughtFlags.length === 0
+              ? <>No LGA in {stateLabel} is flagged below its seasonal normal today.</>
+              : <>{droughtFlags.length} LGA{droughtFlags.length === 1 ? '' : 's'} flagged below the seasonal normal:{' '}
+                {droughtFlags.map((e) => e.lga ?? stateLabel).join(', ')}.</>}
+          </div>
+          <div className="sg-drought-note">{DROUGHT_SENTENCE} It is a lead for an extension officer to check, not a drought declaration.</div>
+        </div>
         <div className="fp-alert-notice" style={{ margin: '10px 0' }}>
           Sentinel-1 radar can show standing water, but this check is not a
           flood detection: tested against the September 2024 Kebbi floods, it

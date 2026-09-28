@@ -129,3 +129,76 @@ class LightTrendData(BaseModel):
     villages_gone_dark: list[TrendVillage] = Field(default_factory=list)
     villages_newly_lit: list[TrendVillage] = Field(default_factory=list)
     prices: list[StapleSeries] = Field(default_factory=list)
+
+
+# ─── The compass: five measured factors per LGA (2026-09-28) ─────────────
+
+
+class CompassPricePoint(BaseModel):
+    month: DateType
+    price_ngn: float
+
+
+class CompassPrice(BaseModel):
+    """One price tile: an item, where it was priced, and how."""
+
+    item: str                      # petrol | maize | sorghum | rice | gari | millet | cowpea
+    unit: str                      # litre | kg
+    publisher: str                 # World Bank | FEWS NET | NBS
+    place: str                     # "Kaura Namoda market", "North West average", …
+    modelled: bool = False         # World Bank model estimates (every month) vs published prices
+    last_surveyed: DateType | None = None   # World Bank: the last month a price was surveyed there
+    stale: bool = False            # nothing published in the last six months
+    points: list[CompassPricePoint] = Field(default_factory=list)
+
+
+class CompassLga(BaseModel):
+    lga: str
+    location: LonLat | None = None
+    people: int = 0                        # at the LGA's GRID3 villages (Meta & CIESIN)
+    light_category: str | None = None      # as /light-trend
+    light_change_pct: float | None = None
+    season_pct: float | None = None        # farmland greenness vs last season, same ground
+    walk_median_min: float | None = None   # people-weighted
+    drive_median_min: float | None = None
+    over_hour_walk_people: int = 0
+    over_hour_walk_share: float | None = None   # 0..1 of people with a travel time
+    facilities: int | None = None          # located GRID3 health facilities
+    facilities_per_10k: float | None = None
+    storms: int = 0                        # half-hourly storm events this rainy season
+    advisories: int = 0                    # extreme-rain advisory days this rainy season
+    signals: list[str] = Field(default_factory=list)
+
+
+class FarVillage(BaseModel):
+    name: str
+    ward: str | None = None
+    lga: str | None = None
+    location: LonLat
+    people: int = 0
+    walk_min: float
+    drive_min: float | None = None
+
+
+class CompassData(BaseModel):
+    """Mobility Compass — activity, farming, the walk to care, facilities and
+    prices for every LGA, side by side. Signals are a count, never a score."""
+
+    available: bool = False
+    reason: str | None = None
+    season_year: int | None = None
+    previous_year: int | None = None
+    season_state_pct: float | None = None
+    season_since: DateType | None = None       # storms and advisories counted from here
+    people: int = 0
+    over_hour_walk_people: int = 0
+    walk_median_min: float | None = None
+    access_measured: bool = False
+    facilities_release: str | None = None      # "v3.0" | "v2.0"
+    facilities_total: int | None = None
+    facilities_unlocated: int | None = None
+    lgas: list[CompassLga] = Field(default_factory=list)
+    far_from_care: list[FarVillage] = Field(default_factory=list)
+    prices: list[CompassPrice] = Field(default_factory=list)
+    income_usd_month: int | None = None        # state-level estimate, rounded
+    income_ngn_month: int | None = None

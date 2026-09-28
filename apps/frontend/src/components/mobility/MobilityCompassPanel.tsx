@@ -1,10 +1,11 @@
 'use client';
 
 /**
- * Mobility Compass — where activity is growing or fading (built 2026-09-27
- * from the operator-approved mock): NASA Black Marble yearly night light
- * since 2012 by LGA and village, the people who live there, and staple food
- * prices where published.
+ * Mobility Compass — every LGA against five measured factors (operator-approved
+ * mock v7, built 2026-09-28): activity from NASA night light since 2012, this
+ * season's farming, the walk to a health facility, health facilities per
+ * person, and food and fuel prices — plus the villages gone dark, newly lit
+ * and farthest from care. It grew out of the night-light view (2026-09-27).
  *
  * It replaces the honest interim view of state-level estimates. The earlier
  * per-LGA cost-of-living, income, opportunity and capacity figures were spread
@@ -17,7 +18,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useTenant } from '@/context/TenantContext';
-import LightTrend from './LightTrend';
+import Compass from './Compass';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -53,13 +54,16 @@ export default function MobilityCompassPanel() {
         <button
           type="button"
           className="fp-refresh-btn"
-          onClick={() => queryClient.invalidateQueries({ queryKey: ['light-trend', activeTenantId] })}
+          onClick={() => {
+            queryClient.invalidateQueries({ queryKey: ['light-trend', activeTenantId] });
+            queryClient.invalidateQueries({ queryKey: ['mobility-compass', activeTenantId] });
+          }}
         >
           Refresh
         </button>
       </div>
 
-      <LightTrend tenant={activeTenant} stateLabel={stateLabel} />
+      <Compass tenant={activeTenant} stateLabel={stateLabel} />
     </div>
   );
 }
