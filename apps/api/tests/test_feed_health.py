@@ -161,6 +161,28 @@ def test_known_sources_do_not_trigger_the_unwatched_check() -> None:
     assert r.findings == []
 
 
+def test_a_retired_feeds_history_is_not_a_finding() -> None:
+    """The conflict pipeline's old runs stay in ingestion_runs (no record is
+    deleted). That history must not be reported as an unwatched feed each day."""
+    from services.feed_health import RETIRED_SOURCES, _check_retired, _check_unmonitored
+
+    r = _report()
+    _check_unmonitored(r, set(FEED_MAX_AGE_HOURS) | set(RETIRED_SOURCES))
+    _check_retired(r, {"conflict_pipeline_v1": datetime(2026, 9, 28, 6, 30, tzinfo=timezone.utc)})
+    assert r.findings == []
+    assert any("conflict_pipeline_v1: retired 2026-09-29, silent since 2026-09-28 06:30"
+               in o for o in r.observations)
+
+
+def test_a_retired_feed_that_runs_again_is_a_finding() -> None:
+    from services.feed_health import _check_retired
+
+    r = _report()
+    _check_retired(r, {"conflict_pipeline_v1": datetime(2026, 9, 30, 6, 30, tzinfo=timezone.utc)})
+    assert [f.subject for f in r.findings] == ["conflict_pipeline_v1"]
+    assert "still schedules it" in r.findings[0].detail
+
+
 def test_shared_tables_are_probed_once_not_once_per_tenant() -> None:
     """crop_prices lives in public. Probing it per tenant printed the same 456
     ten times — ten identical lines read as ten checks and are one, and they

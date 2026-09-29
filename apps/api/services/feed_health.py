@@ -76,6 +76,17 @@ FEED_MAX_AGE_HOURS: dict[str, int] = {
     "land_change_v1": 24 * 60,
 }
 
+# Feeds switched off on purpose. Their history stays in ingestion_runs — no
+# record is ever deleted — so without this list the unmonitored check below
+# would flag them every morning forever (it did, on 2026-09-29, for the conflict
+# pipeline retired the day before). They are watched in reverse instead: silence
+# is healthy, and a run after the retirement date is a finding, because it means
+# something is still scheduling a feed we believe is off.
+RETIRED_SOURCES: dict[str, datetime] = {
+    # Synthetic-data conflict model, unscheduled in c05b2cc. Last run 2026-09-28 06:30 UTC.
+    "conflict_pipeline_v1": datetime(2026, 9, 29, tzinfo=timezone.utc),
+}
+
 # Tables whose REAL row count must not fall. `real_predicate` is the SQL that
 # distinguishes a genuine reading from a placeholder — the whole point is to
 # count what we actually know, so a table refilled with NULLs still trips.
@@ -194,7 +205,25 @@ async def _check_staleness(
                 f"{source}: last success {age_h:.0f}h ago"
             )
 
+    _check_retired(report, {s: v[1] for s, v in seen.items()})
     _check_unmonitored(report, set(seen))
+
+
+def _check_retired(report: HealthReport, last_run: Mapping[str, datetime | None]) -> None:
+    """A retired feed must stay silent; a run after retirement is a finding."""
+    for source, retired_at in RETIRED_SOURCES.items():
+        any_at = last_run.get(source)
+        if any_at is not None and any_at >= retired_at:
+            report.findings.append(Finding(
+                "warning", source,
+                f"retired {retired_at:%Y-%m-%d} but wrote a run at "
+                f"{any_at:%Y-%m-%d %H:%M} UTC — something still schedules it.",
+            ))
+        else:
+            report.observations.append(
+                f"{source}: retired {retired_at:%Y-%m-%d}, silent since "
+                + (f"{any_at:%Y-%m-%d %H:%M} UTC" if any_at else "it was retired")
+            )
 
 
 def _check_unmonitored(report: HealthReport, live_sources: set[str]) -> None:
@@ -209,7 +238,7 @@ def _check_unmonitored(report: HealthReport, live_sources: set[str]) -> None:
     A warning rather than critical: an unwatched feed is a gap in our knowledge,
     not evidence that anything is broken.
     """
-    unknown = sorted(live_sources - set(FEED_MAX_AGE_HOURS))
+    unknown = sorted(live_sources - set(FEED_MAX_AGE_HOURS) - set(RETIRED_SOURCES))
     for source in unknown:
         report.findings.append(Finding(
             "warning", source,
