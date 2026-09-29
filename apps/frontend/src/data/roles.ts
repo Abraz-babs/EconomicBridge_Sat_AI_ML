@@ -1,177 +1,80 @@
-export type RoleId = 'ngo' | 'gov' | 'intl' | 'research' | 'admin';
+/**
+ * Access profiles — what the signed-in account really is and can really do.
+ *
+ * Replaced 2026-09-29 (operator: "make anything fake become real"). This file
+ * used to hold a "View as" demo: four personas named after real organisations
+ * (CARE International, the Federal Ministry, OCHA, MIT's Poverty Action Lab),
+ * each with invented headline figures ("8.1M households mapped", "34 countries
+ * monitored") and an access matrix nothing enforced. Now the header, banner
+ * and access panel are computed from the real account (context/RoleContext):
+ *
+ *   visitor  — not signed in: the Overview is open; modules need an account.
+ *   partner  — a signed-in organisation: the modules its plan includes, and
+ *              reports on them. Downloads are prepared by EconomicBridge.
+ *   operator — the platform operator (super-admin): everything, including
+ *              downloads and the Admin panel.
+ *
+ * Every rule here is the one the API enforces: module access is the
+ * tenant_modules middleware, downloads are require_super_admin.
+ */
 
-export interface StatConfig {
-  label: string;
-  val: string;
-  delta: string;
-  dc: '' | 'ok' | 'warn' | 'neg';
-}
+export type AccessKind = 'visitor' | 'partner' | 'operator';
 
-export interface RoleConfig {
+export interface AccessProfile {
+  kind: AccessKind;
+  /** Organisation shown in the header pill — the real one, or "Public view". */
   label: string;
   access: string;
   dot: string;
   pillBg: string;
   banner: { text: string; bg: string; color: string };
-  stats: StatConfig[];
-  matrix: string[][];
   navLocked: string[];
 }
 
-export const matrixHeaders = ['Feature', 'View', 'Download', 'Export API', 'Report'];
-
-export const roles: Record<RoleId, RoleConfig> = {
-  ngo: {
-    label: 'CARE International',
-    access: 'NGO ACCESS',
-    dot: '#52b788',
-    pillBg: '#f0faf4',
-    banner: {
-      text: 'Viewing as NGO/Aid Organization — Operational data access. Government-sensitive data restricted. Exports limited to your region of operation.',
-      bg: '#f0faf4',
-      color: '#2d6a4f',
-    },
-    stats: [
-      { label: 'Households in Op. Zone', val: '340K', delta: '↑ 12K this month', dc: 'ok' },
-      { label: 'Active Disaster Events', val: '3', delta: '↑ 1 this week', dc: 'warn' },
-      { label: 'Crop Alerts — Your Region', val: '7', delta: '2 critical', dc: 'neg' },
-      { label: 'Aid Corridors Open', val: '12', delta: '↓ 2 closed today', dc: 'warn' },
-    ],
-    matrix: [
-      ['Poverty Mapping (Economic Visibility)', '✓', '✓', '—', '✓'],
-      ['Household PII', '✗', '✗', '✗', '✗'],
-      ['Aid Coordination Bridge', '✓', '✓', '—', '✓'],
-      ['Farmland Protection', '✓', '✓', '—', '✓'],
-      ['Agriculture (CropGuard)', '✓', '✓', '—', '✓'],
-      ['Disaster Relief (ShockGuard)', '✓', '✓', '✓', '✓'],
-      ['Mobility Compass', '—', '—', '—', '—'],
-      ['SkillsBridge', '—', '—', '—', '—'],
-      ['Raw Satellite Export', '✗', '✗', '✗', '✗'],
-    ],
-    navLocked: ['navAdmin'],
-  },
-  gov: {
-    label: 'Federal Ministry — Nigeria',
-    access: 'GOV ACCESS',
-    dot: '#74a7d5',
-    pillBg: '#f0f5fc',
-    banner: {
-      text: 'Viewing as National Government — Full sovereign data access for your territory. Cross-border data requires bilateral agreement. All queries audit-logged.',
-      bg: '#f0f5fc',
-      color: '#1d3557',
-    },
-    stats: [
-      { label: 'National Households Mapped', val: '2.4M', delta: '↑ 124K this month', dc: 'ok' },
-      { label: 'Active Disaster Zones', val: '7', delta: '↑ 2 this week', dc: 'neg' },
-      { label: 'Crops Monitored (ha)', val: '890K', delta: '↑ 12% coverage', dc: 'ok' },
-      { label: 'Policy Reports Generated', val: '34', delta: 'This quarter', dc: '' },
-    ],
-    matrix: [
-      ['Poverty Mapping (Economic Visibility)', '✓', '✓', '✓', '✓'],
-      ['Household PII', '✓*', '✓*', '✗', '✓*'],
-      ['Aid Coordination Bridge', '✓', '✓', '✓', '✓'],
-      ['Farmland Protection', '✓', '✓', '✓', '✓'],
-      ['Agriculture (CropGuard)', '✓', '✓', '✓', '✓'],
-      ['Disaster Relief (ShockGuard)', '✓', '✓', '✓', '✓'],
-      ['Mobility Compass', '✓', '✓', '✓', '✓'],
-      ['SkillsBridge', '✓', '✓', '—', '✓'],
-      ['Raw Satellite Export', '✓', '✓', '✗', '—'],
-    ],
-    navLocked: ['navAdmin'],
-  },
-  intl: {
-    label: 'OCHA — UN Humanitarian',
-    access: 'INTL ACCESS',
-    dot: '#c18ab4',
-    pillBg: '#faf0f8',
-    banner: {
-      text: 'Viewing as International Body — Cross-border data access enabled. Raw data export available. Multi-country analysis unlocked. Coordinate with national authorities before operational deployment.',
-      bg: '#faf0f8',
-      color: '#6b2d5e',
-    },
-    stats: [
-      { label: 'Total Households Mapped', val: '8.1M', delta: 'Global coverage', dc: 'ok' },
-      { label: 'Countries Monitored', val: '34', delta: '6 new this quarter', dc: 'ok' },
-      { label: 'Active Crises Tracked', val: '12', delta: '↑ 3 from last month', dc: 'neg' },
-      { label: 'Data Agreements Active', val: '28', delta: '3 pending renewal', dc: 'warn' },
-    ],
-    matrix: [
-      ['Poverty Mapping (Economic Visibility)', '✓', '✓', '✓', '✓'],
-      ['Household PII', '—', '—', '—', '—'],
-      ['Aid Coordination Bridge', '✓', '✓', '✓', '✓'],
-      ['Farmland Protection', '✓', '✓', '✓', '✓'],
-      ['Agriculture (CropGuard)', '✓', '✓', '✓', '✓'],
-      ['Disaster Relief (ShockGuard)', '✓', '✓', '✓', '✓'],
-      ['Mobility Compass', '✓', '✓', '✓', '✓'],
-      ['SkillsBridge', '✓', '✓', '✓', '✓'],
-      ['Raw Satellite Export', '✓', '✓', '✓', '✓'],
-    ],
-    navLocked: ['navAdmin'],
-  },
-  research: {
-    label: 'MIT Poverty Action Lab',
-    access: 'RESEARCH ACCESS',
-    dot: '#f4a832',
-    pillBg: '#fdf8ee',
-    banner: {
-      text: 'Viewing as Research Institution — Anonymised datasets only. Historical archive access enabled. No PII without signed DPA. Model output available for validation studies.',
-      bg: '#fdf8ee',
-      color: '#7b4f00',
-    },
-    stats: [
-      { label: 'Anonymised Records', val: '12.4M', delta: 'Historical archive', dc: 'ok' },
-      { label: 'Model Accuracy (avg)', val: '91%', delta: 'Across 6 models', dc: 'ok' },
-      { label: 'Active Data Requests', val: '4', delta: '2 pending approval', dc: 'warn' },
-      { label: 'Published Datasets', val: '18', delta: 'This year', dc: 'ok' },
-    ],
-    matrix: [
-      ['Poverty Mapping (Economic Visibility)', '✓', '✓', '—', '✓'],
-      ['Household PII', '✗', '✗', '✗', '✗'],
-      ['Aid Coordination Bridge', '—', '—', '—', '✓'],
-      ['Farmland Protection', '✓', '—', '—', '✓'],
-      ['Agriculture (CropGuard)', '✓', '✓', '✓', '✓'],
-      ['Disaster Relief (ShockGuard)', '—', '—', '—', '✓'],
-      ['Mobility Compass', '✓', '✓', '✓', '✓'],
-      ['SkillsBridge', '✓', '✓', '—', '✓'],
-      ['Raw Satellite Export', '—', '—', '—', '✓'],
-    ],
-    navLocked: ['navAdmin'],
-  },
-  admin: {
-    label: 'Platform Administrator',
-    access: 'SUPER ADMIN',
-    dot: '#666',
-    pillBg: '#f5f5f5',
-    banner: {
-      text: 'Platform Admin view — Full access to all data, permissions, audit logs, and organisation management. All actions logged. Data sovereignty rules cannot be overridden.',
-      bg: '#f5f5f5',
-      color: '#1a1714',
-    },
-    stats: [
-      { label: 'Registered Organisations', val: '12', delta: '3 pending approval', dc: 'warn' },
-      { label: 'Active User Sessions', val: '47', delta: '↑ 8 from yesterday', dc: 'ok' },
-      { label: 'Data Requests (30d)', val: '1.2K', delta: '98.4% fulfilled', dc: 'ok' },
-      { label: 'Permission Changes (30d)', val: '23', delta: 'All audit-logged', dc: '' },
-    ],
-    matrix: [
-      ['Poverty Mapping (Economic Visibility)', '✓', '✓', '✓', '✓'],
-      ['Household PII', '✓', '✓', '✓', '✓'],
-      ['Aid Coordination Bridge', '✓', '✓', '✓', '✓'],
-      ['Farmland Protection', '✓', '✓', '✓', '✓'],
-      ['Agriculture (CropGuard)', '✓', '✓', '✓', '✓'],
-      ['Disaster Relief (ShockGuard)', '✓', '✓', '✓', '✓'],
-      ['Mobility Compass', '✓', '✓', '✓', '✓'],
-      ['SkillsBridge', '✓', '✓', '✓', '✓'],
-      ['Raw Satellite Export', '✓', '✓', '✓', '✓'],
-    ],
-    navLocked: [],
-  },
+const STYLE: Record<AccessKind, { dot: string; pillBg: string; bg: string; color: string; access: string }> = {
+  visitor: { dot: '#8a8278', pillBg: '#f4f2ee', bg: '#f4f2ee', color: '#4a453e', access: 'PUBLIC VIEW' },
+  partner: { dot: '#52b788', pillBg: '#f0faf4', bg: '#f0faf4', color: '#2d6a4f', access: 'PARTNER ACCESS' },
+  operator: { dot: '#c97d00', pillBg: '#fdf8ee', bg: '#fdf8ee', color: '#7b4f00', access: 'PLATFORM OPERATOR' },
 };
 
-export const roleColors: Record<RoleId, string> = {
-  ngo: '#52b788',
-  gov: '#74a7d5',
-  intl: '#c18ab4',
-  research: '#f4a832',
-  admin: '#888',
+export const accentColors: Record<AccessKind, string> = {
+  visitor: '#8a8278',
+  partner: '#52b788',
+  operator: '#c97d00',
 };
+
+export function accessProfile(kind: AccessKind, org: string | null, opts: { simulating?: boolean } = {}): AccessProfile {
+  const s = STYLE[kind];
+  let text: string;
+  if (kind === 'visitor') {
+    text = 'Public view — the Overview is open to everyone. Sign in to open the modules your organisation subscribes to.';
+  } else if (opts.simulating) {
+    text = `Viewing as ${org ?? 'this account'} — exactly what their account can open. Downloads stay with the platform operator.`;
+  } else if (kind === 'partner') {
+    text = `Signed in as ${org ?? 'your organisation'} — you can open the modules your plan includes and read their reports. Data files are prepared by EconomicBridge on request.`;
+  } else {
+    text = 'Platform operator — full access, including downloads and the Admin panel. Requests are audit-logged.';
+  }
+  return {
+    kind,
+    label: kind === 'visitor' ? 'Public view' : (org ?? 'Your organisation'),
+    access: opts.simulating ? 'VIEWING AS' : s.access,
+    dot: s.dot,
+    pillBg: s.pillBg,
+    banner: { text, bg: s.bg, color: s.color },
+    navLocked: kind === 'operator' && !opts.simulating ? [] : ['navAdmin'],
+  };
+}
+
+/** Modules in the access panel, keyed like the dashboard tabs and tenant_modules. */
+export const ACCESS_MODULES: { key: string; label: string }[] = [
+  { key: 'economic-visibility', label: 'Poverty Mapping (Economic Visibility)' },
+  { key: 'aid-coordination', label: 'Aid Coordination Bridge' },
+  { key: 'farmland', label: 'Farmland Protection' },
+  { key: 'cropguard', label: 'Agriculture (CropGuard)' },
+  { key: 'shockguard', label: 'Disaster Relief (ShockGuard)' },
+  { key: 'mobility-compass', label: 'Mobility Compass' },
+  { key: 'skillsbridge', label: 'SkillsBridge' },
+];
+
+export const matrixHeaders = ['Module', 'View', 'Reports', 'Download'];

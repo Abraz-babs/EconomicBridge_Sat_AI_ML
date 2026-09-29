@@ -35,7 +35,7 @@ from dataclasses import dataclass
 import httpx
 
 from config import get_settings
-from sources.nbs_stats import TENANT_COL_PROFILE, MobilityIndicator
+from sources.nbs_stats import MobilityIndicator
 
 log = logging.getLogger(__name__)
 
@@ -274,79 +274,56 @@ def compose_mobility_indicators(
     lgas: list[str],
     anchor: CountryAnchor,
 ) -> list[MobilityIndicator]:
-    """Disaggregate a national income anchor into per-LGA estimates.
+    """The state's household-income estimate, written against each LGA.
 
-    The national income anchor is real (World Bank GNI per capita, USD + local
-    currency). It is a national MEAN, so before spreading it we scale it to the
-    state's real income level with TENANT_INCOME_FACTOR (calibrated to NBS NLSS
-    state poverty/consumption) — otherwise poor rural LGAs are reported at the
-    national average, which overstates them ~2×. The within-state spatial
-    spread is then modelled around the curated per-tenant profile. Every row
-    gets a USD figure; Nigerian tenants also get a Naira figure. Raises
-    ValueError if the anchor carries no usable USD income figure.
+    Real inputs only (rebuilt 2026-09-29, operator: "anything fake becomes
+    real"). The anchor is the World Bank's GNI per capita, scaled to the
+    state's income level with TENANT_INCOME_FACTOR (calibrated to the NBS
+    living-standards survey) — a STATE-LEVEL estimate, so every LGA carries
+    the same figure and the page labels it state level.
+
+    What this used to add, and no longer does: per-LGA deterministic noise on
+    income and cost of living, a "displacement capacity" formula, an
+    opportunity score modulated by that noise, and a population drawn from a
+    hash (40,000-320,000). None of it was measured. Now:
+
+    * income (USD, and Naira for Nigeria) — the state estimate, no noise;
+    * opportunity — the World Bank's national employment-to-population ratio
+      as published (None when the World Bank has none);
+    * cost of living, capacity, population — None: not measured per LGA.
+
+    Raises ValueError if the anchor carries no usable USD income figure.
     """
     if anchor.gni_per_capita_usd is None:
         raise ValueError(f"no USD GNI per capita for {anchor.iso3}")
-
-    col_anchor, col_spread = TENANT_COL_PROFILE.get(tenant_id, (100.0, 12.0))
-    # Scale the national mean to this state's real income level (see
-    # TENANT_INCOME_FACTOR) so rural northern LGAs are not reported at the
-    # national average.
     income_factor = TENANT_INCOME_FACTOR.get(tenant_id, DEFAULT_INCOME_FACTOR)
 
-    def _monthly_household(gni_per_capita: float) -> float:
-        return (gni_per_capita * AVG_HOUSEHOLD_SIZE
-                * DISPOSABLE_INCOME_RATIO * income_factor / 12)
+    def _monthly_household(gni_per_capita: float) -> int:
+        return int(gni_per_capita * AVG_HOUSEHOLD_SIZE
+                   * DISPOSABLE_INCOME_RATIO * income_factor / 12)
 
-    usd_national = _monthly_household(anchor.gni_per_capita_usd)
+    income_usd = _monthly_household(anchor.gni_per_capita_usd)
     # Naira only when the country's local currency is Naira (Nigeria).
-    ngn_national = (
+    income_ngn = (
         _monthly_household(anchor.gni_per_capita_lcu)
         if anchor.iso3 == "NGA" and anchor.gni_per_capita_lcu is not None
         else None
     )
-
-    out: list[MobilityIndicator] = []
-    for lga in lgas:
-        col_unit = _hash_unit(tenant_id, lga, "wb_col")
-        col_index = max(0.0, min(300.0, col_anchor + (col_unit - 0.5) * col_spread * 2))
-        # Income tracks the LGA's relative cost (pricier LGAs earn more) with
-        # small deterministic noise, scaled by the real national level. The
-        # same relative factor applies to both currencies so they stay
-        # consistent (≈ a single FX ratio across the tenant).
-        income_noise = 0.9 + _hash_unit(tenant_id, lga, "wb_income") * 0.2
-        rel = (col_index / col_anchor) * income_noise
-        income_usd = int(usd_national * rel)
-        income_ngn = int(ngn_national * rel) if ngn_national is not None else None
-        opp_unit = _hash_unit(tenant_id, lga, "wb_opportunity")
-        if anchor.employment_ratio is not None:
-            # Anchor opportunity to the real national employment-to-population
-            # ratio (WB's ILO-modelled estimate), with a small per-LGA
-            # modulation — pricier/richer LGAs read slightly higher — + noise.
-            opportunity = max(0.05, min(0.98,
-                anchor.employment_ratio
-                + (col_index - col_anchor) / col_anchor * 0.10
-                + (opp_unit - 0.5) * 0.10))
-        else:
-            opportunity = max(0.05, min(0.95,
-                0.20 + (col_index - 70) / 100 * 0.50 + (opp_unit - 0.5) * 0.20))
-        cap_unit = _hash_unit(tenant_id, lga, "wb_capacity")
-        capacity = max(0.10, min(0.92,
-            0.30 + (col_index - 70) / 200 + (cap_unit - 0.5) * 0.30))
-        pop_unit = _hash_unit(tenant_id, lga, "wb_pop")
-        population = int(40_000 + pop_unit * 280_000)
-
-        out.append(MobilityIndicator(
+    opportunity = (round(anchor.employment_ratio, 3)
+                   if anchor.employment_ratio is not None else None)
+    return [
+        MobilityIndicator(
             lga=lga,
-            cost_of_living_index=round(col_index, 1),
+            cost_of_living_index=None,
             avg_household_income_ngn=income_ngn,
             avg_household_income_usd=income_usd,
-            income_opportunity_score=round(opportunity, 3),
-            displacement_capacity_index=round(capacity, 3),
-            population=population,
+            income_opportunity_score=opportunity,
+            displacement_capacity_index=None,
+            population=None,
             source=SOURCE_WORLDBANK,
-        ))
-    return out
+        )
+        for lga in lgas
+    ]
 
 
 class _Borrowed:

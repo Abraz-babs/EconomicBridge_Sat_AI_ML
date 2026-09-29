@@ -20,7 +20,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session, is_valid_tenant_id, set_tenant_schema
-from models.yield_predictor import YieldFeatures, get_predictor
+from models.provenance import require_real_model
+from models.yield_predictor import MODEL_VERSION, YieldFeatures, get_predictor
 from schemas.envelope import ResponseMeta, SuccessResponse
 from schemas.yield_predictor import (
     SUPPORTED_CROPS,
@@ -73,6 +74,7 @@ async def predict_yield(
         days_to_harvest=body.days_to_harvest,
     )
 
+    require_real_model("yield predictor", MODEL_VERSION)
     predictor = get_predictor()
     trace = _trace_id(request)
     try:

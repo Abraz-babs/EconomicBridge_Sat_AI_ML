@@ -51,15 +51,20 @@ def _trace_id(request: Request) -> UUID:
 async def preview_sms(
     request: Request,
     lang: Annotated[str, Query()] = "en",
-    tenant_id: Annotated[str, Query()] = "benue",
-    severity: Annotated[str, Query()] = "critical",
-    alert_type: Annotated[str, Query()] = "conflict",
+    tenant_id: Annotated[str, Query()] = "kebbi",
+    severity: Annotated[str, Query()] = "high",
+    alert_type: Annotated[str, Query()] = "rainfall",
     lga: Annotated[str | None, Query()] = None,
-    eta_hours: Annotated[int | None, Query()] = 18,
-    affected_area_ha: Annotated[float | None, Query()] = 120,
+    eta_hours: Annotated[int | None, Query()] = None,
+    affected_area_ha: Annotated[float | None, Query()] = None,
 ) -> SuccessResponse[SmsPreviewData]:
-    """Demo/preview only — reuses the real renderer so the dashboard can show
-    exactly what a farmer would receive in each language."""
+    """Preview only — reuses the real renderer so the dashboard can show
+    exactly what a farmer would receive in each language. Nothing is sent.
+
+    Defaults to the one farmer SMS that is live (the rainfall advisory), with
+    no ETA and no area: until 2026-09-29 the preview defaulted to a conflict
+    alert with an invented "ETA 18 h, 120 ha", and conflict alerts are never
+    sent to farmers."""
     body = render_conflict_sms(
         RenderContext(
             tenant_id=tenant_id,

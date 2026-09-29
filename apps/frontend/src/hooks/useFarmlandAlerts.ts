@@ -33,9 +33,12 @@ export interface AlertResponse {
   location: { lon: number; lat: number } | null;
   confidence_score: number | null;
   affected_area_ha: number | null;
+  /** No longer written by the land detectors (band/ratio estimates, retired 2026-09-29). */
   livelihoods_at_risk: number | null;
   economic_value_ngn: number | null;
   predicted_breach_hours: number | null;
+  /** Measured: people the population map places within 2 km (migration 0060). */
+  people_within_2km?: number | null;
   satellite_source: string | null;
   satellite_pass_time: string | null;
   model_name: string | null;

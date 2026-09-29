@@ -18,28 +18,34 @@ class LonLat(BaseModel):
 
 
 class SkillsIndicatorRow(BaseModel):
-    """One LGA's education + connectivity profile."""
+    """One LGA's school count from the GRID3 school register.
+
+    Rebuilt 2026-09-29: only the count is measured. The connectivity, power,
+    youth-population and learning-gap figures this row used to carry were
+    modelled around per-LGA hashes (skills_indicators, GIGA/ITU path) and are
+    withdrawn — the fields stay in the contract and are always null.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
+    id: UUID | None = None
     tenant_id: str
     lga: str
-    location: LonLat
+    location: LonLat | None = None
 
     school_count: int
-    school_density_per_10k: float
-    internet_coverage_pct: float            # 0..100
-    connectivity_band: ConnectivityBand     # derived
-    mobile_coverage_pct: float              # 0..100
-    electricity_reliability: float          # 0..1
-    youth_population: int
-    learning_gap_index: float               # 0..1 — higher = worse
+    school_density_per_10k: float | None = None
+    internet_coverage_pct: float | None = None
+    connectivity_band: ConnectivityBand | None = None
+    mobile_coverage_pct: float | None = None
+    electricity_reliability: float | None = None
+    youth_population: int | None = None
+    learning_gap_index: float | None = None
 
-    observed_at: DateType
+    observed_at: DateType | None = None
     source: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class SkillsStatsData(BaseModel):
@@ -47,10 +53,10 @@ class SkillsStatsData(BaseModel):
 
     tenant_id: str
     total_lgas: int
-    median_internet_coverage_pct: float
-    median_school_density: float
+    median_internet_coverage_pct: float | None = None
+    median_school_density: float | None = None
     total_schools: int
-    total_youth_population: int
+    total_youth_population: int | None = None
     best_connectivity_lga: str | None
     worst_gap_lga: str | None
     most_underserved_lga: str | None        # lowest school_density_per_10k

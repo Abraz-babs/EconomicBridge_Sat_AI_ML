@@ -62,11 +62,16 @@ export function isRecordedEvent(source: string | null | undefined): boolean {
   return source === 'historical_v1' || source === 'seed_v1';
 }
 
-/** The label to show for an event: source-aware for floods. */
+/** The label to show for an event, named by the instrument that made it.
+ *  The rainfall and storm feeds file their rows as 'flood'/'rainstorm'
+ *  precursors, but they measure rain — calling them radar surface water (as
+ *  this did until 2026-09-29) named the wrong instrument. */
 export function eventLabel(
   eventType: string | null | undefined,
   source?: string | null,
 ): string {
+  if (source === 'rainstorm_scan_v1') return 'Extreme rainfall';
+  if (source === 'storm_scan_v1') return 'Storm';
   if (eventType === 'flood' && !isRecordedEvent(source)) return RADAR_WATER_LABEL;
   return hazardLabel(eventType);
 }

@@ -41,6 +41,11 @@ def _apply_filters(
     """Apply the query's WHERE clauses. Returns a new Select."""
     if not include_deleted:
         stmt = stmt.where(AlertEvent.is_deleted.is_(False))
+    # Never a placeholder row or a synthetic-model score (services/data_source.py REAL_ALERT).
+    stmt = stmt.where(
+        func.coalesce(AlertEvent.model_name, "") != "seed",
+        ~func.coalesce(AlertEvent.model_version, "").like("%synthetic%"),
+    )
     if severity:
         stmt = stmt.where(AlertEvent.severity.in_([s.value for s in severity]))
     if status:

@@ -171,3 +171,17 @@ def test_predict_persists_row_when_all_nullable_fields_are_none() -> None:
             )
     finally:
         engine.dispose()
+
+
+def test_synthetic_conflict_model_does_not_serve_predictions(monkeypatch):
+    """0.1.0-dev-synthetic was trained on generated data: the live service
+    answers 503 rather than hand out a probability about a real place."""
+    from fastapi.testclient import TestClient
+
+    from config import get_settings
+    from main import app
+
+    monkeypatch.setattr(get_settings(), "serve_synthetic_models", False)
+    r = TestClient(app).post("/api/v1/predict/conflict", json=_high_risk_body())
+    assert r.status_code == 503
+    assert "MODEL_NOT_TRAINED_ON_REAL_DATA" in r.text

@@ -127,7 +127,7 @@ async def list_indicators(
                           END,
                           observed_at DESC
             ) deduped
-             ORDER BY cost_of_living_index DESC
+             ORDER BY cost_of_living_index DESC NULLS LAST, lga
              LIMIT :limit
             """
         ),
@@ -141,8 +141,10 @@ async def list_indicators(
             tenant_id=r["tenant_id"],
             lga=r["lga"],
             location=LonLat(lon=float(r["lon"]), lat=float(r["lat"])),
-            cost_of_living_index=float(r["cost_of_living_index"]),
-            cost_of_living_band=_col_band(float(r["cost_of_living_index"])),
+            cost_of_living_index=(float(r["cost_of_living_index"])
+                                  if r["cost_of_living_index"] is not None else None),
+            cost_of_living_band=(_col_band(float(r["cost_of_living_index"]))
+                                 if r["cost_of_living_index"] is not None else None),
             avg_household_income_ngn=(
                 int(r["avg_household_income_ngn"])
                 if r["avg_household_income_ngn"] is not None else None
@@ -151,9 +153,11 @@ async def list_indicators(
                 int(r["avg_household_income_usd"])
                 if r["avg_household_income_usd"] is not None else None
             ),
-            income_opportunity_score=float(r["income_opportunity_score"]),
-            displacement_capacity_index=float(r["displacement_capacity_index"]),
-            population=int(r["population"]),
+            income_opportunity_score=(float(r["income_opportunity_score"])
+                                      if r["income_opportunity_score"] is not None else None),
+            displacement_capacity_index=(float(r["displacement_capacity_index"])
+                                         if r["displacement_capacity_index"] is not None else None),
+            population=int(r["population"]) if r["population"] is not None else None,
             observed_at=r["observed_at"],
             source=r["source"],
             created_at=r["created_at"],
@@ -162,24 +166,24 @@ async def list_indicators(
         for r in rows
     ]
 
-    if indicators:
-        sorted_col = sorted(indicators, key=lambda i: i.cost_of_living_index)
-        cheapest = sorted_col[0].lga
-        most_expensive = sorted_col[-1].lga
-        median_col = sorted_col[len(sorted_col) // 2].cost_of_living_index
-        # Median over whichever currency is present (NGN absent for ECOWAS).
-        median_income_ngn = _median_int(
-            [i.avg_household_income_ngn for i in indicators]
-        )
-        median_income_usd = _median_int(
-            [i.avg_household_income_usd for i in indicators]
-        )
-        best_opp = max(indicators, key=lambda i: i.income_opportunity_score).lga
-        best_cap = max(indicators, key=lambda i: i.displacement_capacity_index).lga
-    else:
-        cheapest = most_expensive = best_opp = best_cap = None
-        median_col = 0.0
-        median_income_ngn = median_income_usd = None
+    # Rankings only where a figure differs by LGA. Since 2026-09-29 the World
+    # Bank rows carry a state-level income and a national employment ratio —
+    # the same for every LGA — so naming a "best" LGA would rank by nothing.
+    def ranked(key):
+        vals = [(getattr(i, key), i.lga) for i in indicators if getattr(i, key) is not None]
+        return sorted(vals) if len({v for v, _ in vals}) > 1 else []
+
+    by_col = ranked("cost_of_living_index")
+    cheapest = by_col[0][1] if by_col else None
+    most_expensive = by_col[-1][1] if by_col else None
+    median_col = by_col[len(by_col) // 2][0] if by_col else None
+    by_opp = ranked("income_opportunity_score")
+    best_opp = by_opp[-1][1] if by_opp else None
+    by_cap = ranked("displacement_capacity_index")
+    best_cap = by_cap[-1][1] if by_cap else None
+    # Median over whichever currency is present (NGN absent for ECOWAS).
+    median_income_ngn = _median_int([i.avg_household_income_ngn for i in indicators])
+    median_income_usd = _median_int([i.avg_household_income_usd for i in indicators])
 
     sources = sorted({i.source for i in indicators})
 

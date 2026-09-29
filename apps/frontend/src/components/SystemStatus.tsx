@@ -1,65 +1,68 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+/**
+ * Footer status bar — read from the feeds, never typed in.
+ *
+ * Until 2026-09-29 this listed five feeds with fixed latencies, a "last
+ * ingestion" time made up with Math.random(), "Uptime: 99.7%" and three "AI
+ * models" with statuses nobody set. Now every monitored feed reports its real
+ * last successful run and whether that is within its own cadence (the same
+ * budgets the feed watchdog enforces — apps/api/services/feed_health.py), and
+ * the last ingestion is the newest successful run. Uptime is not measured, so
+ * it is not shown; the API check is a real round trip from this browser.
+ */
 
-interface FeedStatus {
-  name: string;
-  short: string;
-  status: 'online' | 'degraded' | 'offline';
-  latency: string;
+import { useEffect, useState } from 'react';
+
+import { useSystemStatus, type FeedState } from '@/hooks/useOverviewLive';
+import { apiFetch } from '@/lib/api';
+
+const statusColors = { current: '#2d6a4f', late: '#c97d00', never: '#8a8278', down: '#c1440e' };
+
+function ago(iso: string | null, now: number): string {
+  if (!iso) return 'never';
+  const mins = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
+  if (mins < 60) return `${mins} min ago`;
+  const h = Math.round(mins / 60);
+  if (h < 48) return `${h} h ago`;
+  return `${Math.round(h / 24)} days ago`;
 }
 
-const INITIAL_FEEDS: FeedStatus[] = [
-  { name: 'Copernicus Sentinel-1 SAR', short: 'S1-SAR', status: 'online', latency: '14 min' },
-  { name: 'Copernicus Sentinel-2 MSI', short: 'S2-MSI', status: 'online', latency: '22 min' },
-  { name: 'NASA FIRMS', short: 'FIRMS', status: 'online', latency: '8 min' },
-  { name: 'N2YO Live Pass', short: 'N2YO', status: 'online', latency: '< 1 min' },
-  { name: 'VIIRS Nightlight', short: 'VIIRS', status: 'degraded', latency: '47 min' },
-];
+function cadence(f: FeedState): string {
+  return f.max_age_hours > 24 * 7 ? 'monthly' : 'daily';
+}
 
-const AI_MODELS = [
-  { name: 'Conflict Predictor (RF)', status: 'active' as const },
-  { name: 'NDVI Analyser', status: 'active' as const },
-  { name: 'SAR Processor (U-Net)', status: 'standby' as const },
-];
-
-const statusColors = {
-  online: '#2d6a4f',
-  degraded: '#c97d00',
-  offline: '#c1440e',
-  active: '#2d6a4f',
-  standby: '#8a8278',
-};
-
-function nextTimestamp(): string {
-  const now = new Date();
-  const mins = Math.floor(Math.random() * 3) + 1;
-  const ts = new Date(now.getTime() - mins * 60000);
-  return ts.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+function utc(iso: string | null): string {
+  return iso ? `${iso.replace('T', ' ').slice(0, 16)} UTC` : '—';
 }
 
 export default function SystemStatus() {
-  const feeds = INITIAL_FEEDS;
-  // Stable placeholder for SSR + first client render — nextTimestamp() uses
-  // Date.now()/Math.random(), which differ server↔client and would cause a
-  // hydration mismatch (and a full client-side tree regeneration). The real
-  // value is set after mount, client-side only.
-  const [lastIngestion, setLastIngestion] = useState<string>('—');
-  const uptime = '99.7%';
+  const status = useSystemStatus();
   const [expanded, setExpanded] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [api, setApi] = useState<{ ok: boolean; ms: number } | null>(null);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLastIngestion(nextTimestamp());
-    const interval = setInterval(
-      () => setLastIngestion(nextTimestamp()),
-      30000,
-    );
-    return () => clearInterval(interval);
+    let cancelled = false;
+    const check = async () => {
+      const t0 = performance.now();
+      try {
+        await apiFetch('/health');
+        if (!cancelled) setApi({ ok: true, ms: Math.round(performance.now() - t0) });
+      } catch {
+        if (!cancelled) setApi({ ok: false, ms: 0 });
+      }
+      if (!cancelled) setNow(Date.now());
+    };
+    void check();
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void check();
+    }, 60_000);
+    return () => { cancelled = true; window.clearInterval(id); };
   }, []);
 
-  const onlineCount = feeds.filter((f) => f.status === 'online').length;
-  const totalCount = feeds.length;
+  const d = status.data;
+  const allCurrent = d ? d.current === d.total : false;
 
   return (
     <div className="system-status" role="status" aria-label="System status indicators">
@@ -75,16 +78,18 @@ export default function SystemStatus() {
         <div className="ss-left">
           <div
             className="ss-indicator"
-            style={{ background: onlineCount === totalCount ? statusColors.online : statusColors.degraded }}
+            style={{ background: !d ? statusColors.never : allCurrent ? statusColors.current : statusColors.late }}
           />
           <span className="ss-label">SYSTEM STATUS</span>
           <span className="ss-value">
-            {onlineCount}/{totalCount} feeds online
+            {d ? `${d.current}/${d.total} feeds current` : status.isError ? 'feed status unavailable' : 'reading feed status…'}
           </span>
           <span className="ss-sep">·</span>
-          <span className="ss-value">Last ingestion: {lastIngestion || '—'}</span>
+          <span className="ss-value">Last ingestion: {utc(d?.last_ingestion_at ?? null)}</span>
           <span className="ss-sep">·</span>
-          <span className="ss-value">Uptime: {uptime}</span>
+          <span className="ss-value">
+            API: {api ? (api.ok ? `responding (${api.ms} ms)` : 'not responding') : 'checking…'}
+          </span>
         </div>
         <div className="ss-right">
           <span className="ss-expand-hint">{expanded ? '▲' : '▼'}</span>
@@ -94,48 +99,32 @@ export default function SystemStatus() {
       {expanded && (
         <div className="ss-details" role="region" aria-label="Detailed system status">
           <div className="ss-section">
-            <div className="ss-section-title">Satellite Data Feeds</div>
+            <div className="ss-section-title">Data feeds · last successful run</div>
             <div className="ss-feeds-grid">
-              {feeds.map((feed) => (
-                <div key={feed.short} className="ss-feed-item">
-                  <div className="ss-feed-dot" style={{ background: statusColors[feed.status] }} />
-                  <div className="ss-feed-info">
-                    <span className="ss-feed-name">{feed.short}</span>
-                    <span className="ss-feed-latency">{feed.latency}</span>
+              {(d?.feeds ?? []).map((f) => {
+                const tone = f.current ? statusColors.current
+                  : !f.last_success_at ? statusColors.never
+                    : f.last_status === 'failed' ? statusColors.down : statusColors.late;
+                return (
+                  <div key={f.source} className="ss-feed-item">
+                    <div className="ss-feed-dot" style={{ background: tone }} />
+                    <div className="ss-feed-info">
+                      <span className="ss-feed-name">{f.label}</span>
+                      <span className="ss-feed-latency">{ago(f.last_success_at, now)} · runs {cadence(f)}</span>
+                    </div>
+                    <span className="ss-feed-status" style={{ color: tone }}>
+                      {f.current ? 'CURRENT' : f.last_success_at ? 'LATE' : 'NOT RUN'}
+                    </span>
                   </div>
-                  <span
-                    className="ss-feed-status"
-                    style={{ color: statusColors[feed.status] }}
-                  >
-                    {feed.status.toUpperCase()}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="ss-section">
-            <div className="ss-section-title">AI Models</div>
-            <div className="ss-feeds-grid">
-              {AI_MODELS.map((model) => (
-                <div key={model.name} className="ss-feed-item">
-                  <div className="ss-feed-dot" style={{ background: statusColors[model.status] }} />
-                  <span className="ss-feed-name">{model.name}</span>
-                  <span
-                    className="ss-feed-status"
-                    style={{ color: statusColors[model.status] }}
-                  >
-                    {model.status.toUpperCase()}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
           <div className="ss-compliance">
-            <span className="ss-ndpa-badge">NDPA 2023 COMPLIANT</span>
+            <span className="ss-ndpa-badge">NDPA 2023</span>
             {/* Region stated truthfully — must always match the DPA §5.1
-                (AWS EU-Ireland, NDPA Part VIII transfer basis). The old
-                af-south-1 claim was aspirational, never deployed. */}
-            <span className="ss-audit">All queries audit-logged · Hosted: AWS eu-west-1 (Ireland) · NDPA cross-border safeguards per DPA</span>
+                (AWS EU-Ireland, NDPA Part VIII transfer basis). */}
+            <span className="ss-audit">Requests audit-logged · Hosted: AWS eu-west-1 (Ireland) · NDPA cross-border safeguards per DPA</span>
           </div>
         </div>
       )}

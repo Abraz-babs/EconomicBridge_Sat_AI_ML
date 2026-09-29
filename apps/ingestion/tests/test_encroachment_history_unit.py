@@ -39,7 +39,6 @@ async def test_history_row_is_written_with_the_watch() -> None:
     await ed._record_watch_history(
         s, tenant="kebbi", signal=_Sig(), lga="Gwandu", lon=4.1, lat=12.5,
         zone_name="Land-surface change risk (LGA-level) near Gwandu",
-        area_ha=45, livelihoods=207,
     )
     assert len(s.sql) == 1
     sql = s.sql[0]
@@ -48,7 +47,9 @@ async def test_history_row_is_written_with_the_watch() -> None:
     assert p["lga"] == "Gwandu"
     assert p["severity"] == "medium"
     assert p["score"] == 0.56
-    assert p["livelihoods"] == 207
+    # The band "area" and livelihoods are no longer invented (2026-09-29).
+    assert "livelihoods" not in p and "area_ha" not in p
+    assert "NULL, NULL" in sql
 
 
 @pytest.mark.asyncio
@@ -57,7 +58,7 @@ async def test_same_lga_same_day_cannot_double_count() -> None:
     s = _Session()
     await ed._record_watch_history(
         s, tenant="kebbi", signal=_Sig(), lga="Gwandu", lon=4.1, lat=12.5,
-        zone_name="z", area_ha=1, livelihoods=1,
+        zone_name="z",
     )
     assert "ON CONFLICT (lga, observed_date) DO NOTHING" in s.sql[0]
 
@@ -72,7 +73,7 @@ async def test_history_failure_never_breaks_the_scan() -> None:
     s = _Session(fail=True)
     await ed._record_watch_history(  # must not raise
         s, tenant="kebbi", signal=_Sig(), lga="Gwandu", lon=4.1, lat=12.5,
-        zone_name="z", area_ha=1, livelihoods=1,
+        zone_name="z",
     )
 
 
@@ -82,7 +83,7 @@ async def test_no_lga_writes_nothing() -> None:
     s = _Session()
     await ed._record_watch_history(
         s, tenant="kebbi", signal=_Sig(), lga=None, lon=None, lat=None,
-        zone_name="z", area_ha=1, livelihoods=1,
+        zone_name="z",
     )
     assert s.sql == []
 

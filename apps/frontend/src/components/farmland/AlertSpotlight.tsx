@@ -104,16 +104,16 @@ function composeSummary(a: AlertResponse, place: string | null): string {
       ? `Radar detects a ${sig} land-surface change near ${where}.`
       : `${a.alert_type === 'conflict' ? 'Land-disturbance risk' : 'Alert'} detected near ${where}.`,
   );
-  if (a.affected_area_ha != null && a.livelihoods_at_risk != null) {
-    parts.push(
-      `~${Math.round(a.affected_area_ha)} ha exposed affecting ~${a.livelihoods_at_risk.toLocaleString()} livelihoods.`,
-    );
+  // Measured only (2026-09-29): the patch area where the scan measured one,
+  // the people within 2 km from the population map. No livelihood count,
+  // value or ETA — none was ever measured.
+  if (a.affected_area_ha != null) parts.push(`~${Math.round(a.affected_area_ha)} ha measured.`);
+  if (a.people_within_2km != null) {
+    parts.push(`${a.people_within_2km.toLocaleString()} people live within 2 km.`);
   }
   if (a.confidence_score != null) parts.push(`Confidence ${Math.round(a.confidence_score * 100)}%.`);
-  if (a.status === 'resolved') parts.push('Resolved via agency response.');
-  else if (a.predicted_breach_hours != null) {
-    parts.push(`Field verification recommended within ${a.predicted_breach_hours} h.`);
-  }
+  if (a.status === 'resolved') parts.push('Closed by an officer.');
+  else parts.push('For an officer to check on the ground.');
   return parts.join(' ');
 }
 
@@ -220,9 +220,8 @@ function IdleBriefing(props: {
   const { active, topWatches, stateLabel, onSelect, onStartTour } = props;
   const tourable = active.filter((a) => a.location).length;
   const totalHa = active.reduce((s, a) => s + (a.affected_area_ha ?? 0), 0);
-  const totalLiv = active.reduce((s, a) => s + (a.livelihoods_at_risk ?? 0), 0);
-  const etas = active.map((a) => a.predicted_breach_hours).filter((h): h is number => h != null);
-  const earliestEta = etas.length ? Math.min(...etas) : null;
+  // People near alerts are never summed — alerts close together share villages.
+  const withPeople = active.filter((a) => (a.people_within_2km ?? 0) > 0).length;
 
   return (
     <div style={S.panel} aria-label={`Farmland briefing — ${stateLabel}`}>
@@ -236,9 +235,8 @@ function IdleBriefing(props: {
         </div>
         <div style={{ display: 'flex', gap: '18px', textAlign: 'right' }}>
           <div><div style={S.statV}>{active.length}</div><div style={S.statK}>WATCHES</div></div>
-          <div><div style={S.statV}>~{Math.round(totalHa).toLocaleString()}</div><div style={S.statK}>HA AT RISK</div></div>
-          <div><div style={S.statV}>~{totalLiv.toLocaleString()}</div><div style={S.statK}>LIVELIHOODS</div></div>
-          <div><div style={S.statV}>{earliestEta != null ? `${earliestEta}h` : '—'}</div><div style={S.statK}>EARLIEST ETA</div></div>
+          <div><div style={S.statV}>~{Math.round(totalHa).toLocaleString()}</div><div style={S.statK}>HA MEASURED</div></div>
+          <div><div style={S.statV}>{withPeople}</div><div style={S.statK}>NEAR VILLAGES</div></div>
         </div>
       </div>
 
@@ -487,10 +485,9 @@ function SelectedBriefing(props: {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '16px', textAlign: 'right', alignItems: 'flex-start' }}>
-          <div><div style={S.statV}>{a.affected_area_ha != null ? `~${Math.round(a.affected_area_ha)}` : '—'}</div><div style={S.statK}>HA AT RISK</div></div>
-          <div><div style={S.statV}>{a.livelihoods_at_risk != null ? `~${a.livelihoods_at_risk.toLocaleString()}` : '—'}</div><div style={S.statK}>LIVELIHOODS</div></div>
+          <div><div style={S.statV}>{a.affected_area_ha != null ? `~${Math.round(a.affected_area_ha)}` : '—'}</div><div style={S.statK}>HA MEASURED</div></div>
+          <div><div style={S.statV}>{a.people_within_2km != null ? a.people_within_2km.toLocaleString() : '—'}</div><div style={S.statK}>PEOPLE ≤2 KM</div></div>
           <div><div style={S.statV}>{a.confidence_score != null ? `${Math.round(a.confidence_score * 100)}%` : '—'}</div><div style={S.statK}>CONFIDENCE</div></div>
-          <div><div style={S.statV}>{a.predicted_breach_hours != null ? `${a.predicted_breach_hours}h` : '—'}</div><div style={S.statK}>ETA</div></div>
           {touring && (
             <button
               type="button"

@@ -76,11 +76,18 @@ REPORT_SPECS: dict[str, ReportSpec] = {
                  "model_name", "model_version"],
         metrics=[
             Metric("Total alerts", "rows"),
-            Metric("Livelihoods at risk", "sum", "livelihoods_at_risk"),
-            Metric("Hectares affected", "sum", "affected_area_ha"),
-            Metric("Economic value at risk", "sum", "economic_value_ngn", "ngn"),
+            # Measured only (2026-09-29): hectares from the land-change scan's
+            # patch outlines; people from the population map within 2 km of the
+            # alert (migration 0060). The per-alert naira value was an area x
+            # constant estimate and is no longer written or reported.
+            Metric("People living within 2 km", "sum", "livelihoods_at_risk"),
+            Metric("Hectares measured", "sum", "affected_area_ha"),
         ],
-        breakdown_col="severity", breakdown_title="By severity"),
+        breakdown_col="severity", breakdown_title="By severity",
+        # services/data_source.py REAL_ALERT: never the placeholder rows or a
+        # synthetic-model score; soft-deleted rows are not reported either.
+        real_only="is_deleted = FALSE AND COALESCE(model_name, '') <> 'seed' "
+                  "AND COALESCE(model_version, '') NOT LIKE '%synthetic%'"),
     "economic-visibility": ReportSpec(
         # Measured at real GRID3 villages (migration 0054); the old generated
         # points and their invented "households unreached" are not reported.

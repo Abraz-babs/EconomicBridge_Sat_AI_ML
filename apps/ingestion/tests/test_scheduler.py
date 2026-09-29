@@ -182,3 +182,17 @@ async def test_run_daily_firms_ingest_invokes_with_generate_alerts_true():
     _, kwargs = fake_ingest.await_args
     assert kwargs["generate_alerts"] is True
     assert kwargs["trigger"] == "scheduled"
+
+
+def test_synthetic_model_conflict_pipeline_stays_unscheduled():
+    """Retired 2026-09-29: the conflict pipeline scores fires with a model
+    trained on generated data (0.1.0-dev-synthetic). It stays off the schedule
+    until a model trained on real incidents replaces it."""
+    from scheduler import JOB_ID_CONFLICT_DAILY, JOB_ID_FIRMS_DAILY
+
+    sched = setup_scheduler()
+    try:
+        assert sched.get_job(JOB_ID_CONFLICT_DAILY) is None
+        assert sched.get_job(JOB_ID_FIRMS_DAILY) is not None   # the real fire feed continues
+    finally:
+        sched.remove_all_jobs()

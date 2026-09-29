@@ -193,6 +193,9 @@ def test_compare_band_enum_locked():
     schemas = spec["components"]["schemas"]
     indicator = schemas["MobilityIndicatorRow"]
     field = indicator["properties"]["cost_of_living_band"]
+    # Optional since 2026-09-29 (never measured per LGA): enum sits in anyOf.
+    if "anyOf" in field:
+        field = next(f for f in field["anyOf"] if f.get("type") != "null")
     enum: list[str]
     if "$ref" in field:
         ref = field["$ref"].split("/")[-1]

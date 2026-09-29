@@ -59,6 +59,7 @@ def alert_to_response(row: AlertEvent) -> AlertResponse:
         livelihoods_at_risk=row.livelihoods_at_risk,
         economic_value_ngn=row.economic_value_ngn,
         predicted_breach_hours=row.predicted_breach_hours,
+        people_within_2km=row.people_within_2km,
         satellite_source=row.satellite_source,
         satellite_pass_time=row.satellite_pass_time,
         model_name=row.model_name,

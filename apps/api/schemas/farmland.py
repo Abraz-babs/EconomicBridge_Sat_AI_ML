@@ -67,6 +67,8 @@ class AlertResponse(BaseModel):
     livelihoods_at_risk: int | None = None
     economic_value_ngn: float | None = None
     predicted_breach_hours: int | None = None
+    # Measured: people living within 2 km of the alert (migration 0060).
+    people_within_2km: int | None = None
 
     satellite_source: str | None
     satellite_pass_time: AwareDatetime | None

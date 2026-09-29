@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     # enough context for "are we confident?" without exploding payload size.
     crop_top_k_classes: int = 3
 
+    # Models trained on generated data (conflict + yield, 0.1.0-dev-synthetic)
+    # do not serve predictions unless this is set — only the test suite sets
+    # it (models/provenance.py).
+    serve_synthetic_models: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

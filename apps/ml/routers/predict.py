@@ -23,7 +23,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session, is_valid_tenant_id, set_tenant_schema
-from models.conflict_predictor import ConflictFeatures, get_predictor
+from models.conflict_predictor import MODEL_VERSION, ConflictFeatures, get_predictor
+from models.provenance import require_real_model
 from schemas.conflict import ConflictPredictionData, ConflictPredictionRequest
 from schemas.envelope import ResponseMeta, SuccessResponse
 
@@ -62,6 +63,7 @@ async def predict_conflict(
         is_new_geography=body.is_new_geography,
     )
 
+    require_real_model("conflict predictor", MODEL_VERSION)
     predictor = get_predictor()
     trace = _trace_id(request)
     try:

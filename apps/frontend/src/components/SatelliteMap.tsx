@@ -1,19 +1,46 @@
 'use client';
 
+/**
+ * Overview map — what the satellites flagged in each pilot, live.
+ *
+ * Until 2026-09-29 every state was coloured by a typed-in "conflict risk"
+ * (critical/high/medium/low), 52 states were drawn with it, and the header
+ * claimed "52 tenants". Now only the 10 real pilots are drawn, each coloured
+ * by live counts from GET /overview/signals: storms and radar/greenness
+ * detections in the last 14 days, open land alerts from the last 30, and the
+ * share of villages dark at night.
+ */
+
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { KEBBI_CENTER, RISK_RGB, TENANTS, type Tenant } from '@/data/tenants';
+import { KEBBI_CENTER, TENANTS, type Tenant } from '@/data/tenants';
+import { useOverviewSignals, type PilotSignals } from '@/hooks/useOverviewLive';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 const MAPBOX_STYLE = 'mapbox://styles/mapbox/dark-v11';
 
-type LayerKey = 'Poverty' | 'Disaster' | 'Crops' | 'All Layers';
-const LAYERS: LayerKey[] = ['Poverty', 'Disaster', 'Crops', 'All Layers'];
+type LayerKey = 'Poverty' | 'Disaster' | 'Farmland' | 'All Layers';
+const LAYERS: LayerKey[] = ['Poverty', 'Disaster', 'Farmland', 'All Layers'];
 
-function filterTenants(layer: LayerKey): Tenant[] {
-  if (layer === 'Disaster') {
-    return TENANTS.filter((t) => t.conflict_risk === 'critical' || t.conflict_risk === 'high');
-  }
-  return TENANTS;
+type RGB = [number, number, number];
+const CALM: RGB = [82, 183, 136];
+const SOME: RGB = [240, 175, 60];
+const MANY: RGB = [255, 100, 40];
+const NO_DATA: RGB = [120, 124, 130];
+
+/** The live figure a layer colours by: a count, or the share of villages dark at night. */
+function layerValue(s: PilotSignals | undefined, layer: LayerKey): number | null {
+  if (!s) return null;
+  if (layer === 'Poverty') return s.villages ? s.dark_villages / s.villages : null;
+  if (layer === 'Disaster') return s.storms + s.detections;
+  if (layer === 'Farmland') return s.land_alerts;
+  return s.total;
+}
+
+function signalRgb(s: PilotSignals | undefined, layer: LayerKey): RGB {
+  const v = layerValue(s, layer);
+  if (v == null) return NO_DATA;
+  if (layer === 'Poverty') return v >= 0.8 ? MANY : v >= 0.5 ? SOME : CALM;
+  return v >= 5 ? MANY : v >= 1 ? SOME : CALM;
 }
 
 function sanitizeMapboxError(message: string | null | undefined): string | null {
@@ -37,6 +64,7 @@ const COVERAGE_PILOT_IDS = new Set([
   'kebbi', 'benue', 'plateau', 'kaduna', 'niger', 'zamfara', 'nasarawa', 'fct',
   'ghana', 'senegal',
 ]);
+const PILOTS: Tenant[] = TENANTS.filter((t) => COVERAGE_PILOT_IDS.has(t.id));
 const COVERAGE_PULSE_CSS =
   '@keyframes eb-cov-pulse{0%{box-shadow:0 0 0 0 rgba(54,211,154,.6)}' +
   '70%{box-shadow:0 0 0 14px rgba(54,211,154,0)}' +
@@ -54,6 +82,10 @@ export default function SatelliteMap() {
     MAPBOX_TOKEN ? 'loading' : 'no-token'
   );
   const [mapError, setMapError] = useState<string | null>(null);
+  const signalsQ = useOverviewSignals();
+  const signals = signalsQ.data;
+  const byTenant = useMemo(
+    () => new Map((signals?.pilots ?? []).map((p) => [p.tenant_id, p])), [signals]);
 
   useEffect(() => {
     if (!MAPBOX_TOKEN || !containerRef.current) return;
@@ -63,9 +95,8 @@ export default function SatelliteMap() {
 
     (async () => {
       try {
-        const [{ default: mapboxgl }, { ScatterplotLayer }, { MapboxOverlay }] = await Promise.all([
+        const [{ default: mapboxgl }, { MapboxOverlay }] = await Promise.all([
           import('mapbox-gl'),
-          import('@deck.gl/layers'),
           import('@deck.gl/mapbox'),
         ]);
 
@@ -104,25 +135,7 @@ export default function SatelliteMap() {
             // Cap deck rendering to CSS pixels — a full-DPR canvas on 4K screens
             // can exhaust GPU memory and blank on scroll.
             useDevicePixels: false,
-            layers: [
-              new ScatterplotLayer<Tenant>({
-                id: 'tenants-scatter',
-                data: filterTenants('All Layers'),
-                getPosition: (t) => [t.centroid[0], t.centroid[1]],
-                getRadius: (t) => (t.active ? 22000 : 14000),
-                getFillColor: (t) => [...RISK_RGB[t.conflict_risk], 200] as [number, number, number, number],
-                getLineColor: [255, 255, 255, 90],
-                lineWidthMinPixels: 1,
-                radiusUnits: 'meters',
-                radiusMinPixels: 5,
-                radiusMaxPixels: 28,
-                stroked: true,
-                pickable: true,
-                onClick: (info) => {
-                  setSelectedTenant((info.object as Tenant | null) ?? null);
-                },
-              }),
-            ],
+            layers: [],
           });
           map.addControl(overlay);
           overlayRef.current = overlay;
@@ -223,10 +236,11 @@ export default function SatelliteMap() {
         layers: [
           new ScatterplotLayer<Tenant>({
             id: 'tenants-scatter',
-            data: filterTenants(activeLayer),
+            data: PILOTS,
             getPosition: (t) => [t.centroid[0], t.centroid[1]],
-            getRadius: (t) => (t.active ? 22000 : 14000),
-            getFillColor: (t) => [...RISK_RGB[t.conflict_risk], 200] as [number, number, number, number],
+            getRadius: 22000,
+            getFillColor: (t) => [...signalRgb(byTenant.get(t.id), activeLayer), 205] as [number, number, number, number],
+            updateTriggers: { getFillColor: [byTenant, activeLayer] },
             getLineColor: [255, 255, 255, 90],
             lineWidthMinPixels: 1,
             radiusUnits: 'meters',
@@ -244,13 +258,13 @@ export default function SatelliteMap() {
     void pushLayers();
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
-  }, [activeLayer, mapStatus]);
+  }, [activeLayer, mapStatus, byTenant]);
 
   // Detail strip: a user click pins a tenant; otherwise rotate through the
   // active pilots so the strip reads as the live intel ticker it is — not a
   // hardcoded "Kebbi" line. Paused while the tab is hidden (project pattern).
   const [rotateIdx, setRotateIdx] = useState(0);
-  const activePilots = useMemo(() => TENANTS.filter((t) => t.active), []);
+  const activePilots = PILOTS;
   useEffect(() => {
     if (selectedTenant || activePilots.length === 0) return;
     const id = window.setInterval(() => {
@@ -264,15 +278,15 @@ export default function SatelliteMap() {
     selectedTenant ??
     activePilots[rotateIdx % Math.max(activePilots.length, 1)] ??
     TENANTS.find((t) => t.id === 'kebbi')!;
+  const ds = byTenant.get(detailTenant.id);
+  const days = signals?.days ?? 14;
 
   return (
     <div className="panel">
       <div className="panel-header">
         <span className="panel-title">Satellite Intelligence Map</span>
         <span className="panel-meta">
-          {mapStatus === 'ready'
-            ? `${filterTenants(activeLayer).length} tenants · centred on Kebbi`
-            : '52 tenants · West Africa coverage'}
+          {`${PILOTS.length} pilots · live signals, last ${days} days`}
         </span>
       </div>
 
@@ -298,22 +312,16 @@ export default function SatelliteMap() {
         </div>
 
         <div className="map-legend">
-          <div className="legend-row">
-            <div className="ldot" data-risk-color="critical" />
-            Critical risk
-          </div>
-          <div className="legend-row">
-            <div className="ldot" data-risk-color="high" />
-            High risk
-          </div>
-          <div className="legend-row">
-            <div className="ldot" data-risk-color="medium" />
-            Medium risk
-          </div>
-          <div className="legend-row">
-            <div className="ldot" data-risk-color="low" />
-            Low risk
-          </div>
+          {(activeLayer === 'Poverty'
+            ? [[MANY, '80%+ of villages dark at night'], [SOME, '50–80% dark'], [CALM, 'under 50% dark']]
+            : [[MANY, `5 or more ${activeLayer === 'Farmland' ? 'land alerts, 30 days' : `signals, ${days} days`}`],
+              [SOME, '1–4'], [CALM, 'none']]
+          ).map(([rgb, label]) => (
+            <div key={String(label)} className="legend-row">
+              <div className="ldot" style={{ background: `rgb(${(rgb as RGB).join(',')})` }} />
+              {label as string}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -322,13 +330,13 @@ export default function SatelliteMap() {
           {detailTenant.name} — {detailTenant.capital}
         </span>
         &nbsp;·&nbsp;
-        <span className={`map-detail-risk map-detail-risk--${detailTenant.conflict_risk}`}>
-          {detailTenant.conflict_risk.toUpperCase()} RISK
+        <span className="map-detail-counts">
+          {ds
+            ? `${ds.storms} storm${ds.storms === 1 ? '' : 's'} · ${ds.detections} satellite flag${ds.detections === 1 ? '' : 's'} (${days} d) · ${ds.land_alerts} land alert${ds.land_alerts === 1 ? '' : 's'} (30 d)${ds.villages ? ` · ${Math.round((100 * ds.dark_villages) / ds.villages)}% of villages dark at night` : ''}`
+            : signalsQ.isError ? 'live figures unavailable' : 'reading live figures…'}
         </span>
         &nbsp;·&nbsp;
-        <span className={detailTenant.active ? 'map-detail-active' : 'map-detail-planned'}>
-          {detailTenant.active ? 'ACTIVE' : 'PLANNED'}
-        </span>
+        <span className="map-detail-active">LIVE PILOT</span>
         {selectedTenant && (
           <>
             &nbsp;·{' '}

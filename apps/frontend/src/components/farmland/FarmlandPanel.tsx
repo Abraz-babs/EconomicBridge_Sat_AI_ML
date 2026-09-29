@@ -42,6 +42,7 @@ function recordToAlert(e: RecordEntry, key: string, tenantId: string): AlertResp
     livelihoods_at_risk: e.livelihoods_at_risk,
     economic_value_ngn: null,
     predicted_breach_hours: null,
+    people_within_2km: null,
     satellite_source: null,
     satellite_pass_time: null,
     model_name: 'alert_record',
@@ -101,7 +102,7 @@ function toMapPoint(a: AlertResponse): FarmlandAlertPoint | null {
     alertType: a.alert_type,
     status: a.status,
     affectedAreaHa: a.affected_area_ha,
-    livelihoodsAtRisk: a.livelihoods_at_risk,
+    peopleWithin2km: a.people_within_2km ?? null,
     predictedBreachHours: a.predicted_breach_hours,
     satelliteSource: a.satellite_source,
   };
@@ -126,12 +127,14 @@ function altLocation(a: AlertResponse): string {
 }
 
 function altDescription(a: AlertResponse): string {
-  if (a.zone_name && a.affected_area_ha != null && a.livelihoods_at_risk != null) {
-    return (
-      `${a.zone_name}. ~${a.affected_area_ha.toFixed(0)} ha at risk affecting ` +
-      `${a.livelihoods_at_risk.toLocaleString()} livelihoods. ` +
-      (a.satellite_source ? `Source: ${a.satellite_source}.` : '')
-    );
+  // Measured figures only: the patch area where the scan measured one, and the
+  // people the population map places within 2 km.
+  const bits = [
+    a.affected_area_ha != null ? `~${a.affected_area_ha.toFixed(0)} ha measured` : null,
+    a.people_within_2km != null ? `${a.people_within_2km.toLocaleString()} people live within 2 km` : null,
+  ].filter(Boolean);
+  if (a.zone_name && bits.length) {
+    return `${a.zone_name}. ${bits.join(' · ')}. ` + (a.satellite_source ? `Source: ${a.satellite_source}.` : '');
   }
   return a.zone_name ?? 'Alert details pending review.';
 }
@@ -182,7 +185,7 @@ function deriveTimeline(alerts: AlertResponse[], stateLabel: string): TimelineEv
       ? a.agencies_notified.join(' + ')
       : null;
     const ha = a.affected_area_ha;
-    const liv = a.livelihoods_at_risk;
+    const near = a.people_within_2km ?? null;
 
     // Group 0 — confirmed critical / high right now (top of timeline)
     if (
@@ -194,10 +197,12 @@ function deriveTimeline(alerts: AlertResponse[], stateLabel: string): TimelineEv
         dot: a.severity === 'critical' ? 'fp-tl-crit' : 'fp-tl-warn',
         icon: '!',
         time: `Now — T+0h · ${stateLabel} ${lga}`,
+        // Nothing is confirmed until an officer checks, and an agency is
+        // named only when one was actually notified.
         event:
           a.severity === 'critical'
-            ? 'Encroachment confirmed — agency notification sent'
-            : 'High-severity boundary alert raised',
+            ? `Critical land-disturbance alert — awaiting a field check${agencies ? '; agencies notified' : ''}`
+            : 'High-severity land-disturbance alert raised',
         detail: [
           a.satellite_source,
           conf,
@@ -218,8 +223,8 @@ function deriveTimeline(alerts: AlertResponse[], stateLabel: string): TimelineEv
         event: a.zone_name ?? `${lga} active response`,
         detail: [
           agencies ? `${agencies} engaged.` : null,
-          ha != null ? `${Math.round(ha)} ha at risk` : null,
-          liv != null ? `${liv.toLocaleString()} livelihoods.` : null,
+          ha != null ? `${Math.round(ha)} ha measured.` : null,
+          near != null ? `${near.toLocaleString()} people live within 2 km.` : null,
         ].filter(Boolean).join(' '),
         sortGroup: 1,
         sortKey: ageH,
@@ -235,8 +240,8 @@ function deriveTimeline(alerts: AlertResponse[], stateLabel: string): TimelineEv
         time: `T+${a.predicted_breach_hours}h · Projected — ${lga}`,
         event: 'Predicted breach window',
         detail: [
-          ha != null ? `~${Math.round(ha)} ha at risk` : null,
-          liv != null ? `${liv.toLocaleString()} livelihoods` : null,
+          ha != null ? `~${Math.round(ha)} ha measured` : null,
+          near != null ? `${near.toLocaleString()} people within 2 km` : null,
           a.satellite_source,
         ].filter(Boolean).join(' · '),
         sortGroup: 2,
@@ -253,9 +258,9 @@ function deriveTimeline(alerts: AlertResponse[], stateLabel: string): TimelineEv
         time: `${pastLabel(ageH)} — Resolved · ${lga}`,
         event: a.zone_name ?? `${lga} alert resolved`,
         detail: [
-          liv != null ? `~${liv.toLocaleString()} livelihoods protected.` : null,
+          near != null ? `${near.toLocaleString()} people live within 2 km.` : null,
           agencies ? `Engaged: ${agencies}.` : null,
-        ].filter(Boolean).join(' ') || 'Resolved via mediation.',
+        ].filter(Boolean).join(' ') || 'Closed by an officer.',
         sortGroup: 3,
         sortKey: ageH,  // most recent resolution first
       });
@@ -268,26 +273,8 @@ function deriveTimeline(alerts: AlertResponse[], stateLabel: string): TimelineEv
   return out.slice(0, 6);
 }
 
-/** Format an NGN figure ≥ 0 into ₦X.XM / ₦XK / "—". */
-function fmtNgn(value: number, isEcowas: boolean): string {
-  if (isEcowas || value <= 0) return '—';
-  if (value >= 1_000_000) return `₦${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `₦${Math.round(value / 1_000)}K`;
-  return `₦${value.toLocaleString()}`;
-}
-
-/** Estimated economic value at risk per affected smallholder livelihood, in USD.
- *  Used for ECOWAS countries where the NGN value column isn't populated — a
- *  transparent first-order estimate (≈ a season's smallholder farm income). */
-const USD_PER_LIVELIHOOD = 450;
-
-/** Format a USD figure ≥ 0 into $X.XM / $XK / "—". */
-function fmtUsd(value: number): string {
-  if (value <= 0) return '—';
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${Math.round(value / 1_000)}K`;
-  return `$${value.toLocaleString()}`;
-}
+// The per-alert naira / USD 'value at risk' helpers were removed on 2026-09-29:
+// the values were area x constant estimates, not measurements.
 
 function fmtScanAgo(iso: string | null): string {
   if (!iso) return 'awaiting first scan';
@@ -410,18 +397,12 @@ export default function FarmlandPanel() {
     const active = alerts.filter((a) => a.status !== 'resolved');
     const resolved = alerts.filter((a) => a.status === 'resolved');
     const farmsAtRiskHa = active.reduce((sum, a) => sum + (a.affected_area_ha ?? 0), 0);
-    const livelihoodsProtected = resolved.reduce(
-      (sum, a) => sum + (a.livelihoods_at_risk ?? 0),
-      0,
-    );
-    const livelihoodsAtRisk = active.reduce(
-      (sum, a) => sum + (a.livelihoods_at_risk ?? 0),
-      0,
-    );
-    const economicValueAtRisk = active.reduce(
-      (sum, a) => sum + (a.economic_value_ngn ?? 0),
-      0,
-    );
+    // Measured people near each active alert. Alerts close together can share
+    // villages, so these are never summed — the panel shows the largest and
+    // how many alerts have people near them.
+    const nearActive = active.filter((a) => (a.people_within_2km ?? 0) > 0);
+    const mostNear = nearActive.reduce<AlertResponse | null>(
+      (m, a) => ((a.people_within_2km ?? 0) > (m?.people_within_2km ?? -1) ? a : m), null);
     const agencies = new Set<string>();
     alerts.forEach((a) => a.agencies_notified?.forEach((ag) => agencies.add(ag)));
     const satellites = new Set<string>();
@@ -437,9 +418,8 @@ export default function FarmlandPanel() {
       activeCount: active.length,
       farmsAtRiskHa,
       resolvedCount: resolved.length,
-      livelihoodsAtRisk,
-      livelihoodsProtected,
-      economicValueAtRisk,
+      nearActiveCount: nearActive.length,
+      mostNear,
       avgConfidence,
       agenciesCount: agencies.size,
       agencies: Array.from(agencies),
@@ -452,7 +432,6 @@ export default function FarmlandPanel() {
   }, [alerts]);
 
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
-  const isEcowas = activeTenant.type === 'ecowas_country';
 
   // Derive the timeline rows from the live alerts.
   const timelineEvents = useMemo(
@@ -699,7 +678,7 @@ export default function FarmlandPanel() {
           </div>
         </div>
         <div className="fp-stat warn">
-          <div className="fp-stat-label">Farms Under Threat (ha)</div>
+          <div className="fp-stat-label">Land Flagged (ha, measured)</div>
           <div className="fp-stat-val">
             {liveStats.farmsAtRiskHa.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </div>
@@ -708,9 +687,7 @@ export default function FarmlandPanel() {
         <div className="fp-stat ok">
           <div className="fp-stat-label">Resolved (window)</div>
           <div className="fp-stat-val">{liveStats.resolvedCount}</div>
-          <div className="fp-stat-sub">
-            ~{liveStats.livelihoodsProtected.toLocaleString()} livelihoods protected
-          </div>
+          <div className="fp-stat-sub">Closed by an officer after a check</div>
         </div>
         <div className="fp-stat ok">
           <div className="fp-stat-label">Agencies Notified</div>
@@ -938,7 +915,7 @@ export default function FarmlandPanel() {
 
         <div className="fp-timeline">
           <div className="fp-timeline-header">
-            Economic Livelihood Protection — {stateLabel}
+            People Near the Alerts — {stateLabel}
           </div>
           <div className="fp-timeline-body fp-impact-body">
             <div className="fp-impact-row fp-impact-row--bordered">
@@ -950,27 +927,23 @@ export default function FarmlandPanel() {
                 </div>
               </div>
               <div>
-                <div className="fp-impact-label">Livelihoods Protected</div>
-                <div className="fp-impact-val">
-                  ~{liveStats.livelihoodsProtected.toLocaleString()}
-                </div>
+                <div className="fp-impact-label">Active alerts near villages</div>
+                <div className="fp-impact-val">{liveStats.nearActiveCount}</div>
                 <div className="fp-impact-desc">
-                  {liveStats.livelihoodsAtRisk > 0
-                    ? `${liveStats.livelihoodsAtRisk.toLocaleString()} still at risk in ${liveStats.activeCount} active alert${liveStats.activeCount === 1 ? '' : 's'}`
-                    : 'Sum of livelihoods on resolved alerts'}
+                  of {liveStats.activeCount} active alert{liveStats.activeCount === 1 ? '' : 's'} have people living within 2 km
                 </div>
               </div>
               <div>
-                <div className="fp-impact-label">Economic Value at Risk</div>
+                <div className="fp-impact-label">Most people near one alert</div>
                 <div className="fp-impact-val fp-impact-val--small">
-                  {isEcowas
-                    ? fmtUsd(liveStats.livelihoodsAtRisk * USD_PER_LIVELIHOOD)
-                    : fmtNgn(liveStats.economicValueAtRisk, isEcowas)}
+                  {liveStats.mostNear?.people_within_2km != null
+                    ? liveStats.mostNear.people_within_2km.toLocaleString()
+                    : '—'}
                 </div>
                 <div className="fp-impact-desc">
-                  {isEcowas
-                    ? `Est. ~$${USD_PER_LIVELIHOOD}/livelihood across ${liveStats.livelihoodsAtRisk.toLocaleString()} at risk`
-                    : `Aggregated across ${liveStats.activeCount} active alert${liveStats.activeCount === 1 ? '' : 's'}`}
+                  {liveStats.mostNear
+                    ? `Within 2 km of the alert in ${liveStats.mostNear.lga ?? stateLabel} · Meta & CIESIN population map`
+                    : 'No village layer here yet, or no villages within 2 km'}
                 </div>
               </div>
             </div>
@@ -985,10 +958,7 @@ export default function FarmlandPanel() {
                       {i < liveStats.satellites.length - 1 ? ', ' : ''}
                     </span>
                   ))}
-                  . AI model: Random Forest conflict predictor (Citadel-proven)
-                  {liveStats.avgConfidence != null
-                    ? ` · ${Math.round(liveStats.avgConfidence * 100)}% mean confidence`
-                    : ''}
+                  . Each alert compares a place with its own history; an officer confirms it on the ground
                   . {alerts.length} alert{alerts.length === 1 ? '' : 's'} in window
                   {liveStats.agenciesCount > 0
                     ? `, ${liveStats.agenciesCount} agenc${liveStats.agenciesCount === 1 ? 'y' : 'ies'} engaged`

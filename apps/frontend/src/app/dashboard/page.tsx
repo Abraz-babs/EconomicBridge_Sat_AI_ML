@@ -9,7 +9,6 @@ import EmptyRegion from '@/components/common/EmptyRegion';
 import NotSubscribed from '@/components/common/NotSubscribed';
 import SubscribeModal from '@/components/common/SubscribeModal';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import RoleSwitcher from '@/components/RoleSwitcher';
 import Header from '@/components/Header';
 import Navigation, { TabId } from '@/components/Navigation';
 import ViewAsBanner from '@/components/admin/ViewAsBanner';
@@ -171,7 +170,6 @@ function DashboardContent() {
   return (
     <>
       <a href="#main-content" className="skip-link">Skip to main content</a>
-      <RoleSwitcher />
       <Header />
       <Navigation
         activeTab={activeTab}

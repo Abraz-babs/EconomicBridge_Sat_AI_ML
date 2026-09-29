@@ -493,6 +493,7 @@ main {
    ("Report") column can't be pushed off the right edge by the wide uppercase
    headers' min-content width. */
 .matrix-table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
+.matrix-note { margin-top: 8px; font-size: 10px; line-height: 1.4; color: var(--muted); }
 
 .matrix-table th {
   padding: 8px 6px; text-align: left;

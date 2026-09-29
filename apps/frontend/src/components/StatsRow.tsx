@@ -7,11 +7,11 @@ import { useOverviewStats } from '@/hooks/useOverviewStats';
  * Top KPI cards on the overview. Driven by the LIVE cross-tenant aggregate
  * (/api/v1/overview/stats) — every number traces to a real row (LGAs from
  * geoBoundaries, settlements from VIIRS+WorldPop, crop detections from the
- * trained ResNet). Falls back to the role's static stats only if the
- * endpoint is unreachable, so the row never renders blank.
+ * trained ResNet). If the endpoint is unreachable the cards say so — they
+ * never fall back to typed-in figures (the old persona stats were invented).
  */
 export default function StatsRow() {
-  const { roleConfig, accentColor } = useRole();
+  const { accentColor } = useRole();
   const { data, isError } = useOverviewStats();
 
   const cards =
@@ -22,7 +22,12 @@ export default function StatsRow() {
           delta: c.subtitle,
           dc: c.tone,
         }))
-      : roleConfig.stats; // graceful fallback
+      : [{
+          label: 'Platform figures',
+          val: '—',
+          delta: isError ? 'Could not reach the live figures — try Refresh' : 'Loading live figures…',
+          dc: '',
+        }];
 
   return (
     <div className="stats-row anim a2">

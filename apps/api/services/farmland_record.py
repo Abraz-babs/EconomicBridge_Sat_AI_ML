@@ -29,6 +29,8 @@ from datetime import date
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.data_source import REAL_ALERT
+
 from schemas.farmland import (
     AlertSeverity,
     LonLat,
@@ -130,8 +132,10 @@ def _episode(lga: str, run: list[WatchRead], active: set[tuple[str, date]]) -> R
         peak_sigma=sigma_of(peak.zone_name),
         summary=peak.zone_name,
         location=_point(last.lon, last.lat),
-        affected_area_ha=last.area_ha,
-        livelihoods_at_risk=last.livelihoods,
+        # The watch history's area and livelihoods were the detector's band
+        # estimates (retired 2026-09-29, migration 0060) — never repeated here.
+        affected_area_ha=None,
+        livelihoods_at_risk=None,
     )
 
 
@@ -216,7 +220,7 @@ async def build_record(
         "SELECT lga, severity, status, zone_name, created_at::date, updated_at::date, "
         "       ST_X(location), ST_Y(location), affected_area_ha, livelihoods_at_risk "
         "FROM alert_events WHERE status IN ('acknowledged', 'resolved', 'dismissed') "
-        "AND is_deleted = FALSE"
+        f"AND is_deleted = FALSE AND {REAL_ALERT}"
     ))).all():
         entries.append(RecordEntry(
             kind=RecordEntryKind.OFFICER_CLOSED,

@@ -51,7 +51,7 @@ function tooltipFor(obj: unknown): string | null {
     `Disease prob: ${(p.prediction * 100).toFixed(0)}% · Confidence: ${(p.confidence * 100).toFixed(0)}%`,
   ];
   if (p.requires_human_review) lines.push('Flagged for human review');
-  if (p.synthetic_location) lines.push('⚠ synthesised position (no GPS)');
+  if (p.synthetic_location) lines.push('Placed at the centre of its tagged LGA (photo had no GPS)');
   return lines.join('\n');
 }
 
@@ -246,7 +246,7 @@ export default function CropGuardMap({ tenant, predictions }: Props) {
             <>
               {realCount > 0 ? ' · ' : ''}
               <span className="fp-map-overlay__warn">
-                {syntheticCount} synthesised position{syntheticCount === 1 ? '' : 's'}
+                {syntheticCount} placed at LGA centre (no GPS)
               </span>
             </>
           )}<br />

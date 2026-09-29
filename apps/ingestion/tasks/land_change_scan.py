@@ -391,19 +391,15 @@ PROMOTE_MIN_OBSERVED = 0.50
 # survived checking against imagery. NOT a confidence the model produced.
 PROMOTE_CONFIDENCE = 0.64
 
-# The alert card reads "{zone_name}. ~N ha at risk affecting M livelihoods.
-# Source: {satellite_source}." — so the explanation belongs in zone_name, in
-# the same house style the encroachment detector already uses, and the impact
-# fields have to be filled or the card reads bare.
+# The alert card reads "{zone_name}. ~N ha measured · P people live within
+# 2 km. Source: {satellite_source}." — so the explanation belongs in zone_name,
+# in the same house style the encroachment detector already uses.
 #
-# These two ratios are the encroachment detector's, imported rather than
-# copied so the two feeds cannot drift into quoting different numbers for the
-# same hectare. The difference here is that our area is MEASURED — the actual
-# patch — where that detector infers an extent from its severity band.
-from tasks.encroachment_detector import (  # noqa: E402
-    CROP_VALUE_NGN_PER_HA,
-    LIVELIHOODS_PER_HA,
-)
+# Impact is measured, never multiplied (2026-09-29): the patch area comes from
+# Sentinel-2, and the people are those the population map places within 2 km
+# of the patch (processors/people_nearby.py). The livelihood and naira ratios
+# this used to apply to the area are gone — no one measured them.
+from processors.people_nearby import PEOPLE_WITHIN_2KM_SQL  # noqa: E402
 
 
 def alert_text(h: Hotspot, lga: str, year: int) -> str:
@@ -435,30 +431,26 @@ async def _promote(session: AsyncSession, *, tenant: str, lga: str, year: int,
           AND created_at >= make_date(:yr, 1, 1)
     """), {"lga": lga, "dv": DETECTOR_VERSION, "yr": year})
     for h in picked:
-        await session.execute(text("""
+        await session.execute(text(f"""
             INSERT INTO alert_events (
                 id, tenant_id, alert_type, severity, status, zone_name, lga,
                 location, confidence_score, affected_area_ha,
-                livelihoods_at_risk, economic_value_ngn,
+                people_within_2km,
                 satellite_source, satellite_pass_time,
                 model_name, model_version, human_review_required,
                 created_at, updated_at
             ) VALUES (
                 :id, :tenant, 'conflict', :severity, 'pending_review', :zone, :lga,
                 ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :conf, :area,
-                :livelihoods, :econ_ngn,
+                {PEOPLE_WITHIN_2KM_SQL},
                 'Sentinel-2 peak-season NDVI (whole-LGA, 3 seasons) + Esri/IO annual land cover',
                 NOW(), 'land_change', :dv, TRUE, NOW(), NOW()
             )
         """), {
             "id": uuid4(), "tenant": tenant, "lga": lga,
             "zone": alert_text(h, lga, year),
-            # Measured extent, so the livelihood and value figures rest on a
-            # real patch size rather than a severity band. predicted_breach_hours
-            # is deliberately left NULL: this detector has no basis for an ETA
-            # and will not render a countdown it cannot support.
-            "livelihoods": round(h.area_ha * LIVELIHOODS_PER_HA),
-            "econ_ngn": round(h.area_ha * CROP_VALUE_NGN_PER_HA),
+            # predicted_breach_hours is deliberately left NULL: this detector
+            # has no basis for an ETA and will not render a countdown.
             "severity": "medium" if h.area_ha >= 5.0 else "low",
             "lon": h.lon, "lat": h.lat, "conf": PROMOTE_CONFIDENCE,
             "area": h.area_ha, "dv": DETECTOR_VERSION,

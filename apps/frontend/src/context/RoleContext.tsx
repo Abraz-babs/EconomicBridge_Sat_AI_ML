@@ -1,48 +1,70 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import { RoleId, RoleConfig, roles, roleColors } from '@/data/roles';
+/**
+ * The real access profile of whoever is looking at the dashboard.
+ *
+ * Until 2026-09-29 this held a "View as" persona picked from a demo list of
+ * real organisations' names. Now it is derived — nothing to switch: the
+ * signed-in account (useAuth), its organisation's name from the public tenant
+ * registry, and the super-admin's real "view as account" simulation
+ * (useViewAs). See data/roles.ts for the three kinds.
+ */
+
+import { createContext, useContext, type ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+
+import { useAuth } from '@/context/AuthContext';
+import { accentColors, accessProfile, type AccessProfile } from '@/data/roles';
+import { useViewAs } from '@/hooks/useViewAs';
+import { apiFetch, type SuccessEnvelope } from '@/lib/api';
 
 interface RoleContextValue {
-  currentRole: RoleId;
-  roleConfig: RoleConfig;
+  roleConfig: AccessProfile;
   accentColor: string;
-  switchRole: (role: RoleId) => void;
 }
 
 const RoleContext = createContext<RoleContextValue | undefined>(undefined);
 
-const ROLE_STORAGE_KEY = 'eb.activeRole';
-const DEFAULT_ROLE: RoleId = 'ngo';
+interface RegistryNames {
+  tenants: { id: string; name: string }[];
+}
+
+function useOrgNames(enabled: boolean): Record<string, string> {
+  const { data } = useQuery<RegistryNames>({
+    queryKey: ['tenant-registry-names'],
+    enabled,
+    staleTime: 10 * 60_000,
+    retry: 0,
+    queryFn: async ({ signal }) => {
+      const env: SuccessEnvelope<RegistryNames> = await apiFetch<RegistryNames>('/public-tenants', { signal });
+      return env.data;
+    },
+  });
+  return Object.fromEntries((data?.tenants ?? []).map((t) => [t.id, t.name]));
+}
 
 export function RoleProvider({ children }: { children: ReactNode }) {
-  // Start from the SSR default so the server and first client render match;
-  // restore the persisted role AFTER mount to avoid a hydration mismatch.
-  const [currentRole, setCurrentRole] = useState<RoleId>(DEFAULT_ROLE);
+  const { user, isSuperAdmin } = useAuth();
+  const viewAs = useViewAs();
+  const simulating = isSuperAdmin ? viewAs : null;
+  const names = useOrgNames(Boolean(user));
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem(ROLE_STORAGE_KEY);
-    if (stored && stored in roles && stored !== DEFAULT_ROLE) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCurrentRole(stored as RoleId);
-    }
-  }, []);
+  let roleConfig: AccessProfile;
+  if (!user) {
+    roleConfig = accessProfile('visitor', null);
+  } else if (simulating) {
+    roleConfig = accessProfile('partner', simulating.label, { simulating: true });
+  } else if (isSuperAdmin) {
+    roleConfig = accessProfile('operator', (user.tenant_id && names[user.tenant_id]) || 'Bizra Farms · EconomicBridge');
+  } else {
+    roleConfig = accessProfile('partner', (user.tenant_id && names[user.tenant_id]) || user.full_name || null);
+  }
 
-  const switchRole = useCallback((role: RoleId) => {
-    setCurrentRole(role);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(ROLE_STORAGE_KEY, role);
-    }
-  }, []);
-
-  const value: RoleContextValue = {
-    currentRole,
-    roleConfig: roles[currentRole],
-    accentColor: roleColors[currentRole],
-    switchRole,
-  };
-
-  return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;
+  return (
+    <RoleContext.Provider value={{ roleConfig, accentColor: accentColors[roleConfig.kind] }}>
+      {children}
+    </RoleContext.Provider>
+  );
 }
 
 export function useRole() {

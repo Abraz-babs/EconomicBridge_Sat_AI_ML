@@ -30,7 +30,6 @@ from db import PILOT_TENANT_IDS, get_session_factory
 from sources.worldbank import TENANT_TO_ISO3
 from tasks.aid_iati_ingest import run_aid_iati_ingest
 from tasks.aid_ingest import ingest_aid_for_tenant
-from tasks.conflict_pipeline import run_daily_conflict_pipeline
 from tasks.firms_ingest import ingest_firms_for_tenant
 from tasks.mobility_ingest import ingest_mobility_worldbank_for_tenant
 from tasks.encroachment_detector import run_encroachment_sweep
@@ -84,17 +83,14 @@ def setup_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=3600,  # if we missed the 06:00 fire by <1h, still run
     )
 
-    scheduler.add_job(
-        run_daily_conflict_pipeline,
-        # Fire 30min after FIRMS so the freshest heat_signatures feed the
-        # conflict feature extractor.
-        trigger=CronTrigger(hour=6, minute=30, timezone="UTC"),
-        id=JOB_ID_CONFLICT_DAILY,
-        name="Conflict predictor daily sweep (all pilot tenants)",
-        replace_existing=True,
-        max_instances=1,
-        misfire_grace_time=3600,
-    )
+    # RETIRED 2026-09-29: the conflict pipeline scores NASA FIRMS heat clusters
+    # with the ML service's conflict predictor, and the only artifact that
+    # model has is 0.1.0-dev-synthetic — trained on generated data. A
+    # "conflict probability" from it is not a measurement, so it is no longer
+    # scheduled. The FIRMS fire alerts themselves (06:00, above) are real and
+    # continue. Re-schedule only once apps/ml/scripts/train_conflict_real.py
+    # has produced a model trained on real incidents with real features.
+    # Still triggerable by hand via the jobs router.
 
     scheduler.add_job(
         run_pass_imagery_sweep,
@@ -250,17 +246,12 @@ def setup_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=43200,
     )
 
-    scheduler.add_job(
-        run_monthly_skills_ingest,
-        # GIGA school data updates slowly; monthly on the 1st at 10:00 UTC,
-        # after the aid job.
-        trigger=CronTrigger(day=1, hour=10, minute=0, timezone="UTC"),
-        id=JOB_ID_SKILLS_MONTHLY,
-        name="UNICEF GIGA school counts (all pilots, monthly)",
-        replace_existing=True,
-        max_instances=1,
-        misfire_grace_time=43200,
-    )
+    # RETIRED 2026-09-29: the monthly GIGA/ITU skills job. Its GIGA key has
+    # been rejected (401) since September, and every field it wrote besides
+    # the school count — internet, mobile, power, youth population, learning
+    # gap — was modelled around per-LGA hashes. SkillsBridge reads the GRID3
+    # school register instead (scripts/load_grid3_schools.py, twice a year).
+    # Still triggerable by hand via the jobs router.
 
     scheduler.add_job(
         run_weekly_satellite_observations,

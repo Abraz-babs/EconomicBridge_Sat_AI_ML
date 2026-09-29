@@ -21,6 +21,16 @@ SYNTHETIC = "synthetic"
 # NULL-safe: rows from before migration 0053 carry NULL and stay visible.
 NOT_SYNTHETIC = "COALESCE(data_source, '') <> 'synthetic'"
 
+# Farmland alerts that were never a detection: the retired placeholder rows
+# (model_name 'seed', written by scripts/seed_farmland_alerts.py with version
+# 0.0.1, five or six in every tenant) and anything scored by a model trained on
+# synthetic data (the conflict predictor's 0.1.0-dev-synthetic). They stay in
+# the table — no record goes — and never reach a page, a feed or a report.
+REAL_ALERT = (
+    "COALESCE(model_name, '') <> 'seed' "
+    "AND COALESCE(model_version, '') NOT LIKE '%synthetic%'"
+)
+
 STORED_ONLY_WHEN_LIVE = (
     "Shown only: results from modelled or demo data are never stored as detections."
 )

@@ -21,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.engine import get_session
+from services import lga_geo
 from schemas.envelope import ResponseMeta, SuccessResponse
 from schemas.skills import (
     LonLat,
@@ -75,92 +76,51 @@ async def list_indicators(
 ) -> SuccessResponse[SkillsStatsData]:
     tenant_id = _require_tenant(request)
 
-    # Source-preference dedup (Slice 22): a tenant can hold both seed_v1
-    # and live (giga_v1) rows per LGA. DISTINCT ON (lga) keeps one row
-    # per LGA, preferring any live source over seed (priority 0 vs 9),
-    # newest observed_at as tiebreak — so the dashboard shows each LGA
-    # once and auto-upgrades to GIGA/ITU data when an ingest lands.
-    result = await session.execute(
-        text(
+    # Measured counts only (2026-09-29): schools per LGA in the GRID3 school
+    # register. The skills_indicators table this used to read carried
+    # connectivity, power, youth and learning-gap figures modelled around
+    # per-LGA hashes, and GIGA counts binned to the nearest LGA centroid —
+    # none of it is served any more.
+    state = GRID3_STATE.get(tenant_id)
+    rows = []
+    if state:
+        rows = (await session.execute(text(
             """
-            SELECT * FROM (
-                SELECT DISTINCT ON (lga)
-                       id, tenant_id, lga,
-                       ST_X(location) AS lon, ST_Y(location) AS lat,
-                       school_count, school_density_per_10k,
-                       internet_coverage_pct, mobile_coverage_pct,
-                       electricity_reliability, youth_population,
-                       learning_gap_index, observed_at, source,
-                       created_at, updated_at
-                  FROM skills_indicators
-                 ORDER BY lga,
-                          CASE
-                            WHEN source = 'seed_v1' THEN 9
-                            ELSE 0
-                          END,
-                          observed_at DESC
-            ) deduped
-             ORDER BY learning_gap_index DESC
+            SELECT lga, COUNT(*) AS n, MAX(loaded_at) AS loaded_at
+              FROM public.school_register
+             WHERE state = :state AND lga IS NOT NULL
+             GROUP BY lga
+             ORDER BY lga
              LIMIT :limit
             """
-        ),
-        {"limit": limit},
-    )
-    rows = result.mappings().all()
+        ), {"state": state, "limit": limit})).mappings().all()
+
+    def centroid(lga: str) -> LonLat | None:
+        try:
+            c = lga_geo.centroid_for(tenant_id, lga)
+            return LonLat(lon=c[0], lat=c[1])
+        except KeyError:
+            return None
 
     indicators = [
         SkillsIndicatorRow(
-            id=r["id"],
-            tenant_id=r["tenant_id"],
-            lga=r["lga"],
-            location=LonLat(lon=float(r["lon"]), lat=float(r["lat"])),
-            school_count=int(r["school_count"]),
-            school_density_per_10k=float(r["school_density_per_10k"]),
-            internet_coverage_pct=float(r["internet_coverage_pct"]),
-            connectivity_band=_connectivity_band(float(r["internet_coverage_pct"])),
-            mobile_coverage_pct=float(r["mobile_coverage_pct"]),
-            electricity_reliability=float(r["electricity_reliability"]),
-            youth_population=int(r["youth_population"]),
-            learning_gap_index=float(r["learning_gap_index"]),
-            observed_at=r["observed_at"],
-            source=r["source"],
-            created_at=r["created_at"],
-            updated_at=r["updated_at"],
+            tenant_id=tenant_id, lga=r["lga"], location=centroid(r["lga"]),
+            school_count=int(r["n"]), source="grid3_school_register",
+            updated_at=r["loaded_at"],
         )
         for r in rows
     ]
-
-    if indicators:
-        sorted_net = sorted(indicators, key=lambda i: i.internet_coverage_pct)
-        sorted_density = sorted(indicators, key=lambda i: i.school_density_per_10k)
-        median_net = sorted_net[len(sorted_net) // 2].internet_coverage_pct
-        median_density = sorted_density[len(sorted_density) // 2].school_density_per_10k
-        best_conn = sorted_net[-1].lga
-        worst_gap = max(indicators, key=lambda i: i.learning_gap_index).lga
-        most_underserved = sorted_density[0].lga
-        most_schools = max(indicators, key=lambda i: i.school_count).lga
-        total_schools = sum(i.school_count for i in indicators)
-        total_youth = sum(i.youth_population for i in indicators)
-    else:
-        median_net = 0.0
-        median_density = 0.0
-        best_conn = worst_gap = most_underserved = most_schools = None
-        total_schools = 0
-        total_youth = 0
-
-    sources = sorted({i.source for i in indicators})
+    most_schools = max(indicators, key=lambda i: i.school_count).lga if indicators else None
+    sources = ["grid3_school_register"] if indicators else []
 
     return SuccessResponse(
         data=SkillsStatsData(
             tenant_id=tenant_id,
             total_lgas=len(indicators),
-            median_internet_coverage_pct=median_net,
-            median_school_density=median_density,
-            total_schools=total_schools,
-            total_youth_population=total_youth,
-            best_connectivity_lga=best_conn,
-            worst_gap_lga=worst_gap,
-            most_underserved_lga=most_underserved,
+            total_schools=sum(i.school_count for i in indicators),
+            best_connectivity_lga=None,
+            worst_gap_lga=None,
+            most_underserved_lga=None,
             most_schools_lga=most_schools,
             indicators=indicators,
             sources=sources,

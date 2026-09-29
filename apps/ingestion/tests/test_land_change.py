@@ -605,11 +605,15 @@ def test_the_alert_card_explains_itself():
     assert "0.60 to 0.05" in text
 
 
-def test_the_impact_figures_rest_on_the_MEASURED_patch():
-    """Our area is the real patch, not an extent inferred from a severity
-    band — so the livelihood figure is anchored to something measured."""
-    assert round(12.0 * lcs.LIVELIHOODS_PER_HA) == 55
-    assert round(12.0 * lcs.CROP_VALUE_NGN_PER_HA) == 2_400_000
+def test_the_impact_figures_are_measured_not_multiplied():
+    """The patch area is measured; the people are counted from the population
+    map within 2 km. The livelihood and naira ratios once applied to the area
+    are gone (2026-09-29) — nobody measured them."""
+    import inspect
+    assert not hasattr(lcs, "LIVELIHOODS_PER_HA") and not hasattr(lcs, "CROP_VALUE_NGN_PER_HA")
+    src = inspect.getsource(lcs)
+    assert "people_within_2km" in src and "PEOPLE_WITHIN_2KM_SQL" in src
+    assert "livelihoods_at_risk" not in src and "economic_value_ngn" not in src
 
 
 def test_the_land_cover_split_covers_expansion_and_fadama_too():

@@ -211,6 +211,10 @@ def test_connectivity_band_enum_locked():
     schemas = spec["components"]["schemas"]
     indicator = schemas["SkillsIndicatorRow"]
     field = indicator["properties"]["connectivity_band"]
+    # Optional since 2026-09-29 (always null — modelled data withdrawn):
+    # the enum sits inside anyOf alongside null.
+    if "anyOf" in field:
+        field = next(f for f in field["anyOf"] if f.get("type") != "null")
     enum: list[str]
     if "$ref" in field:
         ref = field["$ref"].split("/")[-1]

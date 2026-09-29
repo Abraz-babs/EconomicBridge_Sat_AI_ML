@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_settings
 from db import PILOT_TENANT_IDS, get_session_factory, set_tenant_schema
+from processors.people_nearby import PEOPLE_WITHIN_2KM_SQL
 from sources.copernicus import CopernicusClient, CopernicusError
 from sources.farm_check import bbox_around, classify_health
 from sources.nasa_firms import PILOT_BBOX
@@ -126,19 +127,11 @@ NIGHTLIGHT_SCALE = 3.0        # radiance increase -> 0..1 saturation
 VIIRS_LATENCY_DAYS = 10       # Black Marble publishes ~1 week behind real time
 VIIRS_BASELINE_LAG_DAYS = 45  # baseline = ~6 weeks before the current granule
 
-# Impact ESTIMATES shown on the alert card (model-derived, human_review_required
-# — NOT measured). Anchored to smallholder reality and the seed alerts' own
-# ratios (~4.6 livelihoods/ha, ~₦200k gross crop value/ha/season). Severity sets
-# the base disturbed extent + the conflict-risk window the module advertises
-# (24-72h); the score modulates the extent within the band.
-SEVERITY_IMPACT_HA_HOURS = {
-    "critical": (160, 24),
-    "high":     (90, 48),
-    "medium":   (45, 72),
-    "low":      (20, 96),
-}
-LIVELIHOODS_PER_HA = 4.6
-CROP_VALUE_NGN_PER_HA = 200_000
+# No impact figures are invented (2026-09-29). This detector reads one 3 km
+# box per LGA, so it has no measured disturbance extent, no basis for a
+# livelihood count or a naira value, and no ETA. The only impact an alert
+# carries is measured: the people living within 2 km of it
+# (processors/people_nearby.py, alert_events.people_within_2km, migration 0060).
 
 
 @dataclass
@@ -328,18 +321,6 @@ def _input_hash(tenant: str, latest_obs: date | None) -> str:
     ).encode("utf-8")).hexdigest()
 
 
-def _impact_estimate(severity: str, score: float) -> tuple[int, int, int, int]:
-    """Model-derived (area_ha, livelihoods, economic_value_ngn, breach_hours)
-    for the alert card. ESTIMATES, not measurements — the alert stays
-    human_review_required. Extent scales within the severity band by score.
-    """
-    base_ha, breach_h = SEVERITY_IMPACT_HA_HOURS.get(severity, (20, 96))
-    area_ha = max(1, round(base_ha * (0.7 + 0.6 * min(1.0, score))))
-    livelihoods = round(area_ha * LIVELIHOODS_PER_HA)
-    econ_ngn = round(area_ha * CROP_VALUE_NGN_PER_HA)
-    return area_ha, livelihoods, econ_ngn, breach_h
-
-
 async def _insert_alert(
     session: AsyncSession, *, tenant: str, signal: EncroachmentSignal,
     input_hash: str, trace_id: UUID,
@@ -362,21 +343,17 @@ async def _insert_alert(
     trigger = ", ".join(parts) if parts else "low-level land anomaly"
     where = f" near {lga_name}" if lga_name else ""
     zone = f"Land-surface change risk ({scope_label}){where}: {trigger}"
-    area_ha, livelihoods, econ_ngn, breach_h = _impact_estimate(
-        signal.severity, signal.score)
-    await session.execute(text("""
+    await session.execute(text(f"""
         INSERT INTO alert_events (
             id, tenant_id, alert_type, severity, status, zone_name, lga,
-            location, confidence_score,
-            affected_area_ha, livelihoods_at_risk, economic_value_ngn,
-            predicted_breach_hours, satellite_source, satellite_pass_time,
+            location, confidence_score, people_within_2km,
+            satellite_source, satellite_pass_time,
             model_name, model_version, model_input_hash, shap_values,
             human_review_required, created_at, updated_at, created_by
         ) VALUES (
             :id, :tenant_id, 'conflict', :severity, 'pending_review', :zone, :lga,
             ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :confidence,
-            :area_ha, :livelihoods, :econ_ngn,
-            :breach_h,
+            {PEOPLE_WITHIN_2KM_SQL},
             'Sentinel-2 NDVI + Sentinel-1 SAR + NASA FIRMS (fused land-disturbance risk)',
             NOW(),
             :model_name, :model_version, :hash, CAST(:shap AS JSONB),
@@ -386,8 +363,6 @@ async def _insert_alert(
         "id": uuid4(), "tenant_id": tenant, "severity": signal.severity,
         "zone": zone, "lga": lga_name, "lon": lon, "lat": lat,
         "confidence": signal.score,
-        "area_ha": area_ha, "livelihoods": livelihoods, "econ_ngn": econ_ngn,
-        "breach_h": breach_h,
         "model_name": MODEL_VERSION, "model_version": MODEL_VERSION,
         "hash": input_hash, "shap": json.dumps(signal.components),
         "trace_id": trace_id,
@@ -396,14 +371,13 @@ async def _insert_alert(
     # Permanent record, in addition to the live row above. See migration 0045.
     await _record_watch_history(
         session, tenant=tenant, signal=signal, lga=lga_name, lon=lon, lat=lat,
-        zone_name=zone, area_ha=area_ha, livelihoods=livelihoods,
+        zone_name=zone,
     )
 
 
 async def _record_watch_history(
     session: AsyncSession, *, tenant: str, signal, lga: str | None,
     lon: float | None, lat: float | None, zone_name: str,
-    area_ha: int, livelihoods: int,
 ) -> None:
     """Append this watch to the permanent record (migration 0045).
 
@@ -432,7 +406,7 @@ async def _record_watch_history(
                 observed_date, detector_version
             ) VALUES (
                 :tenant_id, :lga, :lon, :lat, :severity, :score, :zone,
-                CAST(:components AS JSONB), :area_ha, :livelihoods,
+                CAST(:components AS JSONB), NULL, NULL,
                 CURRENT_DATE, :dver
             )
             ON CONFLICT (lga, observed_date) DO NOTHING
@@ -440,7 +414,6 @@ async def _record_watch_history(
             "tenant_id": tenant, "lga": lga, "lon": lon, "lat": lat,
             "severity": signal.severity, "score": signal.score,
             "zone": zone_name, "components": json.dumps(signal.components),
-            "area_ha": area_ha, "livelihoods": livelihoods,
             "dver": MODEL_VERSION,
         })
     except Exception as exc:  # noqa: BLE001 - history must never break a scan

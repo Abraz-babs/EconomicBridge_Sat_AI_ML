@@ -8,9 +8,10 @@ ING_ROOT = Path(__file__).resolve().parent.parent
 if str(ING_ROOT) not in sys.path:
     sys.path.insert(0, str(ING_ROOT))
 
+import tasks.encroachment_detector as enc  # noqa: E402
+from processors.people_nearby import PEOPLE_WITHIN_2KM_SQL  # noqa: E402
 from tasks.encroachment_detector import (  # noqa: E402
-    ALERT_THRESHOLD, MIN_POINTS, _impact_estimate, compute_encroachment,
-    nightlight_newlight,
+    ALERT_THRESHOLD, MIN_POINTS, compute_encroachment, nightlight_newlight,
 )
 
 
@@ -45,24 +46,25 @@ def test_newlight_raises_score_when_ndvi_sar_quiet():
     assert lit.nightlight == 0.8
 
 
-def test_impact_estimate_scales_with_severity():
-    """Higher severity → bigger extent + shorter conflict-risk window."""
-    crit = _impact_estimate("critical", 0.85)
-    med = _impact_estimate("medium", 0.50)
-    # (area_ha, livelihoods, econ_ngn, breach_hours)
-    assert crit[0] > med[0]                 # critical covers more ha
-    assert crit[1] > med[1]                 # more livelihoods
-    assert crit[2] > med[2]                 # more economic value
-    assert crit[3] < med[3]                 # critical breaches sooner
+def test_no_impact_figure_is_invented():
+    """Retired 2026-09-29: the band 'area', livelihoods = area x 4.6, naira =
+    area x 200,000 and the ETA were never measured. The detector keeps none of
+    the machinery that made them, and writes none of the columns."""
+    for gone in ("_impact_estimate", "SEVERITY_IMPACT_HA_HOURS",
+                 "LIVELIHOODS_PER_HA", "CROP_VALUE_NGN_PER_HA"):
+        assert not hasattr(enc, gone), gone
+    import inspect
+    src = inspect.getsource(enc._insert_alert)
+    for col in ("livelihoods_at_risk", "economic_value_ngn", "predicted_breach_hours"):
+        assert col not in src, col
+    assert "people_within_2km" in src and "PEOPLE_WITHIN_2KM_SQL" in src
 
 
-def test_impact_estimate_is_internally_consistent():
-    """Livelihoods and economic value derive from the area at fixed ratios."""
-    area, livelihoods, econ_ngn, breach = _impact_estimate("medium", 0.52)
-    assert area >= 1
-    assert livelihoods == round(area * 4.6)
-    assert econ_ngn == area * 200_000
-    assert breach in (24, 48, 72, 96)
+def test_people_nearby_is_measured_and_unmeasured_is_null():
+    # People at GRID3 villages within 2 km (HRSL); NULL where no village layer.
+    assert "village_light" in PEOPLE_WITHIN_2KM_SQL
+    assert "ST_DWithin" in PEOPLE_WITHIN_2KM_SQL and "2000" in PEOPLE_WITHIN_2KM_SQL
+    assert "THEN NULL" in PEOPLE_WITHIN_2KM_SQL
 
 
 def test_thin_data_returns_none():

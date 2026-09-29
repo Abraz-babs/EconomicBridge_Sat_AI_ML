@@ -12,7 +12,6 @@
  * from one state anchor with deterministic noise (withdrawn 2026-09-26), and
  * the displacement design built on IOM DTM counts was dropped because those
  * are licensed for non-commercial use only — the page links to IOM instead.
- * MobilityMap stays in the repo, unused.
  */
 
 import { useQueryClient } from '@tanstack/react-query';

@@ -68,11 +68,13 @@ class MobilityIndicator:
     """
 
     lga: str
-    cost_of_living_index: float
+    # None where nothing measured it (2026-09-29): the World Bank path no
+    # longer invents a per-LGA cost of living, capacity or population.
+    cost_of_living_index: float | None
     avg_household_income_ngn: int | None
-    income_opportunity_score: float
-    displacement_capacity_index: float
-    population: int
+    income_opportunity_score: float | None
+    displacement_capacity_index: float | None
+    population: int | None
     source: str
     avg_household_income_usd: int | None = None
 

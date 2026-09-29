@@ -221,15 +221,27 @@ def test_compose_richer_state_outearns_poorer_state():
     assert fct_avg > kebbi_avg
 
 
-def test_compose_anchors_opportunity_to_employment():
-    """The income-opportunity score tracks the national employment ratio."""
-    hi = compose_mobility_indicators(
+def test_compose_opportunity_is_the_published_employment_ratio():
+    """The World Bank's national employment-to-population ratio, as published —
+    no per-LGA modulation (2026-09-29)."""
+    rows = compose_mobility_indicators(
         "kebbi", ["Argungu", "Jega"], _anchor(employment_ratio=0.80))
-    lo = compose_mobility_indicators(
-        "kebbi", ["Argungu", "Jega"], _anchor(employment_ratio=0.40))
-    for h, lo_row in zip(hi, lo):
-        assert h.income_opportunity_score > lo_row.income_opportunity_score
-    assert all(0.6 <= r.income_opportunity_score <= 0.98 for r in hi)
+    assert all(r.income_opportunity_score == 0.8 for r in rows)
+    none = compose_mobility_indicators(
+        "kebbi", ["Argungu"], _anchor(employment_ratio=None))
+    assert none[0].income_opportunity_score is None
+
+
+def test_compose_invents_nothing_per_lga():
+    """Income is the state estimate for every LGA (no hashed noise), and cost
+    of living, capacity and population — never measured per LGA — are None."""
+    rows = compose_mobility_indicators("kebbi", ["Argungu", "Jega", "Suru"], _anchor())
+    assert len({r.avg_household_income_usd for r in rows}) == 1
+    assert len({r.avg_household_income_ngn for r in rows}) == 1
+    for r in rows:
+        assert r.cost_of_living_index is None
+        assert r.displacement_capacity_index is None
+        assert r.population is None
 
 
 def test_compose_is_deterministic():

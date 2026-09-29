@@ -69,6 +69,10 @@ class AlertEvent(Base):
     livelihoods_at_risk: Mapped[int | None] = mapped_column(Integer, nullable=True)
     economic_value_ngn: Mapped[float | None] = mapped_column(Float, nullable=True)
     predicted_breach_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Measured impact (migration 0060): people the population map places within
+    # 2 km of the alert. The three columns above are no longer written by the
+    # land detectors — they were band and ratio estimates, not measurements.
+    people_within_2km: Mapped[int | None] = mapped_column(Integer, nullable=True)
     satellite_source: Mapped[str | None] = mapped_column(Text, nullable=True)
     satellite_pass_time: Mapped[datetime | None] = mapped_column(nullable=True)
     model_name: Mapped[str | None] = mapped_column(String(100), nullable=True)

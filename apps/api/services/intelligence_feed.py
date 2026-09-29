@@ -29,7 +29,7 @@ from typing import Iterable, Literal
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services.data_source import NOT_SYNTHETIC
+from services.data_source import NOT_SYNTHETIC, REAL_ALERT
 from services.tenants import PILOT_TENANT_IDS, tenant_schema_name
 
 log = logging.getLogger(__name__)
@@ -144,7 +144,7 @@ async def _gather_tenant_rows(
                '' AS extra
           FROM "{schema}".alert_events
          WHERE COALESCE(satellite_pass_time, created_at) >= :cutoff
-           AND is_deleted = FALSE
+           AND is_deleted = FALSE AND {REAL_ALERT}
 
         UNION ALL
 
@@ -267,8 +267,18 @@ def _row_to_feed_event(tenant_id: str, row: dict) -> FeedEvent | None:
         # A live radar 'flood' is unconfirmed surface water — the 2024 Kebbi
         # backtest found 0 of 11 real floods. Documented disasters keep the name.
         recorded = source.startswith("historical") or source == "seed_v1"
-        emoji = ("Flood" if recorded else RADAR_WATER_LABEL) if et == "flood" \
-            else "Drought" if et == "drought" else "Shock"
+        # Name the reading by the instrument that made it: the rainfall and
+        # storm feeds file their rows as 'flood'/'rainstorm' precursors, but
+        # they measure rain, not water on the ground.
+        if source == "rainstorm_scan_v1":
+            emoji = "Extreme rainfall"
+        elif source == "storm_scan_v1":
+            emoji = "Storm"
+        elif et == "flood":
+            emoji = "Flood" if recorded else RADAR_WATER_LABEL
+        else:
+            emoji = {"drought": "Drought", "rainstorm": "Rainstorm", "windstorm": "Windstorm",
+                     "landslide": "Landslide", "erosion": "Erosion"}.get(et, "Shock")
         return FeedEvent(
             kind=kind,
             tenant_id=tenant_id,

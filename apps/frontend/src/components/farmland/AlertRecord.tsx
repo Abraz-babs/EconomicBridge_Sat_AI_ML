@@ -250,8 +250,7 @@ export default function AlertRecord({ tenantId, stateLabel, focusedKey, onRevisi
                       <div className="fp-record-foot">
                         {e.kind === 'radar_watch' && <ReadLine reads={e.reads} />}
                         <span className="fp-alert-meta fp-record-meta">
-                          {e.affected_area_ha != null && <span>~{Math.round(e.affected_area_ha)} ha</span>}
-                          {e.livelihoods_at_risk != null && <span>{e.livelihoods_at_risk.toLocaleString()} livelihoods</span>}
+                          {e.affected_area_ha != null && <span>~{Math.round(e.affected_area_ha)} ha measured</span>}
                           {e.peak_score != null && <span>score {e.peak_score.toFixed(2)} / {ALERT_BAR.toFixed(2)}</span>}
                         </span>
                         {canShow && (

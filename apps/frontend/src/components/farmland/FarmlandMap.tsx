@@ -33,7 +33,8 @@ export interface FarmlandAlertPoint {
   alertType?: string | null;
   status?: string | null;
   affectedAreaHa?: number | null;
-  livelihoodsAtRisk?: number | null;
+  /** Measured: people living within 2 km (migration 0060). */
+  peopleWithin2km?: number | null;
   predictedBreachHours?: number | null;
   satelliteSource?: string | null;
 }
@@ -114,35 +115,24 @@ const SEVERITY_RGB: Record<AlertSeverity, [number, number, number]> = {
   resolved: [82, 183, 136],
 };
 
-// Sentinel-1 SAR pass cadence (Copernicus): repeat every ~6 days per ROI, with
-// an interleaved descending pass — use a deterministic-from-tenant offset so
-// the "Next pass" indicator differs per tenant without being random.
+// What the map's source line states. Pass TIMES come only from the live N2YO
+// schedule — until 2026-09-29 a fallback here derived "last pass ~N min ago /
+// next pass ~in M min" from the tenant's name, which was invented.
 function satelliteCadence(tenant: Tenant): {
   source: string;
   resolution: string;
   coverage: string;
-  lastPassMin: number;
-  nextPassMin: number;
 } {
-  const seed = tenant.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
-  const lastPassMin = 7 + (seed % 53);
-  const nextPassMin = 30 + ((seed * 7) % 90);
   const coverage =
     tenant.type === 'ng_state'
       ? `Nigeria — ${tenant.name}`
       : tenant.type === 'ng_fct'
       ? 'Nigeria — FCT (Abuja)'
       : `ECOWAS — ${tenant.name}`;
-  const source =
-    tenant.conflict_risk === 'critical'
-      ? 'Copernicus Sentinel-1 SAR + heat'
-      : 'Copernicus Sentinel-1 SAR';
   return {
-    source,
+    source: 'Copernicus Sentinel-1 radar · Sentinel-2 · NASA FIRMS',
     resolution: '10 m / px',
     coverage,
-    lastPassMin,
-    nextPassMin,
   };
 }
 
@@ -757,7 +747,7 @@ export default function FarmlandMap({
       </div>
 
       <div className="fp-map-overlay">
-        {/* Live N2YO data when available, deterministic fallback otherwise. */}
+        {/* Live N2YO pass times only — no invented fallback. */}
         {nextPass ? (
           <>
             {nextPass.satellite_name} ({nextPass.satellite_group})<br />
@@ -777,17 +767,13 @@ export default function FarmlandMap({
             Coverage: {cadence.coverage}
           </>
         ) : (
-          // Live N2YO unavailable / no passes in window → show the MODELED
-          // cadence. Sentinel-1's orbit repeats on a fixed ~6-day cycle, so the
-          // next/last pass is genuinely predictable; we just can't show the
-          // to-the-minute N2YO time without the (unconfigured) live feed.
+          // Live N2YO schedule unavailable or no pass in the window: say so —
+          // never an invented time.
           <>
             {cadence.source}<br />
-            <span className="fp-map-overlay__muted">Modeled SAR cadence · live N2YO not configured</span><br />
-            Last pass: ~{cadence.lastPassMin} min ago<br />
+            <span className="fp-map-overlay__muted">Pass schedule unavailable right now</span><br />
             Resolution: {cadence.resolution}<br />
-            Coverage: {cadence.coverage}<br />
-            Next pass: ~in {cadence.nextPassMin} min
+            Coverage: {cadence.coverage}
           </>
         )}
         <FreshnessLines
@@ -880,12 +866,12 @@ function HoverTooltip({ info }: { info: HoverInfo }) {
       <div className="fp-tt-coord">
         {formatLatLon(a.latitude, a.longitude)}
       </div>
-      {(a.affectedAreaHa != null || a.livelihoodsAtRisk != null) && (
+      {(a.affectedAreaHa != null || a.peopleWithin2km != null) && (
         <div className="fp-tt-metrics">
-          {a.affectedAreaHa != null && <>~{Math.round(a.affectedAreaHa)} ha</>}
-          {a.affectedAreaHa != null && a.livelihoodsAtRisk != null && ' • '}
-          {a.livelihoodsAtRisk != null && (
-            <>{a.livelihoodsAtRisk.toLocaleString()} livelihoods</>
+          {a.affectedAreaHa != null && <>~{Math.round(a.affectedAreaHa)} ha measured</>}
+          {a.affectedAreaHa != null && a.peopleWithin2km != null && ' • '}
+          {a.peopleWithin2km != null && (
+            <>{a.peopleWithin2km.toLocaleString()} people within 2 km</>
           )}
         </div>
       )}
