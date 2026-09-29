@@ -3873,3 +3873,143 @@ nav::-webkit-scrollbar {
   .mcx-vrow { grid-template-columns: minmax(0, 1fr) 90px; }
   .mcx-vrow .mcx-spark { display: none; }
 }
+
+/* ═══ Empty-space fills (2026-09-29): every module fills its frame with the ═══
+   next thing the reader needs — lists beside maps scroll to the map height,
+   charts draw to their card, and states without a data layer show what IS
+   measured there. Order matters: these follow and override the rules above. */
+
+/* ── cropguard ── */
+/* Season watch: the side list takes the map column's height and scrolls, so
+   neither column leaves a hole under the other (the dashboard's list-beside-map
+   rule). The head's right column carries the sources line beside the headline. */
+.swt-main { align-items: stretch; }
+.swt-side { contain: size; overflow-y: auto; min-height: 0; padding-right: 6px; }
+.swt-head { flex-wrap: nowrap; }
+.swt-head-side { flex: 0 1 460px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.swt-head-side .module-sources { margin-top: 0; justify-content: flex-end; text-align: right; }
+.swt-look-pct.is-low { text-transform: capitalize; }
+@media (min-width: 1101px) {
+  .swt-mult { grid-template-columns: repeat(var(--swt-cols, 7), minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) {
+  .swt-head { flex-wrap: wrap; }
+  .swt-head-side { flex-basis: 100%; align-items: flex-start; }
+  .swt-head-side .module-sources { justify-content: flex-start; text-align: left; }
+  .swt-side { contain: none; max-height: 560px; }
+}
+
+/* Market: the every-crop table beside the chart. Rows are the crops a public
+   source publishes for this state; clicking one opens its chart. */
+.cg-glance-table { width: 100%; }
+.cg-glance-table th.is-num, .cg-glance-table td.is-num { text-align: right; }
+.cg-glance-table tbody tr { cursor: pointer; }
+.cg-glance-table tbody tr:hover td, .cg-glance-table tbody tr.is-sel td { background: var(--surface2); }
+.cg-glance-table tbody tr:focus-visible { outline: 2px solid var(--ngo); outline-offset: -2px; }
+.cg-glance-foot { margin-top: 10px; font-size: 9px; letter-spacing: 1px; color: var(--muted); }
+
+/* ── shockguard ── */
+/* Storm list at full width: one storm per row, its figures in aligned columns.
+   Below 1100px the head and cells hide and the compact card returns. */
+.sg-storm-head, .sg-storm-cell { display: none; }
+@media (min-width: 1100px) {
+  .sg-storm-head, .sg-storm {
+    display: grid;
+    grid-template-columns: minmax(220px, 2.2fr) repeat(5, minmax(70px, 1fr)) minmax(110px, 1.2fr) minmax(120px, 1.3fr) minmax(64px, 0.8fr);
+    gap: 12px; align-items: center;
+  }
+  .sg-storm-head {
+    padding: 8px 14px; font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--sgr-muted, var(--muted));
+    border-bottom: 1px solid var(--sgr-line, var(--border));
+  }
+  .sg-storm-cell { display: block; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .sg-storm .fp-alert-desc, .sg-storm .fp-alert-meta { display: none; }
+}
+
+/* Storm room: the side column takes the map column's height and scrolls, so a
+   long day and a short one both fill it; the other storm days sit at its foot. */
+.sgr-main { align-items: stretch; }
+.sgr-listcol { contain: size; overflow-y: auto; min-height: 0; padding-right: 6px; }
+.sg-days-h { margin-top: 12px; }
+.sg-day-row {
+  display: grid; grid-template-columns: 180px minmax(0, 1fr) 64px; gap: 12px; align-items: center;
+  width: 100%; padding: 9px 12px; text-align: left; cursor: pointer;
+  background: transparent; color: var(--sgr-ink); border: 1px solid var(--sgr-line);
+  font: 400 11px/1.3 var(--font-ui);
+}
+.sg-day-row:hover { border-color: var(--sgr-amber); }
+.sg-day-row:focus-visible { outline: 2px solid var(--sgr-amber); outline-offset: 2px; }
+.sg-day-date { font-weight: 500; }
+.sg-day-top { font-size: 10px; color: var(--sgr-muted); }
+.sg-day-mm { text-align: right; font-family: var(--font-serif); font-weight: 700; font-size: 14px; color: var(--sgr-rain); }
+
+/* Header: sources beside the headline, under the chip and day picker. */
+.sgr-head { flex-wrap: nowrap; }
+.sgr-head-side { flex: 0 1 460px; }
+.sgr-head-side .module-sources { margin-top: 0; justify-content: flex-end; text-align: right; }
+@media (max-width: 1100px) {
+  .sgr-head { flex-wrap: wrap; }
+  .sgr-head-side { flex-basis: 100%; align-items: flex-start; }
+  .sgr-head-side .module-sources { justify-content: flex-start; text-align: left; }
+  .sgr-listcol { contain: none; max-height: 560px; }
+}
+
+/* ── farmland-overview-reports ── */
+/* Farmland timeline: low-severity alerts get a quiet grey dot. */
+.fp-tl-low { background: var(--surface2); color: var(--muted); border: 2px solid var(--border2, var(--border)); }
+
+/* People near the alerts: the alerts with the most people nearby, listed
+   (not summed — nearby alerts share villages). */
+.fp-near-list { padding: 12px 16px 4px; display: flex; flex-direction: column; gap: 2px; }
+.fp-near-list .fp-impact-label { margin-bottom: 6px; }
+.fp-near-row {
+  display: grid; grid-template-columns: 110px minmax(0, 1fr) 110px; gap: 10px; align-items: baseline;
+  padding: 6px 0; border-top: 1px solid var(--border); font-size: 11px;
+}
+.fp-near-lga { font-weight: 500; color: var(--ink); }
+.fp-near-place { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-near-people { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── ev-aid-mobility ── */
+/* `.fp-main-row--equal` was declared before `.fp-main-row` at the same
+   specificity, so it never applied and every "equal" row stayed 1.6fr / 1fr.
+   Raised specificity here; the narrow-screen stack still wins below 900px. */
+.fp-main-row.fp-main-row--equal { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 900px) {
+  .fp-main-row.fp-main-row--equal { grid-template-columns: 1fr; }
+}
+
+/* Aid: overlaps follow the gaps in the same scrolling card. */
+.ac-subhead {
+  margin: 14px 0 4px; padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted);
+}
+
+/* Mobility: each village column scrolls inside an even box, so the three
+   columns end level whatever their length. */
+.mcx-vcol { min-height: 0; }
+.mcx-vlist { max-height: 460px; overflow-y: auto; padding-right: 4px; }
+
+/* Header balance (Mobility, SkillsBridge): the sources line sits beside the
+   headline, under the chip, instead of leaving that side blank. */
+.mcx-head-side, .skr-head-side { flex: 0 1 460px; display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
+.mcx-head-side .module-sources, .skr-head-side .module-sources { margin-top: 0; justify-content: flex-end; text-align: right; }
+@media (max-width: 1100px) {
+  .mcx-head-side, .skr-head-side { flex-basis: 100%; align-items: flex-start; }
+  .mcx-head-side .module-sources, .skr-head-side .module-sources { justify-content: flex-start; text-align: left; }
+  .mcx-vlist { max-height: none; }
+}
+
+/* Mobility: storms and advisories per LGA under a short compass table. */
+.mcx-storms { display: flex; flex-direction: column; gap: 2px; margin-top: 16px; }
+.mcx-storms .mcx-notes-label { margin-bottom: 6px; }
+.mcx-storm-row {
+  display: grid; grid-template-columns: minmax(84px, 1fr) 140px 76px 56px; gap: 10px; align-items: center;
+  padding: 6px 4px 6px 0; border: 0; border-top: 1px solid var(--mcx-line); background: transparent;
+  color: var(--mcx-ink); font: 400 11px/1.3 var(--font-ui); text-align: left; cursor: pointer;
+}
+.mcx-storm-row:hover { color: var(--mcx-indigo); }
+.mcx-storm-row:focus-visible { outline: 2px solid var(--mcx-indigo); outline-offset: 2px; }
+.mcx-storm-row > span:nth-child(3), .mcx-storm-row > span:nth-child(4) { text-align: right; font-variant-numeric: tabular-nums; }
+.mcx-storm-bar { display: block; height: 4px; background: var(--mcx-line); }
+.mcx-storm-bar i { display: block; height: 4px; background: #4f8fd6; }

@@ -95,3 +95,26 @@ def test_active_response_names_rows_by_instrument():
     assert event_name("flood", "shockguard_scan_v1") == "Radar surface water"
     assert event_name("drought", "shockguard_scan_v1") == "Greenness below normal"
     assert event_name("flood", "historical_v1") == "Flood"      # a recorded disaster keeps its name
+
+
+def test_overview_fourth_tile_shows_delivered_advisories_until_detections_exist():
+    from routers.overview import _fourth_card
+    from schemas.overview import LastAdvisory
+
+    last = LastAdvisory(sent_at=datetime(2026, 9, 22, 8, 11, tzinfo=timezone.utc),
+                        region="Kebbi", lga="Bunza", recipients=11)
+    card = _fourth_card(0, 4, last)
+    assert card.label == "Farmer SMS advisories" and card.value == "4"
+    assert "22 Sep, Bunza, to 11 farmer leaders" in card.subtitle
+    assert "ResNet" not in card.subtitle          # the model claim went with the zero
+    assert _fourth_card(3, 4, last).label == "Crop-disease detections"
+    assert _fourth_card(0, 0, None).subtitle == "rainfall advisories sent to farmer leaders"
+
+
+def test_farmland_report_people_read_the_measured_column():
+    spec = REPORT_SPECS["farmland"]
+    people = [m for m in spec.metrics if "within 2 km" in m.label]
+    assert people and people[0].column == "people_within_2km"
+    assert "summed" in people[0].label
+    for retired in ("livelihoods_at_risk", "economic_value_ngn", "predicted_breach_hours"):
+        assert retired not in spec.columns

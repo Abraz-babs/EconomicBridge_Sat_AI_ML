@@ -71,16 +71,17 @@ REPORT_SPECS: dict[str, ReportSpec] = {
     "farmland": ReportSpec(
         label="Farmland Protection", table="alert_events", date_col="created_at",
         columns=["created_at", "alert_type", "severity", "status", "lga", "zone_name",
-                 "confidence_score", "affected_area_ha", "livelihoods_at_risk",
-                 "economic_value_ngn", "predicted_breach_hours", "satellite_source",
-                 "model_name", "model_version"],
+                 "confidence_score", "affected_area_ha", "people_within_2km",
+                 "satellite_source", "model_name", "model_version"],
         metrics=[
             Metric("Total alerts", "rows"),
             # Measured only (2026-09-29): hectares from the land-change scan's
             # patch outlines; people from the population map within 2 km of the
             # alert (migration 0060). The per-alert naira value was an area x
             # constant estimate and is no longer written or reported.
-            Metric("People living within 2 km", "sum", "livelihoods_at_risk"),
+            # Summed over alerts: a village within 2 km of two alerts is
+            # counted twice, and the label says so.
+            Metric("People within 2 km, summed over alerts", "sum", "people_within_2km"),
             Metric("Hectares measured", "sum", "affected_area_ha"),
         ],
         breakdown_col="severity", breakdown_title="By severity",

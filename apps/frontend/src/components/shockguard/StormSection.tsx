@@ -66,6 +66,11 @@ function rankPhrase(s: StormRow): string | null {
   return `${ordinal(pct)} pctile of ${s.baseline_days}d`;
 }
 
+/** Wall-clock hour only, for the peak column (the date is in Started). */
+function fmtHour(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
 function sevClass(s: string | null): string {
   const map: Record<string, string> = {
     critical: 'fp-sev-crit', high: 'fp-sev-high',
@@ -90,10 +95,20 @@ export default function StormSection({ tenantId }: { tenantId: string }) {
 
   return (
     <>
+      {/* At full width each storm reads across as a table row — the fields
+          below were returned all along but only a few fitted the old narrow
+          card. Narrow screens keep the card (the header and cells hide). */}
+      {d.storms.length > 0 && (
+        <div className="sg-storm-head" aria-hidden="true">
+          <span>Storm</span><span>Peak rate</span><span>1 h</span><span>3 h</span><span>6 h</span>
+          <span>Lasted</span><span>Own record</span><span>Started</span><span>Peak</span>
+        </div>
+      )}
       {d.storms.map((s) => {
         const rank = rankPhrase(s);
         return (
-          <div key={s.id} className="fp-alert-item">
+          <div key={s.id} className="fp-alert-item sg-storm">
+            <div className="sg-storm-main">
             <div className="fp-alert-top">
               <span className="fp-alert-location">
                 🌧 STORM · {s.lga}
@@ -121,6 +136,15 @@ export default function StormSection({ tenantId }: { tenantId: string }) {
               {rank && <span>{rank}</span>}
               <span>{fmtWhen(s.started_at)}</span>
             </div>
+            </div>
+            <span className="sg-storm-cell">{fmtRate(s.peak_mm_hr)}</span>
+            <span className="sg-storm-cell">{fmtMm(s.max_1h_mm)}</span>
+            <span className="sg-storm-cell">{fmtMm(s.max_3h_mm)}</span>
+            <span className="sg-storm-cell">{fmtMm(s.max_6h_mm)}</span>
+            <span className="sg-storm-cell">{fmtDur(s.duration_h)}</span>
+            <span className="sg-storm-cell">{rank ?? '—'}</span>
+            <span className="sg-storm-cell">{fmtWhen(s.started_at)}</span>
+            <span className="sg-storm-cell">{fmtHour(s.peak_at)}</span>
           </div>
         );
       })}

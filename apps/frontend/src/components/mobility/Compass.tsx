@@ -416,6 +416,11 @@ export default function Compass({ tenant, stateLabel }: { tenant: Tenant; stateL
             walk to a health facility, health facilities per person, and what food and fuel cost — side by
             side, never blended into a score.
           </p>
+        </div>
+        <div className="mcx-head-side">
+          <span className="mcx-chip">
+            {factorCount} FACTORS · MEASURED{first ? ` · ${first}–${cp?.season_year ?? last}` : ''}
+          </span>
           <ModuleSources sources={[
             { name: 'NASA VIIRS Black Marble', role: 'light at night, every year since 2012' },
             { name: 'Copernicus Sentinel-2', role: 'farmland greenness this season' },
@@ -426,9 +431,6 @@ export default function Compass({ tenant, stateLabel }: { tenant: Tenant; stateL
             { name: 'NASA GPM IMERG', role: 'storms this season' },
           ]} />
         </div>
-        <span className="mcx-chip">
-          {factorCount} FACTORS · MEASURED{first ? ` · ${first}–${cp?.season_year ?? last}` : ''}
-        </span>
       </div>
 
       {trend.isError && <div className="fp-alert-error">Could not load the night-light record: {trend.error?.message ?? 'unknown'}</div>}
@@ -608,6 +610,21 @@ export default function Compass({ tenant, stateLabel }: { tenant: Tenant; stateL
                     })}
                   </div>
                 </div>
+                {/* A small state's table stops half way down the map: fill the rest
+                    with the storm factor, per LGA (until now only in the pop-up). */}
+                {rows.length <= 10 && rows.some((r) => r.storms > 0 || r.advisories > 0) && (
+                  <div className="mcx-storms">
+                    <span className="mcx-notes-label">Storms and farmer SMS advisories{cp?.season_since ? ` since ${new Date(`${cp.season_since}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}` : ' this season'}</span>
+                    {[...rows].sort((a, b) => b.storms - a.storms || a.lga.localeCompare(b.lga)).map((r) => (
+                      <button key={r.lga} type="button" className="mcx-storm-row" onClick={() => setSel({ kind: 'lga', lga: r.lga })}>
+                        <span>{r.lga}</span>
+                        <span className="mcx-storm-bar"><i style={{ width: `${Math.min(100, (100 * r.storms) / Math.max(1, ...rows.map((x) => x.storms)))}%` }} /></span>
+                        <span>{r.storms} storm{r.storms === 1 ? '' : 's'}</span>
+                        <span>{r.advisories ? `${r.advisories} SMS` : '—'}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <span className="mcx-kpi-src mcx-cfoot">
                   Most signals first, then by change in light, darkest first.
                   {cp?.facilities_release ? ` Facilities: GRID3 ${cp.facilities_release}.` : ' Facilities: not in the GRID3 register for this state.'}
@@ -711,24 +728,26 @@ export default function Compass({ tenant, stateLabel }: { tenant: Tenant; stateL
       )}
 
       {(gone.length > 0 || fresh.length > 0 || far.length > 0) && (
-        <section className={`mcx-villages ${far.length ? 'mcx-villages--3' : ''}`}>
+        <section className={`mcx-villages ${far.length && gone.length ? 'mcx-villages--3' : ''}`}>
+          {gone.length > 0 && (
           <VillageColumn
             head="Villages that went dark" dot="mcx-dot--indigo"
             why={`Lit in ${base}, no light for the last three years on both of NASA’s yearly composites — ${n0(data?.gone_dark)} villages in all. Most people first.`}
             empty={`None in ${stateLabel}.`}
-            items={gone.slice(0, 6).map((v, i) => ({
+            items={gone.slice(0, 12).map((v, i) => ({
               key: `g-${i}`, name: v.name, sub: `${v.lga} LGA · dark since ${v.since_year ?? '—'}`,
               right: `${n0(v.people)} people`,
               spark: <Spark values={v.near_nadir} w={96} h={24} colour={INDIGO_TXT} />,
               onClick: () => { setLayersOn((s) => ({ ...s, gone: true })); setSel({ kind: 'village', list: 'gone', i }); },
             }))}
           />
+          )}
           {far.length > 0 && (
             <VillageColumn
               head="Farthest from care" dot="mcx-dot--rust"
               why="Modelled walking time to the nearest health facility, on roads, tracks and open ground. Villages of 300 people or more; longest first. The longest times often mark places with no mapped roads — somewhere to check, not a measured journey."
               empty=""
-              items={far.slice(0, 6).map((v, i) => ({
+              items={far.slice(0, 12).map((v, i) => ({
                 key: `f-${i}`, name: v.name,
                 sub: `${v.lga} LGA · ${duration(v.walk_min)} walk · ${duration(v.drive_min)} with transport`,
                 right: `${n0(v.people)} people`,
@@ -740,7 +759,7 @@ export default function Compass({ tenant, stateLabel }: { tenant: Tenant; stateL
             head="Villages newly lit" dot="mcx-dot--amber"
             why={`Dark in ${base}, clearly lit for the last three years on both of NASA’s yearly composites — ${n0(data?.newly_lit)} villages in all. Most people first.`}
             empty={`None in ${stateLabel}.`}
-            items={fresh.slice(0, 6).map((v, i) => ({
+            items={fresh.slice(0, 12).map((v, i) => ({
               key: `n-${i}`, name: v.name, sub: `${v.lga} LGA · first lit ${v.since_year ?? '—'}`,
               right: `${n0(v.people)} people`,
               spark: <Spark values={v.near_nadir} w={96} h={24} colour={AMBER_TXT} />,
@@ -748,6 +767,9 @@ export default function Compass({ tenant, stateLabel }: { tenant: Tenant; stateL
             }))}
           />
         </section>
+      )}
+      {gone.length === 0 && (far.length > 0 || fresh.length > 0) && data?.available && (
+        <span className="mcx-kpi-src">No village in {stateLabel} went dark: none lit in {base} has been dark for the last three years on both of NASA&rsquo;s yearly composites.</span>
       )}
 
       <section className="mcx-notes mcx-notes--3">
@@ -801,13 +823,18 @@ function VillageColumn({ head, dot, why, empty, items }: {
       </div>
       <span className="mcx-note">{why}</span>
       {items.length === 0 && empty && <span className="mcx-note">{empty}</span>}
-      {items.map((it) => (
-        <button key={it.key} type="button" className={`mcx-vrow ${it.spark ? '' : 'mcx-vrow--nospark'}`} onClick={it.onClick}>
-          <span className="mcx-vrow-main"><b>{it.name}</b><span>{it.sub}</span></span>
-          {it.spark}
-          <span className="mcx-vrow-people">{it.right}</span>
-        </button>
-      ))}
+      {/* Up to twelve, scrolling in an even box, so the three columns match. */}
+      {items.length > 0 && (
+        <div className="mcx-vlist">
+          {items.map((it) => (
+            <button key={it.key} type="button" className={`mcx-vrow ${it.spark ? '' : 'mcx-vrow--nospark'}`} onClick={it.onClick}>
+              <span className="mcx-vrow-main"><b>{it.name}</b><span>{it.sub}</span></span>
+              {it.spark}
+              <span className="mcx-vrow-people">{it.right}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

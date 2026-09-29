@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
 import {
@@ -183,9 +183,20 @@ function ScanSummary({ scan }: { scan: NdviScanData }) {
 
 
 function NdviChart({ scan }: { scan: NdviScanData }) {
-  const w = 720;
+  // Draw to the card's width — a fixed 720 units sat centred in a full-width
+  // card with ~580px blank either side.
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [boxW, setBoxW] = useState(0);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([e]) => setBoxW(Math.round(e.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const w = boxW > 0 ? Math.max(360, boxW) : 720;
   const h = 240;
-  const padL = 50, padR = 12, padT = 18, padB = 32;
+  const padL = 50, padR = 26, padT = 18, padB = 32;
   const plotW = w - padL - padR;
   const plotH = h - padT - padB;
 
@@ -222,6 +233,7 @@ function NdviChart({ scan }: { scan: NdviScanData }) {
   const yTicks = [0, 0.25, 0.5, 0.75, 1.0];
 
   return (
+    <div ref={boxRef} className="cg-ndvi-chart">
     <svg
       viewBox={`0 0 ${w} ${h}`}
       width="100%"
@@ -303,5 +315,6 @@ function NdviChart({ scan }: { scan: NdviScanData }) {
         recent {RECENT_WINDOW_DAYS}d
       </text>
     </svg>
+    </div>
   );
 }

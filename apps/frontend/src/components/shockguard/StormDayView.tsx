@@ -28,6 +28,7 @@ import { useVillageLight } from '@/hooks/useVillageLight';
 import {
   impactRainMm,
   useStormImpact,
+  useStorms,
   type ImpactRow,
   type ShockEventRow,
 } from '@/hooks/useShockGuard';
@@ -92,6 +93,9 @@ export default function StormDayView({ tenant, stateLabel, events = [] }: {
 }) {
   const [day, setDay] = useState<string | null>(null);
   const impact = useStormImpact(tenant.id, day);
+  // The storm record, for the "other storm days" list under the cards: each
+  // day's heaviest LGA, so the reader can jump to it.
+  const stormsQ = useStorms({ tenantId: tenant.id, limit: 100 });
   const villagesQ = useVillageLight(tenant.id);
   const lgasQ = useLgaBoundaries(tenant.id);
 
@@ -223,6 +227,15 @@ export default function StormDayView({ tenant, stateLabel, events = [] }: {
     node: <ImpactCard row={sel} onClose={() => setSelected(null)} />,
   } : null;
 
+  // Storm days other than the one shown, newest first, with each day's
+  // heaviest storm (Nigeria time, the day the storm room reads by).
+  const nigeriaDay = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' });
+  const otherDays = (data?.days_available ?? []).filter((d) => d !== shownDay).map((d) => {
+    const onDay = (stormsQ.data?.storms ?? []).filter((st) => nigeriaDay(st.started_at) === d);
+    const top = onDay.reduce<typeof onDay[number] | null>((m, st) => (!m || st.total_mm > m.total_mm ? st : m), null);
+    return { day: d, top, lgas: new Set(onDay.map((st) => st.lga)).size };
+  });
+
   const timeline = rows.filter((r) => r.storm && shownDay)
     .sort((a, b) => Date.parse(a.storm!.started_at) - Date.parse(b.storm!.started_at));
 
@@ -244,13 +257,6 @@ export default function StormDayView({ tenant, stateLabel, events = [] }: {
             own record. We report the rain and who lives under it — whether a place flooded is
             confirmed on the ground.
           </p>
-          <ModuleSources sources={[
-            { name: 'NASA GPM IMERG', role: 'rainfall, every half hour' },
-            { name: 'Meta & CIESIN HRSL', role: 'people and under-fives' },
-            { name: 'GRID3 · NASA VIIRS', role: 'villages and light at night' },
-            { name: 'NEMA · IOM DTM · press', role: 'recorded disasters' },
-            { name: 'Copernicus Sentinel-1', role: 'radar surface-water check, experimental' },
-          ]} />
         </div>
         <div className="sgr-head-side">
           <span className="sgr-chip">LIVE · NASA GPM IMERG · HALF-HOURLY</span>
@@ -262,6 +268,13 @@ export default function StormDayView({ tenant, stateLabel, events = [] }: {
               </select>
             </label>
           )}
+          <ModuleSources sources={[
+            { name: 'NASA GPM IMERG', role: 'rainfall, every half hour' },
+            { name: 'Meta & CIESIN HRSL', role: 'people and under-fives' },
+            { name: 'GRID3 · NASA VIIRS', role: 'villages and light at night' },
+            { name: 'NEMA · IOM DTM · press', role: 'recorded disasters' },
+            { name: 'Copernicus Sentinel-1', role: 'radar surface-water check, experimental' },
+          ]} />
         </div>
       </div>
 
@@ -356,7 +369,7 @@ export default function StormDayView({ tenant, stateLabel, events = [] }: {
         <div className="sgr-listcol">
           <h3 className="sgr-h2">Who was under the heaviest rain</h3>
           {impact.isLoading && <div className="fp-alert-empty">Loading…</div>}
-          {rows.slice(0, 6).map((r) => (
+          {rows.map((r) => (
             <button
               key={r.lga}
               type="button"
@@ -384,6 +397,26 @@ export default function StormDayView({ tenant, stateLabel, events = [] }: {
               </span>
             </button>
           ))}
+          {otherDays.length > 0 && (
+            <>
+              <h3 className="sgr-h2 sg-days-h">Other storm days</h3>
+              {otherDays.map((o) => (
+                <button
+                  key={o.day}
+                  type="button"
+                  className="sg-day-row"
+                  onClick={() => { setDay(o.day); pickLga(null); }}
+                >
+                  <span className="sg-day-date">{dayLong(o.day)}</span>
+                  <span className="sg-day-top">
+                    {o.top ? <>Heaviest: {o.top.lga}</> : 'Open the day'}
+                    {o.lgas > 1 ? <> · {o.lgas} LGAs</> : null}
+                  </span>
+                  <span className="sg-day-mm">{o.top ? `${o.top.total_mm.toFixed(0)} mm` : ''}</span>
+                </button>
+              ))}
+            </>
+          )}
         </div>
       </div>
 

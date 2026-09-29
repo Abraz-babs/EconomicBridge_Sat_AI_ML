@@ -7,6 +7,9 @@ import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
 import { formatLatLon } from '@/lib/display';
 import { downloadVillageList, useVillageLight, type UnlitVillage } from '@/hooks/useVillageLight';
+import { useSchoolReach } from '@/hooks/useSchoolReach';
+import { useCompass } from '@/hooks/useCompass';
+import { useAidCoordination } from '@/hooks/useAidCoordination';
 import VillageLightMap, { type Season } from './VillageLightMap';
 import ModuleSources from '@/components/common/ModuleSources';
 
@@ -39,6 +42,19 @@ export default function EconomicVisibilityPanel() {
   const query = useVillageLight(activeTenantId);
   const data = query.data;
   const s = data?.stats ?? null;
+  // Beside "Where to act first": what the other modules measured in the same
+  // LGAs — schools without light, reported aid, and distance to care.
+  const reachQ = useSchoolReach(activeTenantId);
+  const compassQ = useCompass(activeTenantId);
+  const aidQ = useAidCoordination({ tenantId: activeTenantId });
+  const other = useMemo(() => {
+    const key = (x: string) => x.trim().toLowerCase();
+    const reach = new Map((reachQ.data?.available ? reachQ.data.lgas : []).map((r) => [key(r.lga), r]));
+    const comp = new Map((compassQ.data?.available ? compassQ.data.lgas : []).map((r) => [key(r.lga), r]));
+    const aidPts = new Map((aidQ.data?.lga_points ?? []).map((p) => [key(p.lga), p]));
+    const aidGaps = new Set((aidQ.data?.gap_lgas ?? []).map(key));
+    return { reach, comp, aidPts, aidGaps, key, hasAid: Boolean(aidQ.data) };
+  }, [reachQ.data, compassQ.data, aidQ.data]);
   const [season, setSeason] = useState<Season>('dry');
   const [focus, setFocus] = useState<{ lng: number; lat: number; zoom?: number } | null>(null);
   // Data downloads are a paid service: only the super-admin sees the buttons
@@ -245,6 +261,11 @@ export default function EconomicVisibilityPanel() {
                     <div className="ev-card-num">{fmt(insight.litVillages)}</div>
                     <div className="ev-card-sub">villages, home to {fmt(insight.litPeople)} people — where supply already reaches</div>
                   </div>
+                  <div className="ev-card">
+                    <div className="ev-card-label">Dim at night</div>
+                    <div className="ev-card-num">{fmt(s.dim)}</div>
+                    <div className="ev-card-sub">of those villages show only faint light — some supply reaches, not enough to read as lit</div>
+                  </div>
                 </div>
               )}
             </div>
@@ -317,6 +338,38 @@ export default function EconomicVisibilityPanel() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+            <div className="fp-timeline">
+              <div className="fp-timeline-header">The same LGAs — what the other modules measured</div>
+              <div className="ev-lga-table-wrap eb-scroll">
+                <table className="ev-lga-table">
+                  <thead>
+                    <tr><th>LGA</th><th>Schools, no light within 2 km</th><th>Aid reported</th><th>Over 1 h walk to care</th><th>Health facilities / 10k</th></tr>
+                  </thead>
+                  <tbody>
+                    {data.lgas.map((g) => {
+                      const k = other.key(g.lga);
+                      const r = other.reach.get(k);
+                      const c = other.comp.get(k);
+                      const a = other.aidPts.get(k);
+                      return (
+                        <tr key={g.lga}>
+                          <td>{g.lga}</td>
+                          <td>{r ? `${fmt(r.dark)} of ${fmt(r.assessed)}` : '—'}</td>
+                          <td>{!other.hasAid ? '—' : a && a.agency_count > 0 ? `${a.agency_count} org${a.agency_count === 1 ? '' : 's'}` : other.aidGaps.has(k) ? 'None reported' : '—'}</td>
+                          <td>{c?.over_hour_walk_share != null ? `${Math.round(100 * c.over_hour_walk_share)}%` : '—'}</td>
+                          <td>{c?.facilities_per_10k != null ? c.facilities_per_10k.toFixed(1) : '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <div className="fp-impact-footnote" style={{ padding: '8px 12px' }}>
+                Schools: GRID3 register × NASA VIIRS (SkillsBridge). Aid: organisations publishing to IATI — &ldquo;none
+                reported&rdquo; is not proof of no aid. Walk time: modelled travel time to the nearest facility (Data for
+                Children Collaborative). Facilities: GRID3 health facilities. &ldquo;—&rdquo; means not measured for that LGA.
               </div>
             </div>
           </div>

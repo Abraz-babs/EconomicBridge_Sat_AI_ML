@@ -11,7 +11,7 @@
  * check, not a diagnosis.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { GeoJsonLayer, ScatterplotLayer } from '@deck.gl/layers';
 
 import EBMap from '@/components/map/EBMap';
@@ -86,6 +86,11 @@ export default function SeasonWatch({ tenant, stateLabel }: { tenant: Tenant; st
   }, [tenant.id]);
 
   const data = season.data;
+  const noSeason = !season.isLoading && !(data?.lgas ?? []).some((r) => r.like_for_like_pct != null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLayersOn((s) => (s.health === noSeason ? s : { ...s, health: noSeason }));
+  }, [tenant.id, noSeason]);
   const lgas = useMemo(() => data?.lgas ?? [], [data]);
   const patches = useMemo(() => data?.patches ?? [], [data]);
   const byLga = useMemo(() => new Map(lgas.map((r) => [r.lga, r])), [lgas]);
@@ -193,11 +198,25 @@ export default function SeasonWatch({ tenant, stateLabel }: { tenant: Tenant; st
   const comparable = lgas.filter((r) => r.like_for_like_pct != null);
   const behind = comparable.filter((r) => (r.like_for_like_pct ?? 0) < 0);
   const seen = lgas.map((r) => r.seen_pct).filter((v): v is number => v != null);
-  const lookFirst = comparable.slice(0, 5);
+  // Five LGAs normally; every LGA when no patch stopped growing, so a small
+  // state's column is not left half empty.
+  const lookFirst = comparable.slice(0, (data?.patches ?? []).length ? 5 : comparable.length);
   const healthCounts = healthRows.reduce<Record<string, number>>((m, h) => ({ ...m, [h.health]: (m[h.health] ?? 0) + 1 }), {});
   // A row exists once the sweep visited an LGA, but a reading is real only when
   // NDVI came back — so coverage is stated, not implied (as the old crop-health panel did).
   const withReading = healthRows.filter((h) => h.ndvi != null).length;
+  // Where there is no season comparison, the current Sentinel-2 reading is the
+  // real signal: the districts reading stressed, poor or bare, worst first.
+  const WEAK = ['bare', 'poor', 'stressed'];
+  const weakNow = healthRows
+    .filter((h) => h.ndvi != null && WEAK.includes(h.health))
+    .sort((a, b) => WEAK.indexOf(a.health) - WEAK.indexOf(b.health) || (a.ndvi ?? 0) - (b.ndvi ?? 0));
+  const readDates = healthRows.map((h) => h.ndvi_date).filter((d): d is string => !!d).sort();
+  const readSpan = readDates.length
+    ? (dayShort(readDates[0]) === dayShort(readDates[readDates.length - 1])
+      ? dayShort(readDates[0]) : `${dayShort(readDates[0])} – ${dayShort(readDates[readDates.length - 1])}`)
+    : null;
+  const areaWord = tenant.type === 'ecowas_country' ? 'districts' : 'LGAs';
 
   return (
     <section className="swt" aria-labelledby="swt-title">
@@ -208,15 +227,23 @@ export default function SeasonWatch({ tenant, stateLabel }: { tenant: Tenant; st
           </span>
           <h2 id="swt-title" className="swt-h1">
             {season.isLoading ? 'Reading the season…'
-              : !comparable.length ? <>Season measurements for {stateLabel} are not available yet.</>
+              : !comparable.length
+                ? (withReading
+                  ? <>Latest Sentinel-2 reading at each of {stateLabel}&rsquo;s {areaWord}: {weakNow.length} of {withReading} stressed, poor or bare.</>
+                  : <>Season measurements for {stateLabel} are not available yet.</>)
                 : behind.length === 0
                   ? <>A greener season across {stateLabel} — all {comparable.length} LGAs are ahead of last year on the same ground.</>
                   : <>{behind.length} of {comparable.length} LGAs are behind last season on the same ground.</>}
           </h2>
           <p className="swt-sub">
-            Every farmland pixel from Copernicus Sentinel-2: this season&rsquo;s peak greenness
-            against the {prev ?? 'previous'} rains, over the ground both seasons could see through cloud.
+            {noSeason && withReading > 0
+              ? <>One Copernicus Sentinel-2 reading per {areaWord === 'districts' ? 'district' : 'LGA'}, at a sample point near its centre, from the latest cloud-free pass. The season scan, which measures every farmland pixel, covers the Nigerian pilots first.</>
+              : <>Every farmland pixel from Copernicus Sentinel-2: this season&rsquo;s peak greenness
+                against the {prev ?? 'previous'} rains, over the ground both seasons could see through cloud.</>}
           </p>
+        </div>
+        <div className="swt-head-side">
+          <span className="swt-chip">LIVE · SENTINEL-2{lastPass ? ` · LAST PASS ${dayShort(lastPass).toUpperCase()}` : ''}</span>
           <ModuleSources sources={[
             { name: 'Copernicus Sentinel-2', role: 'crop health and season change, every farmland pixel' },
             { name: 'Copernicus Sentinel-1', role: 'radar, Farm Check' },
@@ -226,7 +253,6 @@ export default function SeasonWatch({ tenant, stateLabel }: { tenant: Tenant; st
             { name: 'EconomicBridge leaf model', role: 'leaf-photo check, tested on lab images' },
           ]} />
         </div>
-        <span className="swt-chip">LIVE · SENTINEL-2{lastPass ? ` · LAST PASS ${dayShort(lastPass).toUpperCase()}` : ''}</span>
       </div>
 
       {season.isError && <div className="fp-alert-error">Could not load the season: {season.error?.message ?? 'unknown'}</div>}
@@ -252,6 +278,31 @@ export default function SeasonWatch({ tenant, stateLabel }: { tenant: Tenant; st
             <span className="swt-kpi-val">{seen.length ? `${Math.min(...seen)}–${Math.max(...seen)}%` : '—'}</span>
             <span className="swt-kpi-label">of each LGA seen clearly enough to compare</span>
             <span className="swt-kpi-src">Cloud gaps shown, never filled</span>
+          </div>
+        </div>
+      )}
+
+      {!comparable.length && withReading > 0 && (
+        <div className="swt-kpis">
+          <div className="swt-kpi">
+            <span className="swt-kpi-val">{n0(withReading)}</span>
+            <span className="swt-kpi-label">{areaWord} with a current reading at their sample point, of {n0(healthRows.length)}</span>
+            <span className="swt-kpi-src">{readSpan ? `Read ${readSpan}` : 'Copernicus Sentinel-2'}</span>
+          </div>
+          <div className="swt-kpi">
+            <span className="swt-kpi-val">{n0(weakNow.length)}</span>
+            <span className="swt-kpi-label">{areaWord} reading stressed, poor or bare now</span>
+            <span className="swt-kpi-src">{WEAK.map((k) => `${healthCounts[k] ?? 0} ${k}`).join(' · ')}</span>
+          </div>
+          <div className="swt-kpi">
+            <span className="swt-kpi-val swt-kpi-val--leaf">{n0((healthCounts.healthy ?? 0) + (healthCounts.moderate ?? 0))}</span>
+            <span className="swt-kpi-label">{areaWord} reading healthy or moderate</span>
+            <span className="swt-kpi-src">{healthCounts.healthy ?? 0} healthy · {healthCounts.moderate ?? 0} moderate</span>
+          </div>
+          <div className="swt-kpi">
+            <span className="swt-kpi-val">—</span>
+            <span className="swt-kpi-label">season-on-season comparison — not run for {stateLabel} yet</span>
+            <span className="swt-kpi-src">The season scan covers the Nigerian pilots first</span>
           </div>
         </div>
       )}
@@ -301,8 +352,20 @@ export default function SeasonWatch({ tenant, stateLabel }: { tenant: Tenant; st
 
         <div className="swt-side">
           <section className="swt-block">
-            <h3 className="swt-h2">Where to send officers first</h3>
-            <p className="swt-note">The LGAs gaining least on last season, with the patches inside them that stopped growing.</p>
+            <h3 className="swt-h2">{comparable.length > 0 || !withReading ? 'Where to send officers first' : 'Weakest readings now'}</h3>
+            {comparable.length > 0
+              ? <p className="swt-note">The LGAs gaining least on last season, with the patches inside them that stopped growing.</p>
+              : weakNow.length > 0
+                ? <p className="swt-note">Worst first. Each is one sample point — a built-up centre reads bare — so look at the ground before acting.</p>
+                : !season.isLoading && <p className="fp-alert-empty">No {areaWord} read stressed, poor or bare on the latest pass.</p>}
+            {!comparable.length && weakNow.map((h) => (
+              <button key={h.id} type="button" className="swt-look" onClick={() => setSel({ kind: 'lga', lga: h.lga })}>
+                <span className="swt-look-lga">{h.lga}</span>
+                <span className="swt-look-pct is-low">{h.health}</span>
+                <span className="swt-look-body">{h.verdict}</span>
+                <span className="swt-look-ndvi">NDVI {h.ndvi?.toFixed(2)}{h.ndvi_date ? ` · ${dayShort(h.ndvi_date)}` : ''}</span>
+              </button>
+            ))}
             {lookFirst.map((r) => {
               const h = healthBy.get(r.lga);
               return (
@@ -321,7 +384,14 @@ export default function SeasonWatch({ tenant, stateLabel }: { tenant: Tenant; st
           </section>
           <section className="swt-block">
             <h3 className="swt-h2">Patches that stopped growing</h3>
-            {patches.slice(0, 4).map((p, i) => (
+            {!season.isLoading && patches.length === 0 && (
+              <p className="fp-alert-empty">
+                {comparable.length
+                  ? `No patch of farmland stopped growing in ${stateLabel} this season.`
+                  : `Patch detection is not run for ${stateLabel} yet.`}
+              </p>
+            )}
+            {patches.map((p, i) => (
               <div key={`${p.lga}-${i}`} className="swt-patch">
                 <div className="swt-patch-top">
                   <button type="button" className="swt-patch-title" onClick={() => setSel({ kind: 'patch', i })}>
@@ -351,7 +421,7 @@ export default function SeasonWatch({ tenant, stateLabel }: { tenant: Tenant; st
             <h3 className="swt-h2">{years.length === 3 ? 'Three' : years.length} rainy seasons, same LGA</h3>
             <span className="swt-kpi-src">Farmland that greened each season · {years.join(' · ')}</span>
           </div>
-          <div className="swt-mult">
+          <div className="swt-mult" style={{ '--swt-cols': Math.min(7, Math.max(1, lgas.length)) } as CSSProperties}>
             {[...lgas].sort((a, b) => a.lga.localeCompare(b.lga)).map((r) => {
               const vals = years.map((yy) => r.farmland_ha[String(yy)] ?? 0);
               const mx = Math.max(1, ...vals);

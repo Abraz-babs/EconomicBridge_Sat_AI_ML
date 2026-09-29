@@ -270,15 +270,17 @@ export default function SchoolReach({ tenant, stateLabel }: { tenant: Tenant; st
             {data ? `${n0(data.schools)} schools` : 'Every school'} from the GRID3 school register, each checked
             against NASA VIIRS night light at the villages around it, and the people who live there.
           </p>
+        </div>
+        <div className="skr-head-side">
+          <span className="skr-chip">
+            GRID3 SCHOOLS · NASA VIIRS{data?.light_round ? ` ${data.light_round}` : ''} · META &amp; CIESIN
+          </span>
           <ModuleSources sources={[
             { name: 'GRID3', role: 'school register with LGA names, village names' },
             { name: 'NASA VIIRS Black Marble', role: 'light at villages within 2 km' },
             { name: 'Meta & CIESIN HRSL', role: 'people and under-fives' },
           ]} />
         </div>
-        <span className="skr-chip">
-          GRID3 SCHOOLS · NASA VIIRS{data?.light_round ? ` ${data.light_round}` : ''} · META &amp; CIESIN
-        </span>
       </div>
 
       {reach.isError && <div className="fp-alert-error">Could not load the school register: {reach.error?.message ?? 'unknown'}</div>}

@@ -17,6 +17,7 @@ import AlertSpotlight from './AlertSpotlight';
 import FarmlandMap, { type FarmlandAlertPoint } from './FarmlandMap';
 import FieldDirections, { GRID3_CREDIT } from '@/components/common/FieldDirections';
 import ModuleSources from '@/components/common/ModuleSources';
+import { useCropSeason } from '@/hooks/useCropSeason';
 
 /** A record entry in the shape the Spotlight already renders, so a revisited
  *  alert gets the same imagery deep-dive as a live one without the Spotlight
@@ -155,7 +156,7 @@ function altMetaLine(a: AlertResponse): string[] {
 
 interface TimelineEvent {
   key: string;
-  dot: 'fp-tl-crit' | 'fp-tl-warn' | 'fp-tl-ok';
+  dot: 'fp-tl-crit' | 'fp-tl-warn' | 'fp-tl-ok' | 'fp-tl-low';
   icon: string;
   time: string;
   event: string;
@@ -231,21 +232,25 @@ function deriveTimeline(alerts: AlertResponse[], stateLabel: string): TimelineEv
       });
     }
 
-    // Group 2 — projected future breach (predicted by the model)
-    if (a.status !== 'resolved' && a.predicted_breach_hours != null) {
+    // Group 2 — every other pending alert, newest first. The timeline used to
+    // list only critical/high, so a state whose alerts were all medium or low
+    // showed one row and a blank card. (A "predicted breach window" group was
+    // removed on 2026-09-29 with the invented field it read.)
+    if (a.status === 'pending_review' && a.severity !== 'critical' && a.severity !== 'high') {
+      const np = a.nearest_place;
       out.push({
-        key: `${a.id}-proj`,
-        dot: 'fp-tl-warn',
-        icon: '~',
-        time: `T+${a.predicted_breach_hours}h · Projected — ${lga}`,
-        event: 'Predicted breach window',
+        key: `${a.id}-pending`,
+        dot: a.severity === 'medium' ? 'fp-tl-warn' : 'fp-tl-low',
+        icon: '·',
+        time: `${pastLabel(ageH)} · ${lga}`,
+        event: `${a.severity.charAt(0).toUpperCase()}${a.severity.slice(1)} land-disturbance alert — awaiting a field check`,
         detail: [
-          ha != null ? `~${Math.round(ha)} ha measured` : null,
+          np ? `${np.distance_km.toFixed(1)} km${np.direction ? ` ${np.direction}` : ''} of ${np.name}` : null,
           near != null ? `${near.toLocaleString()} people within 2 km` : null,
           a.satellite_source,
         ].filter(Boolean).join(' · '),
         sortGroup: 2,
-        sortKey: a.predicted_breach_hours,  // soonest first
+        sortKey: ageH,
       });
     }
 
@@ -270,7 +275,11 @@ function deriveTimeline(alerts: AlertResponse[], stateLabel: string): TimelineEv
   out.sort((a, b) =>
     a.sortGroup !== b.sortGroup ? a.sortGroup - b.sortGroup : a.sortKey - b.sortKey,
   );
-  return out.slice(0, 6);
+  return out.slice(0, 12);
+}
+
+function fmtPct(v: number | null | undefined): string {
+  return v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
 }
 
 // The per-alert naira / USD 'value at risk' helpers were removed on 2026-09-29:
@@ -366,6 +375,14 @@ export default function FarmlandPanel() {
 
   const query = useFarmlandAlerts({ tenantId: activeTenantId, perPage: 50 });
   const fireStatus = useFireStatus(activeTenantId);
+  // A state with no land alert still has a measured farmland season.
+  const season = useCropSeason(activeTenantId);
+  const seasonLgas = useMemo(
+    () => [...(season.data?.lgas ?? [])]
+      .filter((r) => r.like_for_like_pct != null)
+      .sort((a, b) => (a.like_for_like_pct ?? 0) - (b.like_for_like_pct ?? 0)),
+    [season.data],
+  );
   // Stabilise the alerts reference so downstream useMemo deps don't
   // re-fire every render (the `?? []` fallback would otherwise create
   // a fresh array each call).
@@ -414,8 +431,14 @@ export default function FarmlandPanel() {
       confidences.length > 0
         ? confidences.reduce((s, c) => s + c, 0) / confidences.length
         : null;
+    // The alerts with the most people living near them — each measured on its
+    // own, listed rather than summed (nearby alerts share villages).
+    const topNear = [...nearActive]
+      .sort((a, b) => (b.people_within_2km ?? 0) - (a.people_within_2km ?? 0))
+      .slice(0, 6);
     return {
       activeCount: active.length,
+      topNear,
       farmsAtRiskHa,
       resolvedCount: resolved.length,
       nearActiveCount: nearActive.length,
@@ -782,17 +805,42 @@ export default function FarmlandPanel() {
               season.
             </div>
           )}
+          {!query.isLoading && !query.isError && alerts.length === 0 && seasonLgas.length > 0 && season.data && (
+            <>
+              {/* No land alert is not no farmland result: what the season scan
+                  measured on the same ground, statewide and per LGA. */}
+              <div className="fp-alert-item">
+                <div className="fp-alert-top">
+                  <span className="fp-alert-location">Farmland this season — {stateLabel}</span>
+                  <span className="fp-sev fp-sev-med">{fmtPct(season.data.like_for_like_pct)}</span>
+                </div>
+                <div className="fp-alert-desc">
+                  Peak greenness of every farmland pixel against the {season.data.previous_year} rains, on the ground both
+                  seasons could see — {(season.data.farmland_ha / 1e6).toFixed(2)}M ha greened; {season.data.stopped_growing} patch
+                  {season.data.stopped_growing === 1 ? '' : 'es'} stopped growing.
+                </div>
+                <div className="fp-alert-meta">Copernicus Sentinel-2{season.data.window_end ? ` · to ${new Date(season.data.window_end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}</div>
+              </div>
+              {seasonLgas.map((r) => (
+                <div key={r.lga} className="fp-alert-item">
+                  <div className="fp-alert-top">
+                    <span className="fp-alert-location">{r.lga}</span>
+                    <span className="fp-alert-count">{fmtPct(r.like_for_like_pct)}</span>
+                  </div>
+                  <div className="fp-alert-desc">
+                    {season.data?.season_year && r.farmland_ha[String(season.data.season_year)] != null
+                      ? `${Math.round(r.farmland_ha[String(season.data.season_year)]).toLocaleString()} ha of farmland greened`
+                      : 'Farmland measured'}
+                    {r.seen_pct != null ? ` · ${r.seen_pct}% of the LGA seen through cloud` : ''}
+                    {r.stopped_growing > 0 ? ` · ${r.stopped_growing} patch${r.stopped_growing === 1 ? '' : 'es'} stopped growing` : ''}
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
           {alerts.length === 0 && !query.isLoading && !query.isError && allAlerts.length > 0 && (
             <div className="fp-alert-empty">
               No {provenance} alerts in {stateLabel} right now.
-              {provenance === 'live' && allAlerts.length > 0 && (
-                <>
-                  {' '}Try clicking <strong>All</strong> above to see seed/baseline rows,
-                  or run a fresh pipeline sweep:{' '}
-                  <code>POST /api/v1/ingest/conflict</code> with{' '}
-                  <code>tenant_id=&quot;{activeTenantId}&quot;</code>.
-                </>
-              )}
             </div>
           )}
           {alerts.map((a) => {
@@ -883,7 +931,10 @@ export default function FarmlandPanel() {
         </div>
       </div>
 
-      {/* PREDICTION TIMELINE + ECONOMIC IMPACT — both panels are LIVE */}
+      {/* PREDICTION TIMELINE + ECONOMIC IMPACT — both panels are LIVE. Hidden
+          when the state has no alert at all: the alerts column already says so,
+          and two cards of empty states and zeros would only repeat it. */}
+      {allAlerts.length > 0 && (
       <div className="fp-main-row fp-main-row--equal">
         <div className="fp-timeline">
           <div className="fp-timeline-header">
@@ -892,7 +943,7 @@ export default function FarmlandPanel() {
                 panel is named for what it shows. */}
             Alert timeline — {stateLabel}
           </div>
-          <div className="fp-timeline-body">
+          <div className="fp-timeline-body eb-scroll">
             {timelineEvents.length === 0 ? (
               <div className="fp-alert-empty">
                 No active or recently-resolved events in {stateLabel}. The
@@ -948,6 +999,23 @@ export default function FarmlandPanel() {
               </div>
             </div>
 
+            {liveStats.topNear.length > 1 && (
+              <div className="fp-near-list">
+                <div className="fp-impact-label">Most people near an active alert</div>
+                {liveStats.topNear.map((a) => (
+                  <div key={a.id} className="fp-near-row">
+                    <span className="fp-near-lga">{a.lga ?? stateLabel}</span>
+                    <span className="fp-near-place">
+                      {a.nearest_place
+                        ? `${a.nearest_place.distance_km.toFixed(1)} km${a.nearest_place.direction ? ` ${a.nearest_place.direction}` : ''} of ${a.nearest_place.name}`
+                        : a.severity}
+                    </span>
+                    <span className="fp-near-people">{(a.people_within_2km ?? 0).toLocaleString()} people</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="fp-impact-footnote">
               {liveStats.satellites.length > 0 ? (
                 <>
@@ -976,6 +1044,7 @@ export default function FarmlandPanel() {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

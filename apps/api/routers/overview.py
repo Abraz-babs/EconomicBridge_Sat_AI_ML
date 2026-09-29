@@ -97,6 +97,35 @@ def _latest_advisory(found: list[LastAdvisory]) -> LastAdvisory | None:
     return max(found, key=lambda a: a.sent_at) if found else None
 
 
+def _fourth_card(crop_detections: int, advisories_sent: int, last: LastAdvisory | None) -> OverviewStatCard:
+    """Crop-disease detections once field photos exist; until then, the farmer
+    SMS advisories actually sent.
+
+    The detection count is zero until field officers upload leaf photos, and a
+    zero tile beside three real ones read as a broken module. The advisories
+    are real, delivered and dated, so they take the slot until there are
+    detections to show.
+    """
+    if crop_detections:
+        return OverviewStatCard(
+            label="Crop-disease detections",
+            value=_fmt(crop_detections),
+            # Real model detections on uploaded field photos (seeds excluded).
+            subtitle="from field officers' leaf photos",
+            tone="warn",
+        )
+    when = f"{last.sent_at.day} {last.sent_at:%b}" if last else None
+    return OverviewStatCard(
+        label="Farmer SMS advisories",
+        value=_fmt(advisories_sent),
+        subtitle=(
+            f"rainfall advisories sent · last {when}, {last.lga}, to {last.recipients} farmer leaders"
+            if last else "rainfall advisories sent to farmer leaders"
+        ),
+        tone="ok",
+    )
+
+
 @dataclass
 class _Figures:
     farmland_ha: float = 0.0
@@ -278,19 +307,7 @@ async def overview_stats(
             subtitle="real GRID3 villages · VIIRS night light + HRSL",
             tone="ok",
         ),
-        OverviewStatCard(
-            label="Crop-disease detections",
-            value=_fmt(crop_detections),
-            # Counts REAL trained-model detections only (seeds excluded).
-            # Zero is the honest state until field photos are uploaded — say
-            # so, instead of looking broken next to a "live model" claim.
-            subtitle=(
-                "ResNet-50 · live model"
-                if crop_detections
-                else "ResNet-50 live · awaiting field uploads"
-            ),
-            tone="warn" if crop_detections else "ok",
-        ),
+        _fourth_card(crop_detections, advisories_sent, _latest_advisory(advisories)),
     ]
 
     data = OverviewStatsData(

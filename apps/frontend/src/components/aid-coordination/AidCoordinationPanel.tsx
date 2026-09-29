@@ -31,6 +31,12 @@ export default function AidCoordinationPanel() {
   const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
   const query = useAidCoordination({ tenantId: activeTenantId });
   const stats = query.data;
+  // Where several organisations report the same LGA — duplication is the other
+  // half of coordination, and until now it was only a colour on the map.
+  const overlaps = (stats?.lga_points ?? [])
+    .filter((p) => p.status === 'duplicated')
+    .sort((a, b) => b.agency_count - a.agency_count || a.lga.localeCompare(b.lga));
+  const agencyName = new Map((stats?.agencies ?? []).map((a) => [a.agency_slug, a.agency_name]));
 
   const stateLabel = STATE_NAMES[activeTenantId] ?? activeTenant.name;
   const badge = sourceBadge(stats?.sources, { loading: query.isLoading, error: query.isError });
@@ -179,7 +185,9 @@ export default function AidCoordinationPanel() {
       {/* GAPS + AGENCY DIRECTORY */}
       <div className="fp-main-row fp-main-row--equal">
         <div className="fp-timeline">
-          <div className="fp-timeline-header">Coverage Gaps — {stateLabel}</div>
+          <div className="fp-timeline-header">
+            Coverage gaps{stats ? ` · ${stats.gap_lgas.length}` : ''} and overlaps{stats ? ` · ${overlaps.length}` : ''} — {stateLabel}
+          </div>
           <div className="fp-timeline-body eb-scroll">
             {!stats || stats.gap_lgas.length === 0 ? (
               <div className="fp-alert-empty">
@@ -201,12 +209,29 @@ export default function AidCoordinationPanel() {
                 </div>
               ))
             )}
+            {/* Where nobody reports working, then where several do: the two
+                halves of coordination, in one list. */}
+            {overlaps.length > 0 && (
+              <>
+                <div className="ac-subhead">Overlaps — several organisations report the same {stats?.statewide_label === 'Statewide' ? 'LGA' : 'district'}</div>
+                {overlaps.map((o) => (
+                  <div key={o.lga} className="fp-tl-row">
+                    <div className="fp-tl-dot fp-tl-warn">{o.agency_count}</div>
+                    <div className="fp-tl-content">
+                      <div className="fp-tl-time">{o.lga} · {o.agency_count} organisations report activity</div>
+                      <div className="fp-tl-event">{o.agency_slugs.map((sl) => agencyName.get(sl) ?? sl).join(' · ')}</div>
+                      <div className="fp-tl-detail">Worth a coordination call before another programme starts here.</div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
 
         <div className="fp-timeline">
           <div className="fp-timeline-header">Organisations in {stateLabel}</div>
-          <div className="fp-timeline-body">
+          <div className="fp-timeline-body eb-scroll">
             {!stats || stats.agencies.length === 0 ? (
               <div className="fp-alert-empty">No organisation has reported current activity here.</div>
             ) : stats.agencies.map((a) => (

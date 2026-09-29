@@ -1,6 +1,6 @@
 'use client';
 
-import { keepPreviousData, useQuery, type UseQueryResult } from '@tanstack/react-query';
+import { keepPreviousData, useQueries, useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import { ApiException, apiFetch, type SuccessEnvelope } from '@/lib/api';
 
@@ -41,6 +41,31 @@ export interface UseCropPriceSeriesParams {
   enabled?: boolean;
 }
 
+
+async function fetchCropPriceSeries(
+  tenantId: string, crop: string, months: number, signal?: AbortSignal,
+): Promise<CropPriceSeriesData> {
+  const search = new URLSearchParams({ crop, months: String(months) });
+  const envelope: SuccessEnvelope<CropPriceSeriesData> = await apiFetch<CropPriceSeriesData>(
+    `/cropguard/prices?${search.toString()}`, { tenantId, signal },
+  );
+  return envelope.data;
+}
+
+/** Every crop's series at once — same cache keys as the single-crop hook, so
+ *  the chart and the every-crop table share one request per crop. */
+export function useAllCropPriceSeries(
+  tenantId: string, crops: string[], months = 24,
+): UseQueryResult<CropPriceSeriesData, ApiException>[] {
+  return useQueries({
+    queries: crops.map((crop) => ({
+      queryKey: ['crop-prices', tenantId, crop, months],
+      enabled: Boolean(tenantId),
+      staleTime: 60 * 1000,
+      queryFn: ({ signal }: { signal: AbortSignal }) => fetchCropPriceSeries(tenantId, crop, months, signal),
+    })),
+  }) as UseQueryResult<CropPriceSeriesData, ApiException>[];
+}
 
 /** Single-crop price time series. */
 export function useCropPriceSeries(

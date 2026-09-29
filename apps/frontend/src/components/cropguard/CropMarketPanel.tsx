@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 
 import { useTenant } from '@/context/TenantContext';
 import { NGN_PER_USD } from '@/lib/currency';
 import {
+  useAllCropPriceSeries,
   useCropPriceSeries,
   type CropPricePoint,
 } from '@/hooks/useCropPrices';
@@ -54,16 +55,50 @@ function fmtPctSigned(n: number | null | undefined): string {
 }
 
 
+/** Width of an element, kept current as it resizes — so a chart can draw to
+ *  its card instead of a fixed 560 units centred in a wider box. */
+function useWidth<T extends HTMLElement>(): [RefObject<T | null>, number] {
+  const ref = useRef<T>(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([e]) => setW(Math.round(e.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, w];
+}
+
+/** Publisher names, not our ingest ids (fews_market_v1 → FEWS NET). */
+const sourceName = (src: string) =>
+  /fews/i.test(src) ? 'FEWS NET' : /nbs/i.test(src) ? 'NBS' : /wb|world.?bank/i.test(src) ? 'World Bank' : src;
+
+const monthYear = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+
+
 export default function CropMarketPanel() {
   const { activeTenantId, activeTenant } = useTenant();
   const isEcowas = activeTenant.type === 'ecowas_country';
   const [selectedCrop, setSelectedCrop] = useState<string>('maize');
+  const [chartRef, chartW] = useWidth<HTMLDivElement>();
 
   const seriesQuery = useCropPriceSeries({
     tenantId: activeTenantId, crop: selectedCrop, months: 24,
   });
 
   const series = seriesQuery.data;
+
+  // Every crop a public source publishes for this state, beside the chart.
+  const all = useAllCropPriceSeries(activeTenantId, CROPS.map((c) => c.id), 24);
+  const allLoading = all.some((q) => q.isLoading);
+  const glance = CROPS.flatMap((c, i) => {
+    const d = all[i]?.data;
+    if (!d || d.points.length === 0) return [];
+    const last = d.points[d.points.length - 1];
+    return [{ id: c.id, label: c.label, latest: d.latest_price, change: d.pct_change, at: last.observed_at, source: last.source }];
+  });
 
   return (
     <div className="cg-market">
@@ -95,7 +130,7 @@ export default function CropMarketPanel() {
 
       <div className="cg-market-row">
         {/* PRICE CHART */}
-        <div className="cg-chart-card">
+        <div className="cg-chart-card" ref={chartRef}>
           <div className="cg-chart-head">
             <div>
               <div className="cg-chart-title">{CROP_LABEL[selectedCrop]} · {isEcowas ? 'USD' : 'NGN'} / kg</div>
@@ -127,7 +162,7 @@ export default function CropMarketPanel() {
             </div>
           </div>
           {series && series.points.length > 0 && (
-            <PriceLineChart points={series.points} isEcowas={isEcowas} />
+            <PriceLineChart points={series.points} isEcowas={isEcowas} width={chartW} />
           )}
           {series && series.points.length === 0 && (
             /* Was: "run the seed script". That advice is now wrong — seeded
@@ -137,12 +172,22 @@ export default function CropMarketPanel() {
             <div className="fp-alert-empty">
               <strong>No current price series for {CROP_LABEL[selectedCrop]} here.</strong>
               <br />
-              We show only prices a public source actually publishes for this
-              state. FEWS NET collects retail prices in Zamfara; it stopped
-              collecting in Kebbi and Kaduna in January 2025, and does not
-              cover Niger, Benue, Plateau, Nasarawa or the FCT. NBS&apos;s
-              Selected Food Prices Watch has not been published since October
-              2024.
+              {isEcowas ? (
+                <>
+                  The market sources connected to the platform — FEWS NET and
+                  NBS — publish Nigerian markets only. No source publishing
+                  {' '}{activeTenant.name}&apos;s market prices is connected yet.
+                </>
+              ) : (
+                <>
+                  We show only prices a public source actually publishes for this
+                  state. FEWS NET collects retail prices in Zamfara; it stopped
+                  collecting in Kebbi and Kaduna in January 2025, and does not
+                  cover Niger, Benue, Plateau, Nasarawa or the FCT. NBS&apos;s
+                  Selected Food Prices Watch has not been published since October
+                  2024.
+                </>
+              )}
               <br />
               An empty chart here means no one is publishing — not that
               prices are unchanged.
@@ -150,6 +195,47 @@ export default function CropMarketPanel() {
           )}
         </div>
 
+        {/* EVERY CROP AT A GLANCE — the question the chart raises next: what
+            about the other crops? Only published prices, each with its date. */}
+        <div className="cg-chart-card cg-glance">
+          <div className="cg-chart-head">
+            <div className="cg-chart-title">Every crop at a glance</div>
+            <div className="cg-chart-sub">Last published price per kg, with its date — click a crop for its chart</div>
+          </div>
+          {glance.length > 0 ? (
+            <table className="ev-lga-table cg-glance-table">
+              <thead>
+                <tr><th>Crop</th><th className="is-num">Last price</th><th>Published</th><th className="is-num">Change, 24 mo</th><th>Source</th></tr>
+              </thead>
+              <tbody>
+                {glance.map((g) => (
+                  <tr
+                    key={g.id}
+                    className={g.id === selectedCrop ? 'is-sel' : ''}
+                    onClick={() => setSelectedCrop(g.id)}
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedCrop(g.id); } }}
+                  >
+                    <td>{g.label}</td>
+                    <td className="is-num">{fmtMoney(g.latest, isEcowas)}</td>
+                    <td>{monthYear(g.at)}</td>
+                    <td className={`is-num ${(g.change ?? 0) >= 0 ? 'cg-pct-up' : 'cg-pct-down'}`}>{fmtPctSigned(g.change)}</td>
+                    <td>{sourceName(g.source)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="fp-alert-empty">
+              {allLoading ? 'Reading every crop…' : `No crop has a published price series for ${activeTenant.name}.`}
+            </div>
+          )}
+          {glance.length > 0 && (
+            <div className="cg-glance-foot">
+              {glance.length} of {CROPS.length} crops have a published series here · a series that has stopped keeps its last date
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -159,11 +245,12 @@ export default function CropMarketPanel() {
 // ─── SVG line chart ──────────────────────────────────────────────────────
 
 
-function PriceLineChart({ points, isEcowas }: { points: CropPricePoint[]; isEcowas: boolean }) {
-  const w = 560;
+function PriceLineChart({ points, isEcowas, width }: { points: CropPricePoint[]; isEcowas: boolean; width: number }) {
+  // Draw to the card's measured content width, so the chart fills it.
+  const w = width > 0 ? Math.max(320, width) : 560;
   const h = 220;
   const padL = 56;
-  const padR = 12;
+  const padR = 26;   // room for the last month label, centred on the end point
   const padT = 14;
   const padB = 32;
   const plotW = w - padL - padR;
