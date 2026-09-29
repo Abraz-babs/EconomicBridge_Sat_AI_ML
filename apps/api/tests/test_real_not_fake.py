@@ -81,3 +81,8 @@ def test_rainfall_readings_are_named_rainfall_not_radar_water():
     assert ev.title.startswith("Storm")
     ev = _row_to_feed_event("kebbi", _shock_row("shockguard_scan_v1", "flood"))
     assert "radar" in ev.title.lower()
+
+
+def test_land_alerts_are_named_by_what_was_measured():
+    from services.intelligence_feed import _alert_event_title
+    assert _alert_event_title({"subtype": "conflict"}, "kebbi", "Soba").startswith("Land-disturbance alert")

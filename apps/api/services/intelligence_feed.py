@@ -336,7 +336,10 @@ def _alert_event_title(row: dict, tenant_id: str, region: str | None) -> str:
             return f"Heat signature — {where} (~{int(area)} ha)"
         return f"Heat signature — {where}"
     if subtype == "conflict":
-        return f"Conflict-risk alert — {where}"
+        # What was detected is land disturbance (greenness / radar change);
+        # there is no conflict model behind it since the synthetic predictor
+        # was retired (2026-09-29), so the title names the measurement.
+        return f"Land-disturbance alert — {where}"
     return f"Alert — {where}"
 
 
