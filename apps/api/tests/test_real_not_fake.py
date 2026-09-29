@@ -86,3 +86,12 @@ def test_rainfall_readings_are_named_rainfall_not_radar_water():
 def test_land_alerts_are_named_by_what_was_measured():
     from services.intelligence_feed import _alert_event_title
     assert _alert_event_title({"subtype": "conflict"}, "kebbi", "Soba").startswith("Land-disturbance alert")
+
+
+def test_active_response_names_rows_by_instrument():
+    from routers.overview import event_name
+    assert event_name("flood", "rainstorm_scan_v1") == "Extreme rainfall"
+    assert event_name("rainstorm", "storm_scan_v1") == "Storm"
+    assert event_name("flood", "shockguard_scan_v1") == "Radar surface water"
+    assert event_name("drought", "shockguard_scan_v1") == "Greenness below normal"
+    assert event_name("flood", "historical_v1") == "Flood"      # a recorded disaster keeps its name

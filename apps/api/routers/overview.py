@@ -451,6 +451,23 @@ def shock_status(
     return _SEVERITY_STATUS.get(str(severity), ("MONITOR", "s-monitor"))
 
 
+def event_name(event_type: str, source: str | None) -> str:
+    """Name a ShockGuard row by the instrument that produced it.
+
+    The rainfall and storm feeds file their rows as 'flood' / 'rainstorm'
+    precursors, but they measure rain; a live radar 'flood' is unconfirmed
+    surface water. Only recorded disasters keep their reported name.
+    """
+    src = source or ""
+    if src == "rainstorm_scan_v1":
+        return "Extreme rainfall"
+    if src == "storm_scan_v1":
+        return "Storm"
+    if src == "shockguard_scan_v1":
+        return "Radar surface water" if event_type == "flood" else "Greenness below normal"
+    return str(event_type).title()
+
+
 @router.get(
     "/active_response",
     response_model=SuccessResponse[ActiveResponseData],
@@ -493,7 +510,7 @@ async def active_response(
             )
             out.append(
                 ActiveResponseRow(
-                    region=f"{region} — {str(event_type).title()}",
+                    region=f"{region} — {event_name(str(event_type), source)}",
                     sub=f"{lga or region} · {severity}{dated}",
                     status=status_label,
                     tone=tone,
