@@ -276,14 +276,24 @@ export default function StormDayView({ tenant, stateLabel, events = [] }: {
             <span className="sgr-kpi-label">heaviest — {sharedTop.map((r) => r.lga).join(' and ')}</span>
             <span className="sgr-kpi-src">Rain in the day · NASA GPM IMERG</span>
           </div>
+          {/* Zero people means the village layer is not built for this state yet
+              (Ghana, Senegal) — never that nobody lives under the rain. */}
           <div className="sgr-kpi">
-            <span className="sgr-kpi-val">{data.people >= 1_000_000 ? `${(data.people / 1e6).toFixed(2)}M` : n0(data.people)}</span>
-            <span className="sgr-kpi-label">people live in these LGAs — {n0(Math.round(data.under5 / 1000))}K under five</span>
+            <span className="sgr-kpi-val">{data.people > 0 ? (data.people >= 1_000_000 ? `${(data.people / 1e6).toFixed(2)}M` : n0(data.people)) : '—'}</span>
+            <span className="sgr-kpi-label">
+              {data.people > 0
+                ? <>people live in these LGAs — {n0(Math.round(data.under5 / 1000))}K under five</>
+                : <>people under the rain — not measured here yet</>}
+            </span>
             <span className="sgr-kpi-src">Meta &amp; CIESIN population</span>
           </div>
           <div className="sgr-kpi">
-            <span className="sgr-kpi-val">{n0(data.villages)}</span>
-            <span className="sgr-kpi-label">named villages under the rain, {n0(data.dark_villages)} dark at night</span>
+            <span className="sgr-kpi-val">{data.people > 0 ? n0(data.villages) : '—'}</span>
+            <span className="sgr-kpi-label">
+              {data.people > 0
+                ? <>named villages under the rain, {n0(data.dark_villages)} dark at night</>
+                : <>named villages — not measured here yet</>}
+            </span>
             <span className="sgr-kpi-src">GRID3 · NASA VIIRS</span>
           </div>
           <div className="sgr-kpi">

@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import FullViewButton, { useAwayFromFullView } from '@/components/map/FullViewButton';
+import {
+  flyToTenant, jumpToTenant, recalledCamera, rememberCamera, type Camera,
+} from '@/components/map/tenantCamera';
 import { haloRadiusPx } from '@/components/map/halo';
 import type { Tenant } from '@/data/tenants';
 import { formatLatLon } from '@/lib/display';
@@ -178,6 +181,13 @@ export default function FarmlandMap({
     MAPBOX_TOKEN ? 'loading' : 'no-token'
   );
   const [mapError, setMapError] = useState<string | null>(null);
+  // The state the camera frames, and the view "Back to full map" returns to.
+  const tenantRef = useRef(tenant);
+  useEffect(() => { tenantRef.current = tenant; }, [tenant]);
+  const framedRef = useRef<string | null>(null);
+  const needsFitRef = useRef(false);
+  const [fullView, setFullView] = useState<Camera>({ center: tenant.centroid, zoom: 6 });
+  const [flyingTo, setFlyingTo] = useState<string | null>(null);
   const [hover, setHover] = useState<HoverInfo | null>(null);
   const [pulse, setPulse] = useState(0);
   // Index into WAYBACK_RELEASES when historical imagery is on; null = off
@@ -256,14 +266,27 @@ export default function FarmlandMap({
         if (cancelled || !containerRef.current) return;
 
         mapboxgl.accessToken = MAPBOX_TOKEN;
+        const recalled = recalledCamera(tenant.id);
+        const start = recalled ?? { center: tenant.centroid, zoom: 6 };
         const map = new mapboxgl.Map({
           container: containerRef.current,
           style: MAPBOX_STYLE,
-          center: tenant.centroid,
-          zoom: 6,
+          center: start.center,
+          zoom: start.zoom,
           attributionControl: false,
         });
         mapRef.current = map;
+
+        map.on('moveend', () => {
+          if (cancelled) return;
+          rememberCamera(map, tenantRef.current.id);
+          setFlyingTo(null);
+        });
+        map.on('resize', () => {
+          if (cancelled || !needsFitRef.current) return;
+          const cam = jumpToTenant(map, tenantRef.current);
+          if (cam) { needsFitRef.current = false; setFullView(cam); }
+        });
 
         map.on('error', (e) => {
           if (cancelled) return;
@@ -273,6 +296,11 @@ export default function FarmlandMap({
 
         map.on('load', () => {
           if (cancelled) return;
+          const t = tenantRef.current;
+          const cam = recalled ? flyToTenant(map, t) : jumpToTenant(map, t);
+          if (cam) setFullView(cam); else needsFitRef.current = true;
+          if (cam && recalled) setFlyingTo(t.name);
+          framedRef.current = t.id;
           // useDevicePixels:false caps deck to CSS pixels — a full-DPR canvas on
           // 4K screens can exhaust GPU memory and blank on scroll.
           const overlay = new MapboxOverlay({ interleaved: false, useDevicePixels: false, layers: [] });
@@ -304,17 +332,17 @@ export default function FarmlandMap({
 
   // Fly the map to the active tenant when it changes.
   useEffect(() => {
-    if (mapStatus !== 'ready') return;
-    const map = mapRef.current as
-      | { flyTo: (o: { center: [number, number]; zoom: number; duration: number }) => void }
-      | null;
-    map?.flyTo({ center: tenant.centroid, zoom: 6, duration: 1200 });
+    if (mapStatus !== 'ready' || framedRef.current === tenant.id) return;
+    framedRef.current = tenant.id;
+    const map = mapRef.current;
+    const cam = map ? flyToTenant(map, tenant) : null;
+    if (cam) { setFullView(cam); setFlyingTo(tenant.name); } else needsFitRef.current = true;
     // Clear stale hover tooltip when the active tenant changes — the alert
     // it references no longer belongs to the displayed dataset. This is the
     // canonical "reset local state on a prop change" pattern.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHover(null);
-  }, [tenant.id, tenant.centroid, mapStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenant.id, mapStatus]);
 
   // Fly to whatever the Alert record is revisiting: close in on one alert,
   // wider for a land-change scan's spread of patches. Clearing a revisit
@@ -331,12 +359,11 @@ export default function FarmlandMap({
 
   // The way back: once the map rests away from the state's full view (a
   // revisit, or the reader's own zoom/pan), offer to return to it.
-  const awayFromFullView = useAwayFromFullView(mapRef, mapStatus === 'ready', tenant.centroid, 6);
+  const awayFromFullView = useAwayFromFullView(mapRef, mapStatus === 'ready', fullView.center, fullView.zoom);
   const backToFullView = () => {
-    const map = mapRef.current as
-      | { flyTo: (o: { center: [number, number]; zoom: number; duration: number }) => void }
-      | null;
-    map?.flyTo({ center: tenant.centroid, zoom: 6, duration: 1200 });
+    const map = mapRef.current;
+    const cam = map ? flyToTenant(map, tenant) : null;
+    if (cam) setFullView(cam);
     onResetView?.();
   };
 
@@ -787,7 +814,8 @@ export default function FarmlandMap({
         />
       </div>
 
-      {mapStatus === 'ready' && (awayFromFullView || revisit.length > 0) && (
+      {flyingTo && <div className="eb-map-flying" aria-live="polite">{flyingTo}</div>}
+      {mapStatus === 'ready' && !flyingTo && (awayFromFullView || revisit.length > 0) && (
         <FullViewButton areaName={tenant.name} onClick={backToFullView} />
       )}
 

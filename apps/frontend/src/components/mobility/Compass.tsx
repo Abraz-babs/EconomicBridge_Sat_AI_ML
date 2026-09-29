@@ -15,7 +15,7 @@
  * was last surveyed. IOM displacement counts are non-commercial: linked, not shown.
  */
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { GeoJsonLayer, ScatterplotLayer } from '@deck.gl/layers';
 
 import EBMap from '@/components/map/EBMap';
@@ -176,6 +176,11 @@ export default function Compass({ tenant, stateLabel }: { tenant: Tenant; stateL
   const [layersOn, setLayersOn] = useState({ lga: true, gone: true, fresh: false, far: false, villages: false });
   const villageQ = useVillageLight(layersOn.villages ? tenant.id : '');
   const [sel, setSel] = useState<Sel>(null);
+  // A selection points into this state's data — drop it when the state changes.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSel(null);
+  }, [tenant.id]);
   const [now] = useState(() => Date.now());
 
   const data = trend.data;

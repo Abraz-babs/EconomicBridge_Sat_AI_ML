@@ -321,13 +321,9 @@ export default function ShockGuardPanel() {
                   {hazardIcon(ev.event_type)}{' '}
                   {eventLabel(ev.event_type, ev.source).toUpperCase()} · {ev.lga ?? stateLabel}
                 </span>
-                <span style={{
-                  fontSize: '9px', fontWeight: 700, letterSpacing: '0.04em',
-                  padding: '2px 6px', borderRadius: '8px',
-                  background: isHistorical ? 'rgba(148,163,184,0.18)' : 'rgba(34,197,94,0.18)',
-                  color: isHistorical ? '#64748b' : '#16a34a',
-                  border: `1px solid ${isHistorical ? 'rgba(148,163,184,0.45)' : 'rgba(34,197,94,0.45)'}`,
-                }}>{isHistorical ? 'HISTORICAL' : 'LIVE'}</span>
+                <span className={isHistorical ? 'fp-prov fp-prov--seed' : 'fp-prov fp-prov--live'}>
+                  {isHistorical ? 'Historical' : 'Live'}
+                </span>
                 <span className={sevClass(ev.severity)}>
                   {ev.severity.charAt(0).toUpperCase() + ev.severity.slice(1)}
                 </span>

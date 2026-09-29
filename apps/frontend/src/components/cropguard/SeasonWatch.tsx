@@ -11,7 +11,7 @@
  * check, not a diagnosis.
  */
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { GeoJsonLayer, ScatterplotLayer } from '@deck.gl/layers';
 
 import EBMap from '@/components/map/EBMap';
@@ -78,6 +78,12 @@ export default function SeasonWatch({ tenant, stateLabel }: { tenant: Tenant; st
   const [basemap, setBasemap] = useState<Basemap>('satellite');
   const [layersOn, setLayersOn] = useState({ season: true, patches: true, health: false });
   const [sel, setSel] = useState<Sel>(null);
+  // A selection points into this state's data — drop it when the state changes,
+  // or the card would land on an unrelated place in the next state.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSel(null);
+  }, [tenant.id]);
 
   const data = season.data;
   const lgas = useMemo(() => data?.lgas ?? [], [data]);

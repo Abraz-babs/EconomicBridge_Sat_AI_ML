@@ -11,7 +11,7 @@
  * a school's own supply — "no light within 2 km" is a lead for a visit.
  */
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { GeoJsonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 
 import EBMap from '@/components/map/EBMap';
@@ -74,6 +74,13 @@ export default function SchoolReach({ tenant, stateLabel }: { tenant: Tenant; st
   const villageQ = useVillageLight(layersOn.villages ? tenant.id : '');
   const [sel, setSel] = useState<Sel>(null);
   const [lgaFilter, setLgaFilter] = useState<string | null>(null);
+  // Selection and LGA filter belong to this state's data — drop both when the
+  // state changes, or the card would land on an unrelated school.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSel(null);
+    setLgaFilter(null);
+  }, [tenant.id]);
   const [shown, setShown] = useState(PAGE);
 
   const data = reach.data;
@@ -188,8 +195,8 @@ export default function SchoolReach({ tenant, stateLabel }: { tenant: Tenant; st
         getText: (x: { n: number }) => String(x.n),
         getColor: [255, 255, 255, 255],
         getSize: 11,
-        fontWeight: 700,
-        fontFamily: 'Archivo, Arial, sans-serif',
+        fontWeight: 600,
+        fontFamily: 'system-ui, sans-serif',
         characterSet: '0123456789',
         getTextAnchor: 'middle',
         getAlignmentBaseline: 'center',

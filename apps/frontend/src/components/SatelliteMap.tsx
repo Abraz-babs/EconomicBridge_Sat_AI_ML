@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { KEBBI_CENTER, TENANTS, type Tenant } from '@/data/tenants';
 import { useOverviewSignals, type PilotSignals } from '@/hooks/useOverviewLive';
+import { flyToTenant } from '@/components/map/tenantCamera';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 const MAPBOX_STYLE = 'mapbox://styles/mapbox/dark-v11';
@@ -65,6 +66,13 @@ const COVERAGE_PILOT_IDS = new Set([
   'ghana', 'senegal',
 ]);
 const PILOTS: Tenant[] = TENANTS.filter((t) => COVERAGE_PILOT_IDS.has(t.id));
+// Every pilot in one frame, Senegal to Nigeria — the map used to open on Kebbi
+// at a fixed zoom, with Senegal off-screen.
+const PILOT_BOUNDS: [[number, number], [number, number]] = [
+  [Math.min(...PILOTS.map((t) => t.bbox[0])), Math.min(...PILOTS.map((t) => t.bbox[1]))],
+  [Math.max(...PILOTS.map((t) => t.bbox[2])), Math.max(...PILOTS.map((t) => t.bbox[3]))],
+];
+const PILOTS_PADDING = 40;
 const COVERAGE_PULSE_CSS =
   '@keyframes eb-cov-pulse{0%{box-shadow:0 0 0 0 rgba(54,211,154,.6)}' +
   '70%{box-shadow:0 0 0 14px rgba(54,211,154,0)}' +
@@ -78,6 +86,10 @@ export default function SatelliteMap() {
 
   const [activeLayer, setActiveLayer] = useState<LayerKey>('All Layers');
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
+  // A pinned pilot owns the camera; with none pinned the map keeps every pilot
+  // in frame, including when the map resizes as the sidebar fills in.
+  const selectedRef = useRef<Tenant | null>(null);
+  const [flyingTo, setFlyingTo] = useState<string | null>(null);
   const [mapStatus, setMapStatus] = useState<'idle' | 'loading' | 'ready' | 'error' | 'no-token'>(
     MAPBOX_TOKEN ? 'loading' : 'no-token'
   );
@@ -118,8 +130,12 @@ export default function SatelliteMap() {
         // Keep the canvas filling its (flex) container — the overview map grows
         // to match the sidebar height, and the sidebar grows as data loads.
         resizeObserver = new ResizeObserver(() => {
-          try { map.resize(); } catch { /* torn down */ }
+          try {
+            map.resize();
+            if (!selectedRef.current) map.fitBounds(PILOT_BOUNDS, { padding: PILOTS_PADDING, animate: false });
+          } catch { /* torn down */ }
         });
+        map.on('moveend', () => { if (!cancelled) setFlyingTo(null); });
         resizeObserver.observe(containerRef.current);
 
         map.on('error', (e) => {
@@ -130,6 +146,7 @@ export default function SatelliteMap() {
 
         map.on('load', () => {
           if (cancelled) return;
+          map.fitBounds(PILOT_BOUNDS, { padding: PILOTS_PADDING, animate: false });
           const overlay = new MapboxOverlay({
             interleaved: false,
             // Cap deck rendering to CSS pixels — a full-DPR canvas on 4K screens
@@ -260,6 +277,19 @@ export default function SatelliteMap() {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, [activeLayer, mapStatus, byTenant]);
 
+  // Clicking a pilot flies into that state; "clear" flies back out to all of them.
+  useEffect(() => {
+    selectedRef.current = selectedTenant;
+    if (mapStatus !== 'ready') return;
+    const map = mapRef.current as { fitBounds?: (b: unknown, o: Record<string, unknown>) => void } | null;
+    if (!map) return;
+    if (selectedTenant) {
+      if (flyToTenant(map, selectedTenant)) setFlyingTo(selectedTenant.name);
+    } else {
+      map.fitBounds?.(PILOT_BOUNDS, { padding: PILOTS_PADDING, duration: 1400, curve: 1.6 });
+    }
+  }, [selectedTenant, mapStatus]);
+
   // Detail strip: a user click pins a tenant; otherwise rotate through the
   // active pilots so the strip reads as the live intel ticker it is — not a
   // hardcoded "Kebbi" line. Paused while the tab is hidden (project pattern).
@@ -306,6 +336,7 @@ export default function SatelliteMap() {
 
         <div className="map-canvas" role="application" aria-label="Satellite intelligence map">
           <div ref={containerRef} className="map-host" />
+          {flyingTo && <div className="eb-map-flying" aria-live="polite">{flyingTo}</div>}
           {mapStatus === 'no-token' && <MapTokenPlaceholder />}
           {mapStatus === 'loading' && <MapLoadingOverlay />}
           {mapStatus === 'error' && <MapErrorOverlay message={mapError} />}

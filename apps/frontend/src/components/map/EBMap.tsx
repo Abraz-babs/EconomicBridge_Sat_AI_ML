@@ -4,6 +4,9 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { StyleSpecification } from 'mapbox-gl';
 
 import FullViewButton, { useAwayFromFullView } from '@/components/map/FullViewButton';
+import {
+  flyToTenant, jumpToTenant, recalledCamera, rememberCamera, type Camera,
+} from '@/components/map/tenantCamera';
 import type { Tenant } from '@/data/tenants';
 
 
@@ -26,8 +29,13 @@ export interface EBMapProps {
   layers: unknown[];
   /** CSS height (default 420px). */
   height?: string;
-  /** Initial zoom (default 6). */
+  /** Zoom for `focus` flights without their own zoom, and the tenant view when
+   *  `tenantView` is 'centroid' (default 6). */
   zoom?: number;
+  /** 'bounds' (default): frame the whole state and fly there when it changes.
+   *  'centroid': the state's centre at `zoom` — for close-up tools such as the
+   *  Farm Check pin drop. */
+  tenantView?: 'bounds' | 'centroid';
   /** ARIA label for screen readers. */
   ariaLabel?: string;
   /** JSX rendered top-right (e.g., pass countdown, freshness lines). */
@@ -101,7 +109,9 @@ export default function EBMap(props: EBMapProps) {
     ariaLabel = `Satellite intelligence map — ${tenant.name}`,
     overlay, legend, errorOverlay, getTooltip, onMapClick,
     mapStyle = MAPBOX_STYLE, focus, onResetView, card,
+    tenantView = 'bounds',
   } = props;
+  const byBounds = tenantView === 'bounds';
 
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<unknown>(null);
@@ -121,6 +131,15 @@ export default function EBMap(props: EBMapProps) {
   );
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // The state the camera is framing, the view "Back to full map" returns to,
+  // and a flag for a map that had no size to frame with (a closed <details>).
+  const tenantRef = useRef(tenant);
+  useEffect(() => { tenantRef.current = tenant; }, [tenant]);
+  const framedRef = useRef<string | null>(null);
+  const needsFitRef = useRef(false);
+  const [fullView, setFullView] = useState<Camera>({ center: tenant.centroid, zoom });
+  const [flyingTo, setFlyingTo] = useState<string | null>(null);
+
   // One-time map init.
   useEffect(() => {
     if (!MAPBOX_TOKEN || !containerRef.current) return;
@@ -135,14 +154,18 @@ export default function EBMap(props: EBMapProps) {
         if (cancelled || !containerRef.current) return;
 
         mapboxgl.accessToken = MAPBOX_TOKEN;
+        // A map mounting for a different state than the reader last saw starts
+        // where they were and flies over once loaded.
+        const recalled = byBounds ? recalledCamera(tenant.id) : null;
+        const start = recalled ?? { center: tenant.centroid, zoom };
         const map = new mapboxgl.Map({
           container: containerRef.current,
           // mapbox-gl's MapOptions narrows `style` to string, but the constructor
           // accepts a full style object at runtime (used for the Esri raster
           // basemap). Cast the union down to satisfy the type only.
           style: mapStyle as string,
-          center: tenant.centroid,
-          zoom,
+          center: start.center,
+          zoom: start.zoom,
           attributionControl: false,
           // Let the browser release WebGL framebuffers under memory pressure.
           // The CSS compositing layer keeps scroll repainting isolated without
@@ -166,8 +189,27 @@ export default function EBMap(props: EBMapProps) {
           setErrorMessage(sanitiseMapboxError(e?.error?.message) ?? 'Mapbox error');
         });
 
+        map.on('moveend', () => {
+          if (cancelled) return;
+          rememberCamera(map, tenantRef.current.id);
+          setFlyingTo(null);
+        });
+        // A map that first measured 0 × 0 frames its state once it has a size.
+        map.on('resize', () => {
+          if (cancelled || !needsFitRef.current) return;
+          const cam = jumpToTenant(map, tenantRef.current);
+          if (cam) { needsFitRef.current = false; setFullView(cam); }
+        });
+
         map.on('load', () => {
           if (cancelled) return;
+          if (byBounds) {
+            const t = tenantRef.current;
+            const cam = recalled ? flyToTenant(map, t) : jumpToTenant(map, t);
+            if (cam) setFullView(cam); else needsFitRef.current = true;
+            if (cam && recalled) setFlyingTo(t.name);
+          }
+          framedRef.current = tenantRef.current.id;
           const overlay = new MapboxOverlay({
             interleaved: false,
             // Cap deck rendering to CSS pixels (not device pixels). On hi-DPI /
@@ -225,14 +267,22 @@ export default function EBMap(props: EBMapProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fly to active tenant on change.
+  // Fly to the whole state when it changes. Keyed on the id only — never on a
+  // layer or an array made during render (the pulse maps re-render every 120 ms).
   useEffect(() => {
-    if (status !== 'ready') return;
-    const map = mapRef.current as
-      | { flyTo: (o: { center: [number, number]; zoom: number; duration: number }) => void }
-      | null;
-    map?.flyTo({ center: tenant.centroid, zoom, duration: 1200 });
-  }, [tenant.id, tenant.centroid, zoom, status]);
+    if (status !== 'ready' || framedRef.current === tenant.id) return;
+    framedRef.current = tenant.id;
+    const map = mapRef.current;
+    if (!map) return;
+    if (byBounds) {
+      const cam = flyToTenant(map, tenant);
+      if (cam) { setFullView(cam); setFlyingTo(tenant.name); } else needsFitRef.current = true;
+    } else {
+      (map as { flyTo: (o: Record<string, unknown>) => void }).flyTo({ center: tenant.centroid, zoom, duration: 1200 });
+      setFullView({ center: tenant.centroid, zoom });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenant.id, status]);
 
   // Explicit fly-to-focus (e.g. centre on a Farm Check result).
   useEffect(() => {
@@ -245,12 +295,15 @@ export default function EBMap(props: EBMapProps) {
   }, [focus, status]);
 
   // The way back to the tenant's full view after a focus or a manual zoom.
-  const awayFromFullView = useAwayFromFullView(mapRef, status === 'ready', tenant.centroid, zoom);
+  const awayFromFullView = useAwayFromFullView(mapRef, status === 'ready', fullView.center, fullView.zoom);
   const backToFullView = () => {
-    const map = mapRef.current as
-      | { flyTo: (o: { center: [number, number]; zoom: number; duration: number }) => void }
-      | null;
-    map?.flyTo({ center: tenant.centroid, zoom, duration: 1200 });
+    const map = mapRef.current;
+    if (map && byBounds) {
+      const cam = flyToTenant(map, tenant);
+      if (cam) setFullView(cam);
+    } else {
+      (map as { flyTo?: (o: Record<string, unknown>) => void } | null)?.flyTo?.({ center: tenant.centroid, zoom, duration: 1200 });
+    }
     onResetView?.();
   };
 
@@ -342,7 +395,8 @@ export default function EBMap(props: EBMapProps) {
 
       {legend && <div className="fp-map-legend">{legend}</div>}
       {overlay && <div className="fp-map-overlay">{overlay}</div>}
-      {status === 'ready' && awayFromFullView && (
+      {flyingTo && <div className="eb-map-flying" aria-live="polite">{flyingTo}</div>}
+      {status === 'ready' && awayFromFullView && !flyingTo && (
         <FullViewButton areaName={tenant.name} onClick={backToFullView} />
       )}
       {card && cardPos && (

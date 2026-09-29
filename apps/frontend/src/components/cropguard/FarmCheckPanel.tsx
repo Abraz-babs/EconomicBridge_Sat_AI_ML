@@ -353,6 +353,7 @@ export default function FarmCheckPanel() {
         layers={layers}
         height="320px"
         zoom={9}
+        tenantView="centroid"
         mapStyle={basemap === 'arcgis' ? ARCGIS_IMAGERY_STYLE : FARM_MAP_STYLE}
         focus={focus}
         onResetView={() => setFocus(null)}
