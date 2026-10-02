@@ -244,11 +244,22 @@ export async function downloadFile(
   opts: { tenantId?: string | null } = {},
 ): Promise<void> {
   const url = path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
-  const headers: Record<string, string> = { Accept: 'text/csv' };
-  if (opts.tenantId) headers['X-Tenant-Id'] = opts.tenantId;
-  if (_accessToken) headers['Authorization'] = `Bearer ${_accessToken}`;
+  const send = (): Promise<Response> => {
+    const headers: Record<string, string> = { Accept: 'text/csv' };
+    if (opts.tenantId) headers['X-Tenant-Id'] = opts.tenantId;
+    if (_accessToken) headers['Authorization'] = `Bearer ${_accessToken}`;
+    return fetch(url, { headers });
+  };
 
-  const response = await fetch(url, { headers });
+  let response = await send();
+  // Same one-shot refresh as apiFetch. The dashboard's read endpoints are
+  // public, so browsing never renews the 15-minute access token; without this
+  // the first download after a quiet spell went out with an expired token and
+  // 401'd (all three downloads at the NASRDA demo, 2 Oct 2026).
+  if (response.status === 401 && _accessToken && _refreshHandler) {
+    const fresh = await _refreshHandler();
+    if (fresh) response = await send();
+  }
   if (!response.ok) {
     let message = `Download failed: ${response.status} ${response.statusText}`;
     try {
