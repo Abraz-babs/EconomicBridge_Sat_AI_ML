@@ -188,6 +188,26 @@ def test_month_urls_try_both_abbreviated_and_full_names() -> None:
     assert any("selected_food_october_2024.xlsx" in u for u in urls)
 
 
+def test_dropped_connection_on_unpublished_month_is_not_a_crash() -> None:
+    """Regression (5 Oct 2026): NBS dropped the connection instead of answering
+    404 for a month it had not published; the RemoteProtocolError escaped and
+    the whole monthly run died before writing anything."""
+    import asyncio
+
+    import httpx
+
+    from sources.nbs_food_prices import NbsFoodPriceClient
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
+
+    async def run() -> list:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            return await NbsFoodPriceClient(http=http).fetch_month(date(2026, 9, 1))
+
+    assert asyncio.run(run()) == []
+
+
 def test_unit_basis_multipliers_are_sane() -> None:
     """Every mapping must state a positive multiplier; a zero or negative one
     would silently zero out or invert a price."""

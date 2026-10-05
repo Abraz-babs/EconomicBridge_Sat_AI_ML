@@ -285,7 +285,19 @@ class NbsFoodPriceClient:
         last_status: int | None = None
         async with self._ctx() as client:
             for url in month_urls(when):
-                resp = await client.get(url)
+                try:
+                    resp = await client.get(url)
+                except httpx.TransportError as exc:
+                    # NBS sometimes drops the connection instead of answering
+                    # 404 for a month it has not published. That escaped as an
+                    # unhandled error and killed the whole run — the 5 Oct 2026
+                    # run wrote nothing, not even the FEWS rows — so treat it as
+                    # "not available" for this URL. The window re-fetches recent
+                    # months every run (idempotent), so a month that really was
+                    # live is picked up next time, not lost.
+                    log.warning("nbs: no answer for %s (%s)", url, type(exc).__name__)
+                    last_status = None
+                    continue
                 last_status = resp.status_code
                 if resp.status_code == 200 and resp.content[:2] == b"PK":
                     return parse_workbook(resp.content, _month_end(when))
