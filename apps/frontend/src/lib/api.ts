@@ -70,7 +70,11 @@ export async function ingestionFetch<T>(
     let detail = `${response.status} ${response.statusText}`;
     try {
       const body = await response.json();
-      detail = (body && (body.detail ?? body.error)) ?? detail;
+      // The service answers in the standard envelope ({error: {code, message}});
+      // older routes return FastAPI's {detail}. Read either as text — the
+      // envelope object used to render as "[object Object]".
+      const msg = body?.error?.message ?? (typeof body?.detail === 'string' ? body.detail : null);
+      if (msg) detail = msg;
     } catch {
       // non-JSON body — keep the status text we already have
     }
@@ -241,14 +245,19 @@ export async function apiFetch<T>(
 export async function downloadFile(
   path: string,
   filename: string,
-  opts: { tenantId?: string | null } = {},
+  opts: { tenantId?: string | null; method?: 'GET' | 'POST'; body?: unknown } = {},
 ): Promise<void> {
   const url = path.startsWith('http') ? path : `${API_BASE_URL}${path}`;
   const send = (): Promise<Response> => {
-    const headers: Record<string, string> = { Accept: 'text/csv' };
+    const headers: Record<string, string> = { Accept: 'text/csv, application/pdf' };
     if (opts.tenantId) headers['X-Tenant-Id'] = opts.tenantId;
     if (_accessToken) headers['Authorization'] = `Bearer ${_accessToken}`;
-    return fetch(url, { headers });
+    if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+    return fetch(url, {
+      method: opts.method ?? 'GET',
+      headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    });
   };
 
   let response = await send();

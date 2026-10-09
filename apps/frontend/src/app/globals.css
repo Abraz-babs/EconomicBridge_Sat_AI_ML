@@ -4013,3 +4013,18 @@ nav::-webkit-scrollbar {
 .mcx-storm-row > span:nth-child(3), .mcx-storm-row > span:nth-child(4) { text-align: right; font-variant-numeric: tabular-nums; }
 .mcx-storm-bar { display: block; height: 4px; background: var(--mcx-line); }
 .mcx-storm-bar i { display: block; height: 4px; background: #4f8fd6; }
+
+/* ── Insurance claims verification (2026-10-09) ─────────────────────────
+   Outcome chips use the PDF report's colours. Never red: red reads as
+   "rejected", which the tool never says. */
+.cv-out-supports { background: #d8f3dc; color: #136b3a; }
+.cv-out-partly { background: #fef3dc; color: #a86b00; }
+.cv-out-notseen { background: #e3eaf3; color: #3d5a80; }
+.cv-out-inconclusive { background: #ececec; color: #5f5f5f; }
+.cv-summary { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 10px; color: var(--ink2); margin: 4px 0 10px; }
+.cv-summary b { font-weight: 500; color: var(--ink); margin-left: 4px; }
+.cv-detail { font-size: 10px; color: var(--muted); line-height: 1.45; margin-top: 3px; max-width: 340px; white-space: normal; text-align: left; }
+.cv-report { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; margin: 12px 0 4px; }
+.cv-report .fp-refresh-btn { margin-left: 0; }   /* the shared button floats right elsewhere */
+.ev-lga-table th.cv-left, .ev-lga-table td.cv-left { text-align: left; }
+.cv-input { background: var(--surface); border: 1px solid var(--border2); border-radius: 4px; color: var(--ink); padding: 5px 8px; font-size: 11px; font-family: 'DM Mono', monospace; min-width: 180px; }

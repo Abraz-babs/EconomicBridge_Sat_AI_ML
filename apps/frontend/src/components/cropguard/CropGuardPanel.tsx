@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 
+import { useAuth } from '@/context/AuthContext';
 import { useTenant } from '@/context/TenantContext';
 import {
   fileToBase64,
@@ -21,6 +22,7 @@ import CropMarketPanel from './CropMarketPanel';
 import SeasonWatch from './SeasonWatch';
 import FarmCheckPanel from './FarmCheckPanel';
 import FarmCheckBulkPanel from './FarmCheckBulkPanel';
+import ClaimsVerificationPanel from './ClaimsVerificationPanel';
 import NdviAnomalyPanel from './NdviAnomalyPanel';
 
 
@@ -86,6 +88,7 @@ function bandClass(band: 'HIGH' | 'MEDIUM' | 'LOW'): string {
 
 export default function CropGuardPanel() {
   const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
+  const { isSuperAdmin } = useAuth();
 
   const [analysisMode, setAnalysisMode] = useState<'leaf' | 'field'>('leaf');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -249,6 +252,11 @@ export default function CropGuardPanel() {
 
       {/* BULK FARM CHECK — paste/upload many coordinates and check them together */}
       <FarmCheckBulkPanel />
+
+      {/* INSURANCE CLAIMS VERIFICATION — its own section (operator, 9 Oct 2026):
+          plots checked before and after a loss date; a paid deliverable the
+          operator runs and reviews, so super-admin only. */}
+      {isSuperAdmin && <ClaimsVerificationPanel />}
 
       {/* VEGETATION STRESS WATCH — statewide NDVI vs its own baseline */}
       <NdviAnomalyPanel />
