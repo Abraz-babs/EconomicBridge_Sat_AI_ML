@@ -39,6 +39,7 @@ from routers import (
     agency_alerts,
     aid_coordination,
     aid_coordination_bulk,
+    claims,
     contact,
     cropguard,
     cropguard_ndvi,
@@ -161,6 +162,7 @@ app.include_router(intelligence.router, prefix="/api/v1")
 app.include_router(overview.router, prefix="/api/v1")
 app.include_router(overview_live.router, prefix="/api/v1")
 app.include_router(reports.router, prefix="/api/v1")
+app.include_router(claims.router, prefix="/api/v1")
 app.include_router(admin_tenants.router, prefix="/api/v1")
 app.include_router(admin_activity.router, prefix="/api/v1")
 app.include_router(agency_alerts.router, prefix="/api/v1")

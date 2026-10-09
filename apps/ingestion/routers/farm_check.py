@@ -8,10 +8,14 @@ runs on the request path — unlike the multi-tenant ingest sweeps.
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
+from datetime import date, datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from sources.claim_check import EARLIEST_LOSS, check_claim
 from sources.copernicus import CopernicusClient, CopernicusError
 from sources.farm_check import FarmCheckResult, check_farm
 from sources.sentinel_statistical import SentinelStatisticalClient
@@ -94,6 +98,67 @@ def _to_response(r: FarmCheckResult) -> FarmCheckResponse:
         sample_count=r.sample_count, area_ha=r.area_ha,
         resolution_m=r.resolution_m, source=r.source, note=r.note,
     )
+
+
+class ClaimCheckRequest(BaseModel):
+    lat: float = Field(ge=-90, le=90, description="Plot latitude (WGS84).")
+    lon: float = Field(ge=-180, le=180, description="Plot longitude (WGS84).")
+    loss_date: date = Field(description="Date the loss was reported to have happened.")
+    peril: Literal["flood", "drought", "general"] = Field(
+        default="flood", description="The insured peril claimed.")
+    crop: str = Field(default="general", max_length=40)
+    half_m: int = Field(default=60, ge=30, le=1000,
+                        description="Half the box side in metres around the point.")
+
+
+class ClaimCheckResponse(BaseModel):
+    lat: float
+    lon: float
+    loss_date: str
+    peril: str
+    crop: str
+    area_ha: float
+    windows: dict[str, str]
+    thresholds: dict[str, float]
+    ndvi_passes: list[dict]
+    water_passes: list[dict]
+    metrics: dict[str, float | None]
+    flood_evidence: str
+    vegetation_change: str
+    conclusion: str
+    summary: str
+    recommendation: str
+    limitations: list[str]
+    source: str
+
+
+@router.post(
+    "/claim-check",
+    response_model=ClaimCheckResponse,
+    summary="Satellite evidence on one insured plot before and after a loss date",
+)
+async def claim_check(body: ClaimCheckRequest) -> ClaimCheckResponse:
+    today = datetime.now(timezone.utc).date()
+    if body.loss_date > today:
+        raise HTTPException(status_code=422, detail="The loss date is in the future.")
+    if body.loss_date < EARLIEST_LOSS:
+        raise HTTPException(status_code=422,
+                            detail=f"Loss dates before {EARLIEST_LOSS.isoformat()} are not supported.")
+    client = _get_client()
+    if not client.configured:
+        raise HTTPException(
+            status_code=503,
+            detail="Satellite data source not configured (no Copernicus credentials).",
+        )
+    try:
+        result = await check_claim(
+            client, lat=body.lat, lon=body.lon, loss_date=body.loss_date,
+            peril=body.peril, crop=body.crop, half_m=body.half_m, today=today,
+        )
+    except CopernicusError as exc:
+        log.warning("claim-check CDSE error lat=%s lon=%s: %s", body.lat, body.lon, exc)
+        raise HTTPException(status_code=502, detail=f"Satellite query failed: {exc!s}") from exc
+    return ClaimCheckResponse(**asdict(result))
 
 
 @router.post(
