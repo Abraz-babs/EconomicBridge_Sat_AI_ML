@@ -43,6 +43,12 @@ log = logging.getLogger(__name__)
 # CDSE rate-limit (429) handling: retry with Retry-After-aware backoff.
 _MAX_RETRIES_429 = 6
 _MAX_BACKOFF_SECONDS = 30.0
+# A dropped connection or timeout is retried once, then reported as a
+# CopernicusError. Every caller already handles CopernicusError; the raw httpx
+# error used to escape them and crash the request (seen 2026-10-08 on a claim
+# check, where the endpoint would have answered a bare 500).
+_MAX_RETRIES_TRANSPORT = 1
+_TRANSPORT_RETRY_SECONDS = 2.0
 
 
 def _retry_after_seconds(header: str | None, attempt: int) -> float:
@@ -133,6 +139,31 @@ function evaluatePixel(s) {
   };
 }
 """
+
+def evalscript_s1_water(threshold_db: float) -> str:
+    """Sentinel-1 open-water flag: 1 where VV backscatter is below the
+    threshold (calm open water is dark to radar), else 0. The Statistical API
+    mean of this band is therefore the FRACTION of valid pixels reading as
+    open water — the quantity a flood check wants, not an average in dB."""
+    return """//VERSION=3
+function setup() {
+  return {
+    input: [{ bands: ["VV", "dataMask"] }],
+    output: [
+      { id: "default", bands: 1, sampleType: "FLOAT32" },
+      { id: "dataMask", bands: 1 }
+    ]
+  };
+}
+function evaluatePixel(s) {
+  var db = 10 * Math.log10(Math.max(s.VV, 1e-6));
+  return {
+    default: [db < %s ? 1 : 0],
+    dataMask: [s.dataMask]
+  };
+}
+""" % repr(float(threshold_db))
+
 
 EVALSCRIPT_S2_NDVI: str = """//VERSION=3
 function setup() {
@@ -305,7 +336,10 @@ class SentinelStatisticalClient:
             resolution_deg, start.date(), end.date(), len(_billable_calls),
         )
 
-        token = await self._copernicus.access_token()
+        try:
+            token = await self._copernicus.access_token()
+        except httpx.HTTPError as exc:
+            raise CopernicusError(f"CDSE token request failed: {type(exc).__name__}") from exc
         body = _build_request_body(
             bbox=bbox, start=start, end=end, dataset=dataset,
             evalscript=evalscript, agg_interval=agg_interval,
@@ -317,18 +351,31 @@ class SentinelStatisticalClient:
             # CDSE enforces a per-minute rate limit (free tier ~ a few hundred
             # PU/req per minute). A burst sweep trips 429s; absorb them with
             # Retry-After-aware backoff so the call succeeds instead of being
-            # dropped. Only 429 is retried; other errors fail fast.
-            for attempt in range(_MAX_RETRIES_429 + 1):
-                resp = await client.post(
-                    self._settings.copernicus_statistical_url,
-                    json=body,
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "Accept": "application/json",
-                        "Content-Type": "application/json",
-                    },
-                    timeout=60.0,   # Statistical API is heavier than catalog
-                )
+            # dropped. A dropped connection or timeout is retried once; other
+            # errors fail fast.
+            transport_retries = 0
+            attempt = 0
+            while True:
+                try:
+                    resp = await client.post(
+                        self._settings.copernicus_statistical_url,
+                        json=body,
+                        headers={
+                            "Authorization": f"Bearer {token}",
+                            "Accept": "application/json",
+                            "Content-Type": "application/json",
+                        },
+                        timeout=60.0,   # Statistical API is heavier than catalog
+                    )
+                except httpx.TransportError as exc:
+                    if transport_retries < _MAX_RETRIES_TRANSPORT:
+                        transport_retries += 1
+                        log.warning("CDSE %s; retrying once in %.0fs",
+                                    type(exc).__name__, _TRANSPORT_RETRY_SECONDS)
+                        await asyncio.sleep(_TRANSPORT_RETRY_SECONDS)
+                        continue
+                    raise CopernicusError(
+                        f"CDSE Statistical unreachable: {type(exc).__name__}") from exc
                 if resp.status_code != 429 or attempt >= _MAX_RETRIES_429:
                     break
                 delay = _retry_after_seconds(resp.headers.get("Retry-After"), attempt)
@@ -337,6 +384,7 @@ class SentinelStatisticalClient:
                     delay, attempt + 1, _MAX_RETRIES_429,
                 )
                 await asyncio.sleep(delay)
+                attempt += 1
         if resp.status_code != 200:
             body = resp.text[:300]
             if resp.status_code == 403 and _QUOTA_EXHAUSTED_CODE in body:

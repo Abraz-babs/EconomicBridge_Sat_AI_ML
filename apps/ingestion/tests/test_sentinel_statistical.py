@@ -205,6 +205,54 @@ async def test_raises_on_5xx(configured):
         )
 
 
+def _token_then_dropping_stat(drops: int):
+    """Token works; the statistical call drops the connection `drops` times,
+    then answers with an empty result."""
+    state = {"stat_calls": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "openid-connect/token" in str(request.url):
+            return httpx.Response(200, content=json.dumps({
+                "access_token": "fake-token", "expires_in": 1800, "token_type": "Bearer",
+            }).encode())
+        state["stat_calls"] += 1
+        if state["stat_calls"] <= drops:
+            raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
+        return httpx.Response(200, content=json.dumps({"data": [], "status": "OK"}).encode())
+
+    return httpx.MockTransport(handler), state
+
+
+@pytest.mark.asyncio
+async def test_one_dropped_connection_is_retried(configured, monkeypatch):
+    monkeypatch.setattr("sources.sentinel_statistical._TRANSPORT_RETRY_SECONDS", 0)
+    transport, state = _token_then_dropping_stat(drops=1)
+    client = SentinelStatisticalClient(CopernicusClient(http=httpx.AsyncClient(transport=transport)))
+    out = await client.compute_time_series(
+        bbox=(3.6, 10.8, 5.5, 13.2),
+        start=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+        dataset="sentinel-1-grd", evalscript=EVALSCRIPT_S1_VV_DB,
+    )
+    assert out == [] and state["stat_calls"] == 2
+
+
+@pytest.mark.asyncio
+async def test_repeated_dropped_connection_is_a_copernicus_error(configured, monkeypatch):
+    """Callers catch CopernicusError; a raw httpx error used to escape them."""
+    monkeypatch.setattr("sources.sentinel_statistical._TRANSPORT_RETRY_SECONDS", 0)
+    transport, state = _token_then_dropping_stat(drops=5)
+    client = SentinelStatisticalClient(CopernicusClient(http=httpx.AsyncClient(transport=transport)))
+    with pytest.raises(CopernicusError, match="unreachable"):
+        await client.compute_time_series(
+            bbox=(3.6, 10.8, 5.5, 13.2),
+            start=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            end=datetime(2026, 4, 30, tzinfo=timezone.utc),
+            dataset="sentinel-1-grd", evalscript=EVALSCRIPT_S1_VV_DB,
+        )
+    assert state["stat_calls"] == 2
+
+
 @pytest.mark.asyncio
 async def test_validates_date_order(configured):
     copernicus = CopernicusClient(http=httpx.AsyncClient())
