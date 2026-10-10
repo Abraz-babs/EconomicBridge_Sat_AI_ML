@@ -332,8 +332,9 @@ zones on ESA WorldCover farmland, UNOSAT flood maps (Nigeria: Sep 2024, Oct
 2022), CHIRPS v3 monthly 1991→ and daily (IMERG-distributed) 1998→. Shown in
 CropGuard to the operator and **insurer** accounts (tenant category `insurer`);
 PDF/CSV super-admin only. One-shot ingestion task, **4 vCPU / 16 GB**, about
-an hour for all ten pilots (the daily read is paced at 3.5 files/s — the CHC
-server blocks an address that reads faster, HTTP 403 for minutes):
+2 hours 15 minutes for all ten pilots. The CHC server refuses an address that
+reads too fast (HTTP 403 for minutes): monthly files are read at 1.5/s, daily
+at 1/s, and a refusal pauses every reader for 5 minutes and slows the pace.
 ```sh
 python -m scripts.run_risk_profile                     # every pilot, through the last complete season
 python -m scripts.run_risk_profile --no-write --dump /tmp/rp.json   # measure, review, store nothing

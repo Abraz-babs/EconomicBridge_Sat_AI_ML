@@ -131,3 +131,19 @@ def test_png_is_a_valid_greyscale_image():
     idat = png[png.index(b"IDAT") + 4:png.index(b"IEND") - 8]
     rows = zlib.decompress(idat)
     assert len(rows) == 3 * (1 + 4) and rows[5 + 1 + 2] == 255
+
+
+def test_a_refusal_pauses_every_reader_and_slows_the_pace_once():
+    from tasks.risk_profile import _Pace
+
+    p = _Pace(2.0)
+    assert p.rate() == 2.0
+    assert p.blocked(cool_down=300) is True              # first report: slow down by a third
+    assert abs(p.rate() - 2.0 / 1.5) < 1e-9
+    assert p.blocked(cool_down=300) is False             # other readers hitting the same block
+    assert abs(p.rate() - 2.0 / 1.5) < 1e-9              # ... do not slow it again
+    import time
+    assert p.next - time.monotonic() > 290               # everyone waits out the cool-down
+    for _ in range(20):
+        p.blocked(cool_down=0.0)
+    assert p.rate() >= 0.25                              # never slower than the floor

@@ -366,18 +366,28 @@ def _gdal_env() -> None:
 class _Pace:
     """At most `per_second` file opens per second across all threads.
 
-    The Climate Hazards Center server blocks an address that reads too fast
-    (HTTP 403 for minutes, seen 2026-10-10 after 8 parallel readers), so the
-    archive is read at a steady, polite rate instead of in bursts. Each read
-    takes 2-4 s from eu-west-1, so 8 readers stay under the cap; the daily
-    archive (about 6,900 files) takes about an hour."""
+    The Climate Hazards Center server refuses an address that reads too much
+    too fast (HTTP 403 for minutes). Measured 2026-10-10 from eu-west-1: about
+    1.5 monthly files a second (~1.3 MB/s) was accepted; 3.5 daily files a
+    second (~4.5 MB/s) was refused within a minute. So the archive is read at a
+    steady, polite rate, and a refusal pauses EVERY reader for a cool-down and
+    slows the pace by a third — never a burst of retries."""
 
-    def __init__(self, per_second: float) -> None:
+    def __init__(self, per_second: float, floor: float = 0.25) -> None:
         import threading
 
         self.gap = 1.0 / per_second
+        self.max_gap = 1.0 / floor
         self.next = 0.0
+        self.last_block = float("-inf")
         self.lock = threading.Lock()
+
+    def set_rate(self, per_second: float) -> None:
+        with self.lock:
+            self.gap = 1.0 / per_second
+
+    def rate(self) -> float:
+        return 1.0 / self.gap
 
     def wait(self) -> None:
         with self.lock:
@@ -387,8 +397,21 @@ class _Pace:
         if at > now:
             time.sleep(at - now)
 
+    def blocked(self, cool_down: float = 300.0) -> bool:
+        """Every reader waits out the cool-down; the first report of a block
+        also slows the pace. True for that first report."""
+        with self.lock:
+            now = time.monotonic()
+            first = now - self.last_block > cool_down
+            if first:
+                self.gap = min(self.gap * 1.5, self.max_gap)
+            self.last_block = now
+            self.next = max(self.next, now + cool_down)
+        return first
 
-_PACE = _Pace(3.5)
+
+_PACE = _Pace(1.0)
+MONTHLY_RATE, DAILY_RATE = 1.5, 1.0     # files a second; the daily archive (~6,900 files) takes about 2 hours
 
 
 @dataclass
@@ -454,17 +477,22 @@ def _read_window(url: str, bounds: tuple[float, float, float, float], tries: int
                 return src.read(1, window=win).astype("float64"), src.window_transform(win), src.nodata
         except Exception as exc:  # noqa: BLE001
             last = exc
-            blocked = "403" in str(exc) or "429" in str(exc)
-            if blocked or attempt:
-                log.warning("rainfall archive: %s attempt %d failed (%s)%s", url.rsplit("/", 1)[-1], attempt + 1,
-                            str(exc)[:120], " — server is refusing; backing off" if blocked else "")
-            time.sleep((60 if blocked else 5) * (attempt + 1))
+            if "403" in str(exc) or "429" in str(exc):
+                if _PACE.blocked():
+                    log.warning("rainfall archive refusing (%s on %s): every reader pauses 5 minutes, "
+                                "then reads at %.2f files/s", str(exc)[:40], url.rsplit("/", 1)[-1], _PACE.rate())
+                continue                      # wait() holds this reader until the cool-down ends
+            if attempt:
+                log.warning("rainfall archive: %s attempt %d failed (%s)", url.rsplit("/", 1)[-1], attempt + 1,
+                            str(exc)[:120])
+            time.sleep(5 * (attempt + 1))
     raise last if last else RuntimeError(f"{url}: unreadable")
 
 
 def read_monthly(lgas: list, bounds, years: list[int], workers: int = 4) -> dict[tuple[str, str], dict]:
     """(tenant, lga) -> {(year, month): mm} from CHIRPS v3 monthly."""
     _gdal_env()
+    _PACE.set_rate(MONTHLY_RATE)
     jobs = [(y, m) for y in years for m in SEASON_MONTHS]
     with ThreadPoolExecutor(max_workers=workers) as ex:
         res = list(ex.map(lambda ym: (ym, _read_window(CHIRPS_MONTHLY.format(y=ym[0], m=ym[1]), bounds)), jobs))
@@ -481,13 +509,14 @@ def read_monthly(lgas: list, bounds, years: list[int], workers: int = 4) -> dict
     return out
 
 
-def read_daily(lgas: list, bounds, years: list[int], workers: int = 8) -> tuple[dict, date]:
+def read_daily(lgas: list, bounds, years: list[int], workers: int = 4) -> tuple[dict, date]:
     """(tenant, lga) -> {year: daily mm array from 1 March to 31 October}.
 
     A day that cannot be read after every retry stays NaN, and failed_rains
     leaves that year out rather than guess; the count of such days is logged.
     """
     _gdal_env()
+    _PACE.set_rate(DAILY_RATE)
     start = date(2001, *DAILY_FROM)
     span = (date(2001, *DAILY_TO) - start).days + 1
     days = [(y, date(y, *DAILY_FROM) + timedelta(days=i)) for y in years for i in range(span)]
