@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 
+import { useAuth } from '@/context/AuthContext';
 import { downloadFile, ingestionFetch } from '@/lib/api';
 import { parseCoord } from './FarmCheckPanel';
 
@@ -171,6 +172,7 @@ const pct = (v: number | null | undefined) => (v == null ? '—' : `${Math.round
 const ndvi = (v: number | null | undefined) => (v == null ? '—' : v.toFixed(2));
 
 export default function ClaimsVerificationPanel() {
+  const { isSuperAdmin } = useAuth();
   const [text, setText] = useState('');
   const [rows, setRows] = useState<ClaimRow[]>([]);
   const [halfM, setHalfM] = useState(60);
@@ -419,7 +421,8 @@ export default function ClaimsVerificationPanel() {
         </div>
       )}
 
-      {stats.done > 0 && !running && (
+      {/* Downloads are paid deliverables: super-admin only, even for insurer accounts. */}
+      {isSuperAdmin && stats.done > 0 && !running && (
         <div className="cv-report">
           <label style={{ fontSize: '11px' }}>
             <div className="fp-tenant-label">Prepared for</div>

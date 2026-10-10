@@ -58,6 +58,7 @@ from routers import (
     overview,
     overview_live,
     reports,
+    risk_profile,
     shockguard,
     skills,
     tenants,
@@ -145,6 +146,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(contact.router, prefix="/api/v1")
 app.include_router(tenants.router, prefix="/api/v1")
 app.include_router(farmland.router, prefix="/api/v1")
+app.include_router(risk_profile.router, prefix="/api/v1")
 app.include_router(cropguard.router, prefix="/api/v1")
 app.include_router(cropguard_prices.router, prefix="/api/v1")
 app.include_router(cropguard_prices_bulk.router, prefix="/api/v1")

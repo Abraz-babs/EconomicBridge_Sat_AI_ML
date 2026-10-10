@@ -23,6 +23,7 @@ import SeasonWatch from './SeasonWatch';
 import FarmCheckPanel from './FarmCheckPanel';
 import FarmCheckBulkPanel from './FarmCheckBulkPanel';
 import ClaimsVerificationPanel from './ClaimsVerificationPanel';
+import RiskProfilePanel from './RiskProfilePanel';
 import NdviAnomalyPanel from './NdviAnomalyPanel';
 
 
@@ -88,7 +89,7 @@ function bandClass(band: 'HIGH' | 'MEDIUM' | 'LOW'): string {
 
 export default function CropGuardPanel() {
   const { activeTenantId, activeTenant, pilotTenants, setActiveTenant } = useTenant();
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, isInsurer } = useAuth();
 
   const [analysisMode, setAnalysisMode] = useState<'leaf' | 'field'>('leaf');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -253,10 +254,12 @@ export default function CropGuardPanel() {
       {/* BULK FARM CHECK — paste/upload many coordinates and check them together */}
       <FarmCheckBulkPanel />
 
-      {/* INSURANCE CLAIMS VERIFICATION — its own section (operator, 9 Oct 2026):
-          plots checked before and after a loss date; a paid deliverable the
-          operator runs and reviews, so super-admin only. */}
-      {isSuperAdmin && <ClaimsVerificationPanel />}
+      {/* INSURANCE — the operator and insurer accounts (decision 2026-10-10).
+          Claims verification: plots checked before and after a loss date.
+          Pre-season risk profile: every LGA's flood, drought and failed-rains
+          band. Their downloads stay super-admin only. */}
+      {(isSuperAdmin || isInsurer) && <ClaimsVerificationPanel />}
+      {(isSuperAdmin || isInsurer) && <RiskProfilePanel tenant={activeTenant} stateLabel={stateLabel} />}
 
       {/* VEGETATION STRESS WATCH — statewide NDVI vs its own baseline */}
       <NdviAnomalyPanel />

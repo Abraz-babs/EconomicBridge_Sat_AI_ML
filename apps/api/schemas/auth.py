@@ -51,6 +51,9 @@ class AuthUser(BaseModel):
     # whichever tenant is being VIEWED — is what the user's subscription
     # (module locks) must key off. None for legacy/seed accounts.
     tenant_id: str | None = None
+    # That organisation's registry category (e.g. "insurer"); drives which
+    # account-type tools the UI shows. None for legacy/seed accounts.
+    tenant_type: str | None = None
 
 
 class MyModulesData(BaseModel):

@@ -33,6 +33,9 @@ numpy>=1.26,<3.0
 # Village light: nearest-village assignment of HRSL population (cKDTree).
 scipy>=1.11,<2.0
 
+# Risk profile: UNOSAT flood extents ship as shapefiles (pure Python reader).
+pyshp>=2.3,<3.0
+
 # VIIRS Black Marble (VNP46A2) night-light radiance — HDF5 reads.
 # sources/viirs_raster.py samples true per-pixel radiance from NASA granules;
 # h5py reads the gap-filled DNB grid + the granule's lat/lon coordinate arrays.

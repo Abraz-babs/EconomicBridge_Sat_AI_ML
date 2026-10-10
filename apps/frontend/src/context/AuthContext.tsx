@@ -36,11 +36,15 @@ export interface AuthUser {
   /** Registry slug of the user's OWN organisation — the subscription that
    *  module locks follow, regardless of which tenant is being viewed. */
   tenant_id?: string | null;
+  /** That organisation's registry category, e.g. 'insurer'. */
+  tenant_type?: string | null;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
   isSuperAdmin: boolean;
+  /** An insurer account: sees CropGuard's insurance tools (risk profile, claims). */
+  isInsurer: boolean;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -206,6 +210,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       isSuperAdmin: user?.role === 'super_admin',
+      isInsurer: user?.tenant_type === 'insurer',
       loading,
       login,
       logout,

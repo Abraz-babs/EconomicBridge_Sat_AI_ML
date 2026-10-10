@@ -89,6 +89,16 @@ async def _org_tenant_slug(session: AsyncSession, org_id) -> str | None:
     return row[0] if row else None
 
 
+async def _tenant_type(session: AsyncSession, slug: str | None) -> str | None:
+    """The registry category of the user's own organisation (e.g. 'insurer')."""
+    if not slug:
+        return None
+    row = (await session.execute(
+        text("SELECT tenant_type FROM public.tenant_registry WHERE id = :t"), {"t": slug},
+    )).first()
+    return row[0] if row else None
+
+
 async def _issue_tokens(session: AsyncSession, user) -> TokenData:
     """Mint an access+refresh pair for `user` and persist the refresh hash."""
     s = get_settings()
@@ -99,6 +109,7 @@ async def _issue_tokens(session: AsyncSession, user) -> TokenData:
     )
     raw_refresh, refresh_hash = new_refresh_token()
     expires = datetime.now(timezone.utc) + timedelta(days=s.jwt_refresh_ttl_days)
+    slug = await _org_tenant_slug(session, user["org_id"])
     await session.execute(
         text(
             """
@@ -115,7 +126,8 @@ async def _issue_tokens(session: AsyncSession, user) -> TokenData:
             id=user["id"], email=user["email"], role=user["role"],
             org_id=user["org_id"], full_name=user["full_name"],
             permitted_tenants=tenants,
-            tenant_id=await _org_tenant_slug(session, user["org_id"]),
+            tenant_id=slug,
+            tenant_type=await _tenant_type(session, slug),
         ),
     )
 
@@ -357,12 +369,14 @@ async def me(
     user = await _load_user(session, user_id=current.user_id)
     if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=_UNAUTH)
+    slug = await _org_tenant_slug(session, user["org_id"])
     return SuccessResponse(
         data=AuthUser(
             id=user["id"], email=user["email"], role=user["role"],
             org_id=user["org_id"], full_name=user["full_name"],
             permitted_tenants=current.permitted_tenants,
-            tenant_id=await _org_tenant_slug(session, user["org_id"]),
+            tenant_id=slug,
+            tenant_type=await _tenant_type(session, slug),
         ),
         meta=build_meta(),
     )

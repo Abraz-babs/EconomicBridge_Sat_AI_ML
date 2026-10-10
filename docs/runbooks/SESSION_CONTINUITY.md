@@ -323,6 +323,25 @@ LGA; signals are a COUNT, never a score. Three new inputs:
   One-shot ingestion task, **4 GB memory**:
   `python -m scripts.run_village_access` (`--tenant zamfara`, `--no-write`).
 
+**Pre-season risk profile for insurers (migration 0061, 2026-10-10) — once a
+year, before planting, after CHIRPS publishes October.** `tenant_<id>.lga_risk_profile`
+and `risk_overlay` hold one ROUND per last complete season: per LGA a flood,
+drought and failed-rains band (one published rule, `services/risk_profile.py
+RULE` = the job's thresholds) with the figures behind them — JRC GloFAS flood
+zones on ESA WorldCover farmland, UNOSAT flood maps (Nigeria: Sep 2024, Oct
+2022), CHIRPS v3 monthly 1991→ and daily (IMERG-distributed) 1998→. Shown in
+CropGuard to the operator and **insurer** accounts (tenant category `insurer`);
+PDF/CSV super-admin only. One-shot ingestion task, **4 vCPU / 16 GB**, about
+an hour for all ten pilots (the daily read is paced at 3.5 files/s — the CHC
+server blocks an address that reads faster, HTTP 403 for minutes):
+```sh
+python -m scripts.run_risk_profile                     # every pilot, through the last complete season
+python -m scripts.run_risk_profile --no-write --dump /tmp/rp.json   # measure, review, store nothing
+```
+A new country needs its JRC tile ids in `JRC_TILE_IDS` and, for mapped floods,
+its UNOSAT layers in `UNOSAT_MAPS` (name the layer with its dates — one archive
+can hold several windows).
+
 > **On Windows the AWS CLI cannot read `--overrides file:///tmp/...`** — it is a
 > Windows binary and `/tmp` is not a Windows path. Write the JSON into the
 > scratchpad and pass its Windows path.

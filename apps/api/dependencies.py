@@ -85,6 +85,32 @@ async def require_super_admin(request: Request) -> CurrentUser:
     return user
 
 
+async def org_tenant_type(org_id: UUID) -> str | None:
+    """The registry category of the caller's own organisation (None if unregistered)."""
+    factory = get_session_factory()
+    async with factory() as session:
+        row = (await session.execute(text(
+            "SELECT r.tenant_type FROM public.organisations o "
+            "JOIN public.tenant_registry r ON r.id = o.org_id WHERE o.id = :o"
+        ), {"o": org_id})).first()
+    return row[0] if row else None
+
+
+async def require_insurance_viewer(request: Request) -> CurrentUser:
+    """The insurance tools (risk profile, claims verification): the platform
+    operator and insurer accounts only. 401 if unauthenticated, 403 otherwise.
+    Downloads stay behind require_super_admin regardless."""
+    from services.tenant_categories import INSURER_CATEGORY
+
+    user = await get_current_user(request)
+    if user.is_super_admin or await org_tenant_type(user.org_id) == INSURER_CATEGORY:
+        return user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"code": "FORBIDDEN", "message": "Insurer accounts only."},
+    )
+
+
 # ─── DPA enforcement gate (Slice 14) ─────────────────────────────────────
 
 

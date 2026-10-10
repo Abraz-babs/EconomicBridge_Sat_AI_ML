@@ -4028,3 +4028,75 @@ nav::-webkit-scrollbar {
 .cv-report .fp-refresh-btn { margin-left: 0; }   /* the shared button floats right elsewhere */
 .ev-lga-table th.cv-left, .ev-lga-table td.cv-left { text-align: left; }
 .cv-input { background: var(--surface); border: 1px solid var(--border2); border-radius: 4px; color: var(--ink); padding: 5px 8px; font-size: 11px; font-family: 'DM Mono', monospace; min-width: 180px; }
+
+/* ─── Pre-season risk profile (CropGuard · insurance, 2026-10-10) ─────────── */
+.sb-table-wrap.rp { padding: 14px 16px 12px; overflow: visible; }
+.rp .module-sources { margin: 2px 0 12px; }
+.rp-empty { font-size: 12px; color: var(--muted); padding: 18px 0 8px; }
+.rp-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--border);
+  border: 1px solid var(--border); border-radius: 4px; overflow: hidden; margin-bottom: 14px; }
+.rp-kpi { background: var(--surface); padding: 11px 13px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rp-kpi-val { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 21px; line-height: 1.15;
+  color: var(--ink); font-variant-numeric: tabular-nums; }
+.rp-kpi-label { font-size: 10.5px; color: var(--muted); line-height: 1.45; }
+.rp-main { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 18px; align-items: stretch; }
+.rp-mapcol { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.rp-mapcol .fp-map-canvas { border: 1px solid var(--border); border-radius: 4px; }
+.rp-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 10px; letter-spacing: 0.5px; color: var(--ink2); }
+.rp-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.rp-legend i { width: 11px; height: 11px; border-radius: 2px; display: inline-block; border: 1px solid rgba(0, 0, 0, 0.12); }
+.rp-rule { font-size: 10.5px; color: var(--muted); line-height: 1.5; margin: 0; max-width: 760px; }
+.rp-rule b { color: var(--ink2); font-weight: 600; }
+.rp-side { display: flex; flex-direction: column; min-height: 0; min-width: 0; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--surface); }
+.rp-side-head { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted);
+  padding: 9px 12px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+.rp-list { overflow-y: auto; max-height: 640px; overscroll-behavior: contain; }
+.rp-row { width: 100%; text-align: left; background: transparent; border: 0; border-bottom: 1px solid var(--border);
+  padding: 8px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 8px; cursor: pointer;
+  color: var(--ink); font-family: inherit; }
+.rp-row:hover { background: var(--surface2); }
+.rp-row.is-sel { background: var(--surface2); box-shadow: inset 3px 0 0 var(--ink); }
+.rp-row-name { font-size: 12px; font-weight: 500; }
+.rp-row-chips { display: inline-flex; gap: 4px; justify-self: end; flex-wrap: wrap; }
+.rp-row-fig { grid-column: 1 / -1; font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rp-chip { font-size: 8px; letter-spacing: 1px; padding: 2px 6px; border-radius: 2px; text-transform: uppercase; white-space: nowrap; }
+.rp-chip--high { background: #fde8e1; color: #a3441f; }
+.rp-chip--moderate { background: #fef3dc; color: #8a5a00; }
+.rp-chip--low { background: #e6eee8; color: #2d6a4f; }
+.rp-chip--none { background: var(--surface2); color: var(--muted); }
+.rp-detail { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.rp-detail-head { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.rp-detail-head h3 { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 18px; margin: 0 6px 0 0; color: var(--ink); }
+.rp-plain { font-size: 12px; color: var(--ink2); line-height: 1.6; margin: 0; max-width: 900px; }
+.rp-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.rp-blk { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.rp-label { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.rp-kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; font-size: 11px; margin: 0; }
+.rp-kv dt { color: var(--muted); }
+.rp-kv dd { margin: 0; text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; }
+.rp-chart { width: 100%; height: auto; display: block; }
+.rp-chart text { font-family: 'DM Mono', monospace; font-size: 8px; fill: var(--muted); }
+.rp-chart-grid { stroke: var(--border); stroke-width: 0.6; }
+.rp-chart-norm { stroke: var(--ink2); stroke-width: 0.8; }
+.rp-chart-thr { stroke: #9a5a12; stroke-width: 1; stroke-dasharray: 3 2; }
+.rp-chart-bar { fill: var(--border2); }
+.rp-chart-bar.is-dry { fill: #9a5a12; }
+.rp-reg { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
+.rp-reg li { display: flex; flex-direction: column; gap: 1px; }
+.rp-reg li span { font-size: 9.5px; color: var(--muted); }
+.rp-muted { font-size: 11px; color: var(--muted); margin: 0; }
+.rp-fold { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
+.rp-fold summary { cursor: pointer; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink2); }
+.rp-table-wrap { max-height: 520px; overflow: auto; margin-top: 10px; }
+.rp-table tbody tr { cursor: pointer; }
+.rp-table tbody tr:hover, .rp-table tbody tr.is-sel { background: var(--surface2); }
+.rp-how { margin: 10px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; font-size: 11px;
+  color: var(--ink2); line-height: 1.55; max-width: 900px; }
+.rp-report { margin-top: 14px; }
+.rp-foot { font-size: 10px; color: var(--muted); margin-top: 10px; }
+@media (max-width: 1100px) {
+  .rp-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rp-main, .rp-cols { grid-template-columns: minmax(0, 1fr); }
+  .rp-list { max-height: 360px; }
+}

@@ -25,7 +25,11 @@ TENANT_CATEGORIES: list[dict] = [
     {"key": "ngo", "label": "NGO / Aid Organization", "group": "Organization", "geographic": False},
     {"key": "research", "label": "Research Institute", "group": "Organization", "geographic": False},
     {"key": "funder", "label": "Funding Organization", "group": "Organization", "geographic": False},
+    # Insurers (NAIC and others) see the insurance tools in CropGuard: the
+    # pre-season risk profile and claims verification (2026-10-10).
+    {"key": "insurer", "label": "Insurer / Insurance company", "group": "Organization", "geographic": False},
 ]
+INSURER_CATEGORY = "insurer"
 
 CATEGORY_KEYS: frozenset[str] = frozenset(c["key"] for c in TENANT_CATEGORIES)
 _GEOGRAPHIC: frozenset[str] = frozenset(c["key"] for c in TENANT_CATEGORIES if c["geographic"])
