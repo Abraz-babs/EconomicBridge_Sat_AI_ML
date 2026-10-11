@@ -19,7 +19,7 @@ from xml.sax.saxutils import escape
 
 from services.claims_report import FOOTER_LINES, LOGO
 from services.risk_profile import (
-    BAND_LABEL, BAND_ORDER, RULE, ha, onset_text, pc, plain_sentences, season_span, zone_share,
+    BAND_LABEL, BAND_ORDER, RULE, ha, onset_text, pc, plain_sentences, season_span,
 )
 
 PALETTE = {
@@ -161,13 +161,12 @@ def _band_map_flowable(rows: list[dict], kind: str, width: float, height: float,
                     if not cen:
                         continue
                     x, y = px(cen[0]), py(cen[1]) - 2
-                    t = c.beginText(x - c.stringWidth(r["lga"], "Times-Roman", 6.5) / 2, y)
-                    t.setFont("Times-Roman", 6.5)
-                    t.setTextRenderMode(1)
-                    c.setStrokeColor(colors.white)
-                    c.setLineWidth(1.6)
-                    t.textOut(r["lga"])
-                    c.drawText(t)
+                    # A halo without text render modes (a stroke mode leaks into later text):
+                    # the label in white, nudged in eight directions, then in ink on top.
+                    c.setFillColor(colors.white)
+                    for dx, dy in ((-0.7, 0), (0.7, 0), (0, -0.7), (0, 0.7),
+                                   (-0.5, -0.5), (0.5, 0.5), (-0.5, 0.5), (0.5, -0.5)):
+                        c.drawCentredString(x + dx, y + dy, r["lga"])
                     c.setFillColor(colors.HexColor("#1a1714"))
                     c.drawCentredString(x, y, r["lga"])
             # legend
@@ -335,11 +334,14 @@ def render_risk_report(rep: RiskReport, generated_at: datetime | None = None) ->
         flow.append(Paragraph(f"<b>{name}.</b> {escape(RULE[kind])}", body))
 
     # Table
-    flow.append(CondPageBreak(80 * mm))
-    flow.append(Paragraph("All LGAs", h2))
+    # The table splits across pages; keeping its heading WITH it would push the
+    # whole table to a fresh page and leave most of this one empty.
+    flow.append(CondPageBreak(60 * mm))
+    flow.append(Paragraph("All LGAs", st("h2t", fontName=serif_b, fontSize=12.5, leading=16, textColor=dgreen,
+                                         spaceBefore=10, spaceAfter=4)))
     keys = [(k, m.get("label", k)) for k, m in ((rows[0]["figures"].get("flood") or {}).get("mapped") or {}).items()] if rows else []
     latest = keys[0] if keys else None
-    head = ["LGA", "Flood", "In the 1-in-10-yr flood zone", f"Under water {latest[1]}" if latest else "Under water",
+    head = ["LGA", "Flood", "Farmland in 1-in-10-yr zone", f"Under water {latest[1]}" if latest else "Under water",
             "Drought", "Seasons below 80%", "Failed rains", "Failed-rain seasons", "Farmland", "People"]
     data = [[Paragraph(f"<b>{h}</b>", cell) for h in head]]
     for r in rows:
@@ -351,7 +353,8 @@ def render_risk_report(rep: RiskReport, generated_at: datetime | None = None) ->
         n_seasons = (rain.get("last_year", 0) - rain.get("first_year", 0) + 1) if rain else 0
         data.append([
             Paragraph(escape(r["lga"]), cell), band_cell("flood", r["band_flood"]),
-            Paragraph(zone_share(fl), cell_r),
+            Paragraph(f"{pc(fl.get('rp10_area_pct'))} of land" if fl.get("basis") == "land"
+                      else f"{pc(fl.get('rp10_crop_pct'))} · {ha(fl.get('rp10_crop_ha'))}", cell_r),
             Paragraph(pc(mk.get("area_pct")) if mk else "—", cell_r),
             band_cell("drought", r["band_drought"]),
             Paragraph(f"{len(rain.get('drought_seasons') or [])} of {n_seasons}", cell_r),
@@ -360,7 +363,7 @@ def render_risk_report(rep: RiskReport, generated_at: datetime | None = None) ->
             Paragraph(ha(f.get("cropland_ha")), cell_r),
             Paragraph(f"{(f.get('exposure') or {}).get('people'):,}" if (f.get("exposure") or {}).get("people") else "—", cell_r),
         ])
-    t = Table(data, colWidths=[24 * mm, 15 * mm, 24 * mm, 17 * mm, 15 * mm, 15 * mm, 15 * mm, 15 * mm, 18 * mm, 16 * mm],
+    t = Table(data, colWidths=[23 * mm, 15 * mm, 28 * mm, 17 * mm, 15 * mm, 15 * mm, 15 * mm, 14 * mm, 17 * mm, 15 * mm],
               repeatRows=1)
     t.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.3, hair), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eef3ef")),
