@@ -147,3 +147,16 @@ def test_a_refusal_pauses_every_reader_and_slows_the_pace_once():
     for _ in range(20):
         p.blocked(cool_down=0.0)
     assert p.rate() >= 0.25                              # never slower than the floor
+
+
+def test_flood_band_reads_land_where_little_farmland_is_mapped():
+    from tasks.risk_profile import flood_basis_and_band
+
+    flood = {"rp10_crop_pct": 100.0, "rp100_crop_pct": 100.0,        # a few farmland pixels, all in the zone
+             "rp10_area_pct": 1.2, "rp100_area_pct": 2.0, "mapped": {}}
+    assert flood_basis_and_band(flood, 0.8) == ("land", "low")      # forest district: the land share decides
+    assert flood_basis_and_band(flood, 0.0) == ("land", "low")
+    assert flood_basis_and_band(flood, None) == ("land", "low")
+    assert flood_basis_and_band(flood, 5.0) == ("farmland", "high")  # 5% or more mapped: farmland decides
+    flood["mapped"] = {"2024-09": {"area_pct": 6.0}}
+    assert flood_basis_and_band(flood, 0.8) == ("land", "high")     # water seen still counts on either basis

@@ -15,7 +15,8 @@ from datetime import date
 RULE = {
     "flood": ("High: at least 10% of farmland in the 1-in-10-year river flood zone, or at least 5% of the LGA "
               "under water in a mapped flood. Moderate: at least 3% of farmland in the 1-in-100-year zone, or at "
-              "least 1% under water. Otherwise Low."),
+              "least 1% under water. Otherwise Low. Where ESA maps less than 5% of an LGA as farmland (towns, and "
+              "forest areas where farms sit under trees), the same shares of the LGA's land are used."),
     "drought": ("High: a season below 80% of normal rainfall at least 1 year in 5. Moderate: at least 1 year "
                 "in 10. Otherwise Low."),
     "rains": ("High: a false start, a late onset or a long dry spell after planting at least 1 season in 3. "
@@ -101,6 +102,13 @@ def summarise(rows: list[dict]) -> dict:
 
 # ─── words ────────────────────────────────────────────────────────────────
 
+def zone_share(fl: dict) -> str:
+    """The 1-in-10-year figure as the band reads it: of farmland, or of land."""
+    if fl.get("basis") == "land":
+        return f"{pc(fl.get('rp10_area_pct'))} of land"
+    return f"{pc(fl.get('rp10_crop_pct'))} of farmland · {ha(fl.get('rp10_crop_ha'))}"
+
+
 def ha(v: float | None) -> str:
     if v is None:
         return "—"
@@ -131,16 +139,27 @@ def plain_sentences(lga: str, f: dict) -> list[str]:
     """What the figures say about one LGA, in plain words (page and PDF)."""
     out = []
     fl = f.get("flood") or {}
-    z, z100 = fl.get("rp10_crop_pct") or 0.0, fl.get("rp100_crop_pct") or 0.0
-    if z >= 10:
-        out.append(f"{round(z)}% of {lga}'s farmland ({ha(fl.get('rp10_crop_ha'))}) lies in the zone the river "
-                   "model floods about once every 10 years.")
-    elif z100 >= 3:
-        out.append(f"{round(z100)}% of {lga}'s farmland lies in the 1-in-100-year river flood zone, and "
-                   f"{pc(z)} in the 1-in-10-year zone.")
+    if fl.get("basis") == "land":
+        za, za100 = fl.get("rp10_area_pct") or 0.0, fl.get("rp100_area_pct") or 0.0
+        lead = (f"ESA maps little farmland in {lga} ({pc(f.get('cropland_pct'))} of the LGA; farms under trees read "
+                "as tree cover), so its flood band reads its land: ")
+        if za >= 10:
+            out.append(lead + f"{round(za)}% of it lies in the zone the river model floods about once every 10 years.")
+        elif za100 >= 3:
+            out.append(lead + f"{round(za100)}% lies in the 1-in-100-year zone and {pc(za)} in the 1-in-10-year zone.")
+        else:
+            out.append(lead + f"almost none lies in the modelled river flood zones ({pc(za100)} in the 1-in-100-year zone).")
     else:
-        out.append(f"Almost none of {lga}'s farmland lies in the modelled river flood zones "
-                   f"({pc(z100)} in the 1-in-100-year zone).")
+        z, z100 = fl.get("rp10_crop_pct") or 0.0, fl.get("rp100_crop_pct") or 0.0
+        if z >= 10:
+            out.append(f"{round(z)}% of {lga}'s farmland ({ha(fl.get('rp10_crop_ha'))}) lies in the zone the river "
+                       "model floods about once every 10 years.")
+        elif z100 >= 3:
+            out.append(f"{round(z100)}% of {lga}'s farmland lies in the 1-in-100-year river flood zone, and "
+                       f"{pc(z)} in the 1-in-10-year zone.")
+        else:
+            out.append(f"Almost none of {lga}'s farmland lies in the modelled river flood zones "
+                       f"({pc(z100)} in the 1-in-100-year zone).")
     maps = list((fl.get("mapped") or {}).values())
     seen = [m for m in maps if (m.get("area_pct") or 0) >= 1]
     if seen:
@@ -177,9 +196,10 @@ def csv_text(rows: list[dict], through: int, method: str) -> str:
         for k in ((r["figures"].get("flood") or {}).get("mapped") or {}):
             if k not in keys:
                 keys.append(k)
-    head = ["lga", "band_flood", "band_drought", "band_failed_rains", "cropland_ha", "cropland_pct",
+    head = ["lga", "band_flood", "band_drought", "band_failed_rains", "flood_basis", "cropland_ha", "cropland_pct",
             "farmland_in_1in10_zone_pct", "farmland_in_1in10_zone_ha", "farmland_in_1in100_zone_pct",
-            "farmland_in_1in100_zone_ha", "farmland_deeper_than_1m_1in100_pct"]
+            "farmland_in_1in100_zone_ha", "farmland_deeper_than_1m_1in100_pct", "land_in_1in10_zone_pct",
+            "land_in_1in100_zone_pct"]
     for k in keys:
         head += [f"water_{k}_lga_pct", f"water_{k}_farmland_ha", f"cloud_{k}_lga_pct"]
     head += ["season_months", "normal_season_mm", "year_to_year_swing_pct", "seasons_below_80pct",
@@ -195,9 +215,10 @@ def csv_text(rows: list[dict], through: int, method: str) -> str:
         rain = f.get("rain") or {}
         rains = f.get("rains") or {}
         ex = f.get("exposure") or {}
-        line = [r["lga"], r["band_flood"], r["band_drought"], r["band_rains"], f.get("cropland_ha"),
-                f.get("cropland_pct"), fl.get("rp10_crop_pct"), fl.get("rp10_crop_ha"), fl.get("rp100_crop_pct"),
-                fl.get("rp100_crop_ha"), fl.get("rp100_deep_crop_pct")]
+        line = [r["lga"], r["band_flood"], r["band_drought"], r["band_rains"], fl.get("basis", "farmland"),
+                f.get("cropland_ha"), f.get("cropland_pct"), fl.get("rp10_crop_pct"), fl.get("rp10_crop_ha"),
+                fl.get("rp100_crop_pct"), fl.get("rp100_crop_ha"), fl.get("rp100_deep_crop_pct"),
+                fl.get("rp10_area_pct"), fl.get("rp100_area_pct")]
         for k in keys:
             m = (fl.get("mapped") or {}).get(k) or {}
             line += [m.get("area_pct"), m.get("crop_ha"), m.get("cloud_pct")]

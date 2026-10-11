@@ -130,6 +130,7 @@ LONG_DRY_DAYS = 10
 LATE_ONSET_DAYS = 20
 
 FLOOD_HIGH_RP10, FLOOD_MOD_RP100 = 10.0, 3.0      # % of farmland in the zone
+LAND_BASIS_BELOW = 5.0                            # % of the LGA mapped as farmland; below it, use land
 MAPPED_HIGH, MAPPED_MOD = 5.0, 1.0                # % of the LGA under water
 DROUGHT_HIGH, DROUGHT_MOD = 1 / 5, 1 / 10         # share of seasons below 80%
 RAINS_HIGH, RAINS_MOD = 1 / 3, 1 / 5              # share of seasons with failed rains
@@ -244,6 +245,22 @@ def failed_rains(daily: dict[int, np.ndarray], window_start: date, season_months
 
 def _month_end(y: int, m: int) -> date:
     return (date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1))
+
+
+def flood_basis_and_band(flood: dict, cropland_pct: float | None) -> tuple[str, str]:
+    """(basis, band) for one LGA's flood figures.
+
+    The band reads the share of FARMLAND in the flood zones — unless ESA maps
+    less than LAND_BASIS_BELOW % of the LGA as farmland (towns, and forest
+    districts where farms sit under trees and read as tree cover: 169 of
+    Ghana's 260 districts, 2026-10-11), when a farmland share rests on a few
+    pixels and the share of the LGA's LAND is used instead.
+    """
+    mapped = [v.get("area_pct") or 0.0 for v in (flood.get("mapped") or {}).values()]
+    mapped_max = max(mapped) if mapped else None
+    if (cropland_pct or 0.0) >= LAND_BASIS_BELOW:
+        return "farmland", flood_band(flood.get("rp10_crop_pct"), flood.get("rp100_crop_pct"), mapped_max)
+    return "land", flood_band(flood.get("rp10_area_pct"), flood.get("rp100_area_pct"), mapped_max)
 
 
 def flood_band(rp10_crop_pct: float | None, rp100_crop_pct: float | None, mapped_max_pct: float | None) -> str:
@@ -855,7 +872,7 @@ async def run_risk_profile(tenants: list[str], *, through: int, write: bool = Tr
                                     "crop_ha": round(float(m_stats[fm.key][1][i + 1]) * 100),
                                     "cloud_pct": pct(m_stats[fm.key][2][i + 1], A)} for fm in maps},
             }
-            mapped_max = max([v["area_pct"] or 0.0 for v in flood["mapped"].values()], default=None)
+            flood["basis"], band_flood = flood_basis_and_band(flood, pct(C, A))
             rain = season_stats(monthly[(t, b.lga)], years)
             figures = {
                 "area_km2": round(A, 1), "cropland_ha": round(C * 100), "cropland_pct": pct(C, A),
@@ -869,7 +886,6 @@ async def run_risk_profile(tenants: list[str], *, through: int, write: bool = Tr
                 fr = failed_rains(rains[(t, b.lga)], start, rain["season_months"])
                 figures["rains"] = fr
                 band_rains = dryspell_band(len(fr["failed_seasons"]), len(fr["years"]))
-            band_flood = flood_band(flood["rp10_crop_pct"], flood["rp100_crop_pct"], mapped_max)
             band_drought = drought_band(len(rain["drought_seasons"]), len(years))
             for k, v in (("flood", band_flood), ("drought", band_drought), ("rains", band_rains)):
                 bands[k][v] = bands[k].get(v, 0) + 1
@@ -886,7 +902,7 @@ async def run_risk_profile(tenants: list[str], *, through: int, write: bool = Tr
                              "west": w_, "south": s_, "east": e_, "north": n_, "width": w, "height": h, "png": png})
 
         summary = (f"{len(rows)} LGAs · flood {bands['flood']} · drought {bands['drought']} · "
-                   f"failed rains {bands['rains']} · farmland {round(float(a_crop.sum()) * 100):,} ha")
+                   f"failed rains {bands['rains']} · farmland {round(float(a_crop[1:].sum()) * 100):,} ha")
         if write:
             async with get_session_factory()() as s:
                 await set_tenant_schema(s, t)

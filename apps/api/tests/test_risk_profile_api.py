@@ -149,3 +149,20 @@ def test_insurance_viewer_gate(monkeypatch, role, category, allowed) -> None:
         with pytest.raises(HTTPException) as exc:
             asyncio.run(dependencies.require_insurance_viewer(None))
         assert exc.value.status_code == 403
+
+
+def test_land_basis_is_said_plainly_and_exported() -> None:
+    from services.risk_profile import zone_share
+
+    forest = _row("Aowin", 4.8, 100.0, 0.0, "low", [], [])
+    forest["figures"]["cropland_pct"] = 0.4
+    forest["figures"]["flood"].update(basis="land", rp10_area_pct=1.2, rp100_area_pct=2.0, mapped={})
+    text = " ".join(plain_sentences("Aowin", forest["figures"]))
+    assert text.startswith("ESA maps little farmland in Aowin (0.4% of the LGA")
+    assert "almost none lies in the modelled river flood zones (2.0% in the 1-in-100-year zone)" in text
+    assert zone_share(forest["figures"]["flood"]) == "1.2% of land"
+    assert zone_share(ROWS[0]["figures"]["flood"]).startswith("33.4% of farmland")
+    rows = list(csv.DictReader(io.StringIO(csv_text(ROWS + [forest], 2025, "risk_profile_v1"))))
+    by = {r["lga"]: r for r in rows}
+    assert by["Aowin"]["flood_basis"] == "land" and by["Aowin"]["land_in_1in10_zone_pct"] == "1.2"
+    assert by["Suru"]["flood_basis"] == "farmland"

@@ -19,7 +19,7 @@ from xml.sax.saxutils import escape
 
 from services.claims_report import FOOTER_LINES, LOGO
 from services.risk_profile import (
-    BAND_LABEL, BAND_ORDER, RULE, ha, onset_text, pc, plain_sentences, season_span,
+    BAND_LABEL, BAND_ORDER, RULE, ha, onset_text, pc, plain_sentences, season_span, zone_share,
 )
 
 PALETTE = {
@@ -42,10 +42,14 @@ HOW_WE_REPORT = [
     "NASA IMERG), averaged over the LGA. The rains set in on the first day, from the start of the season, when "
     "three days bring at least 20 mm with no dry spell longer than 7 days in the next 30 (Sivakumar, 1988, as used "
     "by AGRHYMET). A false start is such a rain followed by a longer dry spell; a long dry spell is 10 or more days "
-    "under 1 mm in the 30-90 days after the rains set in; a late onset is 20 or more days after the usual date.",
-    "Farmland is the ESA WorldCover 2021 cropland class (10 m, counted on the 90 m flood grid). It is one snapshot, "
-    "and fallow or grazed fields can read as grassland. People are the HRSL 30 m population assigned to GRID3 "
-    "villages (Nigerian states).",
+    "under 1 mm in the 30-90 days after the rains set in; a late onset is 20 or more days after the usual date. "
+    "Rainfall is averaged over the LGA, so a dry spell counts only when nearly the whole LGA stays dry; local dry "
+    "spells are shorter or missed. Where a state has two rainy seasons (southern Ghana), the season figures count both "
+    "and the onset and dry spells describe the first.",
+    "Farmland is the ESA WorldCover 2021 cropland class (10 m, counted on the 90 m flood grid). It is one snapshot: "
+    "fallow or grazed fields can read as grassland, and farms under trees (cocoa, oil palm) as tree cover. Where less "
+    "than 5% of an LGA is mapped as farmland, its flood band reads the share of its land instead, and says so. People "
+    "are the HRSL 30 m population assigned to GRID3 villages (Nigerian states).",
     "The bands follow one published rule in every state, so a High in one state means the same as in another.",
 ]
 
@@ -335,7 +339,7 @@ def render_risk_report(rep: RiskReport, generated_at: datetime | None = None) ->
     flow.append(Paragraph("All LGAs", h2))
     keys = [(k, m.get("label", k)) for k, m in ((rows[0]["figures"].get("flood") or {}).get("mapped") or {}).items()] if rows else []
     latest = keys[0] if keys else None
-    head = ["LGA", "Flood", "Farmland in 1-in-10-yr zone", f"Under water {latest[1]}" if latest else "Under water",
+    head = ["LGA", "Flood", "In the 1-in-10-yr flood zone", f"Under water {latest[1]}" if latest else "Under water",
             "Drought", "Seasons below 80%", "Failed rains", "Failed-rain seasons", "Farmland", "People"]
     data = [[Paragraph(f"<b>{h}</b>", cell) for h in head]]
     for r in rows:
@@ -347,7 +351,7 @@ def render_risk_report(rep: RiskReport, generated_at: datetime | None = None) ->
         n_seasons = (rain.get("last_year", 0) - rain.get("first_year", 0) + 1) if rain else 0
         data.append([
             Paragraph(escape(r["lga"]), cell), band_cell("flood", r["band_flood"]),
-            Paragraph(f"{pc(fl.get('rp10_crop_pct'))} · {ha(fl.get('rp10_crop_ha'))}", cell_r),
+            Paragraph(zone_share(fl), cell_r),
             Paragraph(pc(mk.get("area_pct")) if mk else "—", cell_r),
             band_cell("drought", r["band_drought"]),
             Paragraph(f"{len(rain.get('drought_seasons') or [])} of {n_seasons}", cell_r),
@@ -379,9 +383,11 @@ def render_risk_report(rep: RiskReport, generated_at: datetime | None = None) ->
         ex = f.get("exposure") or {}
         facts = [
             ["Farmland", f"{ha(f.get('cropland_ha'))} ({pc(f.get('cropland_pct'), 0)} of the LGA)"],
-            ["River flood zones", f"1-in-10-year: {pc(fl.get('rp10_crop_pct'))} of farmland ({ha(fl.get('rp10_crop_ha'))}); "
-                                  f"1-in-100-year: {pc(fl.get('rp100_crop_pct'))}, {pc(fl.get('rp100_deep_crop_pct'))} "
-                                  "deeper than 1 m"],
+            ["River flood zones",
+             (f"1-in-10-year: {pc(fl.get('rp10_area_pct'))} of the land; 1-in-100-year: {pc(fl.get('rp100_area_pct'))} "
+              "(little farmland mapped, so the band reads land)") if fl.get("basis") == "land" else
+             (f"1-in-10-year: {pc(fl.get('rp10_crop_pct'))} of farmland ({ha(fl.get('rp10_crop_ha'))}); "
+              f"1-in-100-year: {pc(fl.get('rp100_crop_pct'))}, {pc(fl.get('rp100_deep_crop_pct'))} deeper than 1 m")],
         ]
         for m in (fl.get("mapped") or {}).values():
             facts.append([f"Water seen {m.get('label')}",

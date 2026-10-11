@@ -31,6 +31,10 @@ export interface RiskFigures {
     rp100_crop_pct: number | null;
     rp100_crop_ha: number | null;
     rp100_deep_crop_pct: number | null;
+    rp10_area_pct: number | null;
+    rp100_area_pct: number | null;
+    /** What the flood band reads: farmland, or the LGA's land where under 5% is mapped as farmland. */
+    basis?: 'farmland' | 'land';
     mapped: Record<string, MappedFlood>;
   };
   rain: {

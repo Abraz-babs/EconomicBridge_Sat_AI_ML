@@ -56,6 +56,10 @@ const onsetText = (mmdd: string | null | undefined) => {
 };
 const bandOf = (l: RiskLga, k: BandKind): Band => (k === 'flood' ? l.band_flood : k === 'drought' ? l.band_drought : l.band_rains);
 const years = (ys: number[] | undefined) => (ys && ys.length ? ys.join(', ') : 'none');
+/** The 1-in-10-year figure as the band reads it: of farmland, or of land where little farmland is mapped. */
+const zoneShare = (l: RiskLga) => (l.figures.flood.basis === 'land'
+  ? `${pc(l.figures.flood.rp10_area_pct)} of land`
+  : `${pc(l.figures.flood.rp10_crop_pct)} of farmland`);
 
 function Chip({ band, kind }: { band: Band; kind?: BandKind }) {
   return (
@@ -106,11 +110,20 @@ function useTintedMask(uri: string | undefined, rgb: RGB): HTMLCanvasElement | n
 function plain(l: RiskLga): string[] {
   const f = l.figures;
   const out: string[] = [];
-  const z = f.flood.rp10_crop_pct ?? 0;
-  const z100 = f.flood.rp100_crop_pct ?? 0;
-  if (z >= 10) out.push(`${Math.round(z)}% of ${l.lga}'s farmland (${ha(f.flood.rp10_crop_ha)}) lies in the zone the river model floods about once every 10 years.`);
-  else if (z100 >= 3) out.push(`${Math.round(z100)}% of ${l.lga}'s farmland lies in the 1-in-100-year river flood zone, and ${pc(z)} in the 1-in-10-year zone.`);
-  else out.push(`Almost none of ${l.lga}'s farmland lies in the modelled river flood zones (${pc(z100)} in the 1-in-100-year zone).`);
+  if (f.flood.basis === 'land') {
+    const za = f.flood.rp10_area_pct ?? 0;
+    const za100 = f.flood.rp100_area_pct ?? 0;
+    const lead = `ESA maps little farmland in ${l.lga} (${pc(f.cropland_pct)} of the LGA; farms under trees read as tree cover), so its flood band reads its land: `;
+    if (za >= 10) out.push(`${lead}${Math.round(za)}% of it lies in the zone the river model floods about once every 10 years.`);
+    else if (za100 >= 3) out.push(`${lead}${Math.round(za100)}% lies in the 1-in-100-year zone and ${pc(za)} in the 1-in-10-year zone.`);
+    else out.push(`${lead}almost none lies in the modelled river flood zones (${pc(za100)} in the 1-in-100-year zone).`);
+  } else {
+    const z = f.flood.rp10_crop_pct ?? 0;
+    const z100 = f.flood.rp100_crop_pct ?? 0;
+    if (z >= 10) out.push(`${Math.round(z)}% of ${l.lga}'s farmland (${ha(f.flood.rp10_crop_ha)}) lies in the zone the river model floods about once every 10 years.`);
+    else if (z100 >= 3) out.push(`${Math.round(z100)}% of ${l.lga}'s farmland lies in the 1-in-100-year river flood zone, and ${pc(z)} in the 1-in-10-year zone.`);
+    else out.push(`Almost none of ${l.lga}'s farmland lies in the modelled river flood zones (${pc(z100)} in the 1-in-100-year zone).`);
+  }
   const maps = Object.values(f.flood.mapped ?? {});
   const seen = maps.filter((m) => (m.area_pct ?? 0) >= 1);
   if (seen.length) out.push(`Satellites saw flood water over ${seen.map((m) => `${pc(m.area_pct)} of the LGA on ${m.label}`).join(' and ')}.`);
@@ -255,9 +268,11 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
         node: (
           <HaloCard
             title={`${l.lga} · ${BAND_LABEL[l.band_flood]} flood · ${BAND_LABEL[l.band_drought]} drought · ${BAND_LABEL[l.band_rains]} failed rains`}
-            big={`${pc(f.flood.rp10_crop_pct)} of farmland in the 1-in-10-year flood zone`}
+            big={`${zoneShare(l)} in the 1-in-10-year flood zone`}
             rows={[
-              { k: 'Farmland in zone', v: ha(f.flood.rp10_crop_ha) },
+              f.flood.basis === 'land'
+                ? { k: 'Farmland mapped', v: `${pc(f.cropland_pct)} of LGA (little: band reads land)` }
+                : { k: 'Farmland in zone', v: ha(f.flood.rp10_crop_ha) },
               ...(latest ? [{ k: `Water ${latest.label}`, v: `${pc(latest.area_pct)} of the LGA` }] : []),
               { k: 'Below 80% rain', v: `${f.rain.drought_seasons.length} of ${f.rain.last_year - f.rain.first_year + 1} seasons` },
               ...(f.rains?.years.length ? [{ k: 'Failed rains', v: `${f.rains.failed_seasons.length} of ${f.rains.years.length} seasons` }] : []),
@@ -378,7 +393,7 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
                   const l = name ? byName.get(name) : undefined;
                   if (!l) return null;
                   const f = l.figures;
-                  const line = fill === 'flood' ? `${pc(f.flood.rp10_crop_pct)} of farmland in the 1-in-10-year zone`
+                  const line = fill === 'flood' ? `${zoneShare(l)} in the 1-in-10-year zone`
                     : fill === 'drought' ? `${f.rain.drought_seasons.length} of ${f.rain.last_year - f.rain.first_year + 1} seasons below 80% of normal`
                     : `${f.rains?.failed_seasons.length ?? '—'} of ${f.rains?.years.length ?? '—'} seasons with failed rains`;
                   return `${l.lga} · ${BAND_LABEL[bandOf(l, fill)]} ${KIND_LABEL[fill].toLowerCase()}\n${line}\nClick for detail`;
@@ -404,7 +419,7 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
                 {sorted.map((l) => {
                   const f = l.figures;
                   const fig = fill === 'flood'
-                    ? `${pc(f.flood.rp10_crop_pct)} of farmland in the 1-in-10-yr zone${Object.values(f.flood.mapped ?? {})[0] ? ` · ${pc(Object.values(f.flood.mapped)[0].area_pct)} under water ${Object.values(f.flood.mapped)[0].label}` : ''}`
+                    ? `${zoneShare(l)} in the 1-in-10-yr zone${Object.values(f.flood.mapped ?? {})[0] ? ` · ${pc(Object.values(f.flood.mapped)[0].area_pct)} under water ${Object.values(f.flood.mapped)[0].label}` : ''}`
                     : fill === 'drought'
                       ? `${f.rain.drought_seasons.length} of ${f.rain.last_year - f.rain.first_year + 1} seasons below 80% · normal ${n0(f.rain.normal_mm)} mm (${span(f.rain.season_months)})`
                       : `${f.rains?.failed_seasons.length ?? '—'} of ${f.rains?.years.length ?? '—'} seasons · ${f.rains?.false_starts.length ?? 0} false starts · ${f.rains?.long_dry_spells.length ?? 0} long dry spells`;
@@ -438,9 +453,19 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
                 <div className="rp-blk">
                   <span className="rp-label">Flood</span>
                   <dl className="rp-kv">
-                    <dt>Farmland in 1-in-10-year zone</dt><dd>{pc(detail.figures.flood.rp10_crop_pct)} · {ha(detail.figures.flood.rp10_crop_ha)}</dd>
-                    <dt>Farmland in 1-in-100-year zone</dt><dd>{pc(detail.figures.flood.rp100_crop_pct)} · {ha(detail.figures.flood.rp100_crop_ha)}</dd>
-                    <dt>…of it deeper than 1 m</dt><dd>{pc(detail.figures.flood.rp100_deep_crop_pct)} of farmland</dd>
+                    {detail.figures.flood.basis === 'land' ? (
+                      <>
+                        <dt>Land in 1-in-10-year zone</dt><dd>{pc(detail.figures.flood.rp10_area_pct)}</dd>
+                        <dt>Land in 1-in-100-year zone</dt><dd>{pc(detail.figures.flood.rp100_area_pct)}</dd>
+                        <dt>Farmland mapped</dt><dd>{pc(detail.figures.cropland_pct)} of LGA · band reads land</dd>
+                      </>
+                    ) : (
+                      <>
+                        <dt>Farmland in 1-in-10-year zone</dt><dd>{pc(detail.figures.flood.rp10_crop_pct)} · {ha(detail.figures.flood.rp10_crop_ha)}</dd>
+                        <dt>Farmland in 1-in-100-year zone</dt><dd>{pc(detail.figures.flood.rp100_crop_pct)} · {ha(detail.figures.flood.rp100_crop_ha)}</dd>
+                        <dt>…of it deeper than 1 m</dt><dd>{pc(detail.figures.flood.rp100_deep_crop_pct)} of farmland</dd>
+                      </>
+                    )}
                     {Object.entries(detail.figures.flood.mapped ?? {}).map(([k, m]) => (
                       <Fragment key={k}>
                         <dt>Water seen {m.label}</dt>
@@ -496,7 +521,7 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
               <table className="ev-lga-table rp-table">
                 <thead>
                   <tr>
-                    <th>LGA</th><th className="cv-left">Flood</th><th>Farmland in 1-in-10-yr zone</th>
+                    <th>LGA</th><th className="cv-left">Flood</th><th>In the 1-in-10-yr zone</th>
                     <th>Under water {S.mapped[0]?.label ?? ''}</th><th className="cv-left">Drought</th>
                     <th>Seasons below 80%</th><th className="cv-left">Failed rains</th><th>Failed-rain seasons</th>
                     <th>Farmland</th><th>People</th>
@@ -511,7 +536,7 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
                       <tr key={l.lga} onClick={() => setSel(l.lga)} className={detail?.lga === l.lga ? 'is-sel' : ''}>
                         <td>{l.lga}</td>
                         <td className="cv-left"><Chip band={l.band_flood} /></td>
-                        <td>{pc(f.flood.rp10_crop_pct)} · {ha(f.flood.rp10_crop_ha)}</td>
+                        <td>{f.flood.basis === 'land' ? zoneShare(l) : `${zoneShare(l)} · ${ha(f.flood.rp10_crop_ha)}`}</td>
                         <td>{m ? pc(m.area_pct) : '—'}</td>
                         <td className="cv-left"><Chip band={l.band_drought} /></td>
                         <td>{f.rain.drought_seasons.length} of {f.rain.last_year - f.rain.first_year + 1}</td>
@@ -533,8 +558,8 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
               <li><b>Flood zones are modelled.</b> The JRC/Copernicus GloFAS river flood maps (about 90 m) show where the larger rivers flood in a 1-in-10 and a 1-in-100-year flood. Flash floods and waterlogging are carried by the mapped floods and our disaster register.</li>
               <li><b>Mapped floods are observed.</b> UNOSAT drew them from NOAA VIIRS imagery at 375 m, new water only. Cloud can hide water, so each figure is the least that was under water; we show how much of the LGA cloud covered. UNOSAT lists the maps as not yet field-validated.</li>
               <li><b>Rainfall seasons.</b> CHIRPS v3 monthly rainfall averaged over each LGA. The season is the months that averaged at least 50 mm in 1991–2020; normal is the 1991–2020 median season total; a drought season falls below 80% of it.</li>
-              <li><b>Failed rains.</b> CHIRPS v3 daily rainfall (station-blended five-day totals spread across days with NASA IMERG). The rains set in on the first day, from the start of the season, when three days bring at least 20 mm with no dry spell longer than 7 days in the next 30 (as AGRHYMET uses it). A false start is such a rain followed by a longer dry spell; a long dry spell is 10 or more days under 1 mm in the 30–90 days after; a late onset is 20 or more days after the usual date.</li>
-              <li><b>Farmland and people.</b> ESA WorldCover 2021 cropland, one snapshot. People are the HRSL 30 m population at GRID3 villages (Nigerian states).</li>
+              <li><b>Failed rains.</b> CHIRPS v3 daily rainfall (station-blended five-day totals spread across days with NASA IMERG). The rains set in on the first day, from the start of the season, when three days bring at least 20 mm with no dry spell longer than 7 days in the next 30 (as AGRHYMET uses it). A false start is such a rain followed by a longer dry spell; a long dry spell is 10 or more days under 1 mm in the 30–90 days after; a late onset is 20 or more days after the usual date. Rainfall is averaged over the LGA, so a dry spell counts only when nearly the whole LGA stays dry; local dry spells are shorter or missed. Where a state has two rainy seasons (southern Ghana), the season figures count both and the onset and dry spells describe the first.</li>
+              <li><b>Farmland and people.</b> ESA WorldCover 2021 cropland, one snapshot: fallow or grazed fields can read as grassland, and farms under trees (cocoa, oil palm) as tree cover. Where less than 5% of an LGA is mapped as farmland, its flood band reads the share of its land instead, and says so. People are the HRSL 30 m population at GRID3 villages (Nigerian states).</li>
               {S.mapped.filter((m) => m.agreement != null).length > 0 && (
                 <li><b>Cross-check.</b> The flood model and the satellite maps were made independently. Ranking the LGAs by farmland in the 1-in-10-year zone and by water seen gives a rank agreement of {S.mapped.filter((m) => m.agreement != null).map((m) => `${m.agreement!.toFixed(2)} (${m.label})`).join(' and ')}, where 1.00 would be the same order.</li>
               )}
