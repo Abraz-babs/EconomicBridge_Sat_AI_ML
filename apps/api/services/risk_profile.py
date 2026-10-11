@@ -68,6 +68,7 @@ def summarise(rows: list[dict]) -> dict:
         for k, m in (f.get("flood", {}).get("mapped") or {}).items():
             if (k, m.get("label", k)) not in keys:
                 keys.append((k, m.get("label", k)))
+    keys.sort(key=lambda kl: kl[0], reverse=True)        # newest map first ('YYYY-MM')
     zone = [(f.get("flood") or {}).get("rp10_crop_pct") or 0.0 for f in figs]
     mapped = []
     for k, label in keys:
@@ -160,7 +161,7 @@ def plain_sentences(lga: str, f: dict) -> list[str]:
         else:
             out.append(f"Almost none of {lga}'s farmland lies in the modelled river flood zones "
                        f"({pc(z100)} in the 1-in-100-year zone).")
-    maps = list((fl.get("mapped") or {}).values())
+    maps = [m for _, m in sorted((fl.get("mapped") or {}).items(), reverse=True)]   # newest first
     seen = [m for m in maps if (m.get("area_pct") or 0) >= 1]
     if seen:
         out.append("Satellites saw flood water over " + " and ".join(
@@ -196,6 +197,7 @@ def csv_text(rows: list[dict], through: int, method: str) -> str:
         for k in ((r["figures"].get("flood") or {}).get("mapped") or {}):
             if k not in keys:
                 keys.append(k)
+    keys.sort(reverse=True)                                  # newest map first
     head = ["lga", "band_flood", "band_drought", "band_failed_rains", "flood_basis", "cropland_ha", "cropland_pct",
             "farmland_in_1in10_zone_pct", "farmland_in_1in10_zone_ha", "farmland_in_1in100_zone_pct",
             "farmland_in_1in100_zone_ha", "farmland_deeper_than_1m_1in100_pct", "land_in_1in10_zone_pct",

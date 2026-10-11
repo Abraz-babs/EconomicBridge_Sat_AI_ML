@@ -339,7 +339,8 @@ def render_risk_report(rep: RiskReport, generated_at: datetime | None = None) ->
     flow.append(CondPageBreak(60 * mm))
     flow.append(Paragraph("All LGAs", st("h2t", fontName=serif_b, fontSize=12.5, leading=16, textColor=dgreen,
                                          spaceBefore=10, spaceAfter=4)))
-    keys = [(k, m.get("label", k)) for k, m in ((rows[0]["figures"].get("flood") or {}).get("mapped") or {}).items()] if rows else []
+    keys = sorted(((k, m.get("label", k)) for k, m in ((rows[0]["figures"].get("flood") or {}).get("mapped") or {}).items()),
+                  reverse=True) if rows else []                       # newest map first
     latest = keys[0] if keys else None
     head = ["LGA", "Flood", "Farmland in 1-in-10-yr zone", f"Under water {latest[1]}" if latest else "Under water",
             "Drought", "Seasons below 80%", "Failed rains", "Failed-rain seasons", "Farmland", "People"]
@@ -392,7 +393,7 @@ def render_risk_report(rep: RiskReport, generated_at: datetime | None = None) ->
              (f"1-in-10-year: {pc(fl.get('rp10_crop_pct'))} of farmland ({ha(fl.get('rp10_crop_ha'))}); "
               f"1-in-100-year: {pc(fl.get('rp100_crop_pct'))}, {pc(fl.get('rp100_deep_crop_pct'))} deeper than 1 m")],
         ]
-        for m in (fl.get("mapped") or {}).values():
+        for _, m in sorted((fl.get("mapped") or {}).items(), reverse=True):
             facts.append([f"Water seen {m.get('label')}",
                           f"{pc(m.get('area_pct'))} of the LGA, {ha(m.get('crop_ha'))} of farmland "
                           f"(cloud hid {pc(m.get('cloud_pct'), 0)})"])

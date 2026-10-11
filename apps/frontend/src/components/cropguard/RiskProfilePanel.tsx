@@ -54,6 +54,9 @@ const onsetText = (mmdd: string | null | undefined) => {
   const [m, d] = mmdd.split('-').map(Number);
   return `${d} ${MONTH_LONG[m]}`;
 };
+/** Satellite flood maps, newest first (keys are 'YYYY-MM'; JSONB stores them oldest first). */
+const mappedNewest = (l: RiskLga) => Object.entries(l.figures.flood.mapped ?? {})
+  .sort((a, b) => b[0].localeCompare(a[0])).map(([key, m]) => ({ key, ...m }));
 const bandOf = (l: RiskLga, k: BandKind): Band => (k === 'flood' ? l.band_flood : k === 'drought' ? l.band_drought : l.band_rains);
 const years = (ys: number[] | undefined) => (ys && ys.length ? ys.join(', ') : 'none');
 /** The 1-in-10-year figure as the band reads it: of farmland, or of land where little farmland is mapped. */
@@ -124,7 +127,7 @@ function plain(l: RiskLga): string[] {
     else if (z100 >= 3) out.push(`${Math.round(z100)}% of ${l.lga}'s farmland lies in the 1-in-100-year river flood zone, and ${pc(z)} in the 1-in-10-year zone.`);
     else out.push(`Almost none of ${l.lga}'s farmland lies in the modelled river flood zones (${pc(z100)} in the 1-in-100-year zone).`);
   }
-  const maps = Object.values(f.flood.mapped ?? {});
+  const maps = mappedNewest(l);
   const seen = maps.filter((m) => (m.area_pct ?? 0) >= 1);
   if (seen.length) out.push(`Satellites saw flood water over ${seen.map((m) => `${pc(m.area_pct)} of the LGA on ${m.label}`).join(' and ')}.`);
   else if (maps.length) out.push(`${maps.length === 2 ? 'Neither' : 'No'} mapped flood put as much as 1% of the LGA under water.`);
@@ -212,6 +215,8 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
     return (b.figures.rains?.failed_seasons.length ?? 0) - (a.figures.rains?.failed_seasons.length ?? 0) || a.lga.localeCompare(b.lga);
   }), [lgas, fill]);
   const overlayBy = useMemo(() => new Map((data?.overlays ?? []).map((o) => [o.layer, o])), [data]);
+  const overlayList = useMemo(() => [...(data?.overlays ?? [])].sort((a, b) =>
+    (a.layer === 'rp10_farmland' ? -1 : b.layer === 'rp10_farmland' ? 1 : b.layer.localeCompare(a.layer))), [data]);
   const masks = {
     rp10_farmland: useTintedMask(overlayBy.get('rp10_farmland')?.image, dark ? OVERLAYS[0].dark : OVERLAYS[0].light),
     'flood_2024-09': useTintedMask(overlayBy.get('flood_2024-09')?.image, dark ? OVERLAYS[1].dark : OVERLAYS[1].light),
@@ -252,7 +257,10 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
     for (const [key, canvas] of ovs) {
       const o = overlayBy.get(key);
       if (!o || !canvas || !on[key]) continue;
-      out.push(new BitmapLayer({ id: `rp-${key}`, image: canvas as never, bounds: o.bounds, pickable: false }));
+      // Flat on the same ground as the LGA fills: with the depth test on, every
+      // pixel of the overlay lost to the polygon already drawn there (2026-10-11).
+      out.push(new BitmapLayer({ id: `rp-${key}`, image: canvas as never, bounds: o.bounds, pickable: false,
+        parameters: { depthCompare: 'always', depthWriteEnabled: false } as never }));
     }
     return out;
   }, [lgas, geo, byName, fill, alpha, sel, dark, overlayBy, m0, m1, m2, on]);
@@ -262,7 +270,7 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
     const l = byName.get(sel);
     if (l) {
       const f = l.figures;
-      const latest = Object.values(f.flood.mapped ?? {})[0];
+      const latest = mappedNewest(l)[0];
       card = {
         lng: f.centroid[0], lat: f.centroid[1],
         node: (
@@ -371,7 +379,7 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
                   { id: 'flood', label: 'Flood band', dot: hex(PALETTE.flood.high), on: fill === 'flood' },
                   { id: 'drought', label: 'Drought band', dot: hex(PALETTE.drought.high), on: fill === 'drought' },
                   ...(S.rains_seasons ? [{ id: 'rains', label: 'Failed-rains band', dot: hex(PALETTE.rains.high), on: fill === 'rains' }] : []),
-                  ...(data.overlays.map((o) => ({
+                  ...(overlayList.map((o) => ({
                     id: o.layer, label: o.label,
                     dot: hex((OVERLAYS.find((x) => x.key === o.layer) ?? OVERLAYS[0]).light), on: Boolean(on[o.layer]),
                   }))),
@@ -404,7 +412,7 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
                 {(['high', 'moderate', 'low'] as Band[]).map((b) => (
                   <span key={b}><i style={{ background: hex(PALETTE[fill][b]) }} />{BAND_LABEL[b]}</span>
                 ))}
-                {data.overlays.filter((o) => on[o.layer]).map((o) => (
+                {overlayList.filter((o) => on[o.layer]).map((o) => (
                   <span key={o.layer}><i style={{ background: hex((OVERLAYS.find((x) => x.key === o.layer) ?? OVERLAYS[0]).light) }} />{o.label}</span>
                 ))}
               </div>
@@ -419,7 +427,7 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
                 {sorted.map((l) => {
                   const f = l.figures;
                   const fig = fill === 'flood'
-                    ? `${zoneShare(l)} in the 1-in-10-yr zone${Object.values(f.flood.mapped ?? {})[0] ? ` · ${pc(Object.values(f.flood.mapped)[0].area_pct)} under water ${Object.values(f.flood.mapped)[0].label}` : ''}`
+                    ? `${zoneShare(l)} in the 1-in-10-yr zone${mappedNewest(l)[0] ? ` · ${pc(mappedNewest(l)[0].area_pct)} under water ${mappedNewest(l)[0].label}` : ''}`
                     : fill === 'drought'
                       ? `${f.rain.drought_seasons.length} of ${f.rain.last_year - f.rain.first_year + 1} seasons below 80% · normal ${n0(f.rain.normal_mm)} mm (${span(f.rain.season_months)})`
                       : `${f.rains?.failed_seasons.length ?? '—'} of ${f.rains?.years.length ?? '—'} seasons · ${f.rains?.false_starts.length ?? 0} false starts · ${f.rains?.long_dry_spells.length ?? 0} long dry spells`;
@@ -466,8 +474,8 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
                         <dt>…of it deeper than 1 m</dt><dd>{pc(detail.figures.flood.rp100_deep_crop_pct)} of farmland</dd>
                       </>
                     )}
-                    {Object.entries(detail.figures.flood.mapped ?? {}).map(([k, m]) => (
-                      <Fragment key={k}>
+                    {mappedNewest(detail).map((m) => (
+                      <Fragment key={m.key}>
                         <dt>Water seen {m.label}</dt>
                         <dd>{pc(m.area_pct)} of LGA · {ha(m.crop_ha)} · cloud hid {pc(m.cloud_pct, 0)}</dd>
                       </Fragment>
