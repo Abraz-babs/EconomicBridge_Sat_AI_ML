@@ -60,6 +60,9 @@ const mappedNewest = (l: RiskLga) => Object.entries(l.figures.flood.mapped ?? {}
 const bandOf = (l: RiskLga, k: BandKind): Band => (k === 'flood' ? l.band_flood : k === 'drought' ? l.band_drought : l.band_rains);
 const years = (ys: number[] | undefined) => (ys && ys.length ? ys.join(', ') : 'none');
 /** The 1-in-10-year figure as the band reads it: of farmland, or of land where little farmland is mapped. */
+/** The 1-in-10-year share the flood band reads, as a number (for sorting). */
+const zoneValue = (l: RiskLga) => (l.figures.flood.basis === 'land'
+  ? l.figures.flood.rp10_area_pct : l.figures.flood.rp10_crop_pct) ?? 0;
 const zoneShare = (l: RiskLga) => (l.figures.flood.basis === 'land'
   ? `${pc(l.figures.flood.rp10_area_pct)} of land`
   : `${pc(l.figures.flood.rp10_crop_pct)} of farmland`);
@@ -210,7 +213,7 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
   const sorted = useMemo(() => [...lgas].sort((a, b) => {
     const k = ORDER[bandOf(a, fill)] - ORDER[bandOf(b, fill)];
     if (k) return k;
-    if (fill === 'flood') return (b.figures.flood.rp10_crop_pct ?? 0) - (a.figures.flood.rp10_crop_pct ?? 0);
+    if (fill === 'flood') return zoneValue(b) - zoneValue(a) || a.lga.localeCompare(b.lga);
     if (fill === 'drought') return b.figures.rain.drought_seasons.length - a.figures.rain.drought_seasons.length || a.lga.localeCompare(b.lga);
     return (b.figures.rains?.failed_seasons.length ?? 0) - (a.figures.rains?.failed_seasons.length ?? 0) || a.lga.localeCompare(b.lga);
   }), [lgas, fill]);
@@ -340,7 +343,8 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
 
       {data?.available && S && (
         <>
-          <div className="rp-kpis">
+          {/* As many columns as tiles: a state without a satellite flood map has three. */}
+          <div className="rp-kpis" style={{ gridTemplateColumns: `repeat(${S.mapped[0] ? 4 : 3}, minmax(0, 1fr))` }}>
             <div className="rp-kpi">
               <span className="rp-kpi-val">{ha(S.rp10_cropland_ha)}</span>
               <span className="rp-kpi-label">
@@ -537,7 +541,7 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
                 </thead>
                 <tbody>
                   {[...lgas].sort((a, b) => ORDER[a.band_flood] - ORDER[b.band_flood]
-                    || (b.figures.flood.rp10_crop_pct ?? 0) - (a.figures.flood.rp10_crop_pct ?? 0)).map((l) => {
+                    || zoneValue(b) - zoneValue(a) || a.lga.localeCompare(b.lga)).map((l) => {
                     const f = l.figures;
                     const m = S.mapped[0] ? f.flood.mapped?.[S.mapped[0].key] : undefined;
                     return (

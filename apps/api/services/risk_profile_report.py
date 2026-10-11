@@ -249,8 +249,11 @@ def render_risk_report(rep: RiskReport, generated_at: datetime | None = None) ->
     )
     flow: list = []
     S = rep.summary
-    rows = sorted(rep.rows, key=lambda r: (BAND_ORDER.get(r["band_flood"], 3),
-                                           -((r["figures"].get("flood") or {}).get("rp10_crop_pct") or 0)))
+    def zone_value(r: dict) -> float:
+        fl = r["figures"].get("flood") or {}
+        return fl.get("rp10_area_pct" if fl.get("basis") == "land" else "rp10_crop_pct") or 0.0
+
+    rows = sorted(rep.rows, key=lambda r: (BAND_ORDER.get(r["band_flood"], 3), -zone_value(r), r["lga"]))
 
     # Letterhead
     if LOGO.exists():
