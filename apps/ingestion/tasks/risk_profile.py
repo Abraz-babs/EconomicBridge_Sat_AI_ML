@@ -20,15 +20,19 @@ Flood, observed: the share of the LGA, and hectares of farmland, under water in
 Seasonal rainfall (CHIRPS v3 monthly, 1991 to the last complete season): the
   season is the months that averaged >= 50 mm in 1991-2020; normal is the
   1991-2020 median season total; a drought season falls below 80% of normal.
-Failed rains (CHIRPS v3 daily, IMERG-distributed, 1998 onward), on the
-  LGA-average daily rainfall:
+Failed rains (CHIRPS v3 daily, IMERG-distributed, 1998 onward). Onsets read
+  the LGA-average daily rainfall; dry spells read every 5 km cell, because an
+  average hides them — one wet corner breaks the LGA's spell (on averages the
+  longest mid-season spell was typically 4 days, 2026-10-11):
   * onset (Sivakumar 1988, as AGRHYMET uses it): the first day, from the 1st of
     the season's first month, on which three days bring >= 20 mm with no dry
     spell longer than 7 days in the next 30;
   * false start: such a rain before the onset that IS followed by a longer dry
     spell — the rain farmers plant on, then lose;
   * long dry spell: 10 or more days under 1 mm in the 30-90 days after onset,
-    when cereals flower and fill grain;
+    when cereals flower and fill grain, over at least a third of the LGA's
+    cells (each year's share is stored, so the area cut-off can be revisited
+    without re-reading the archive);
   * late onset: 20 or more days after the LGA's median onset, or none by the
     end of the season's third month.
 Exposure: farmland (ESA WorldCover 2021 cropland), villages, people and children
@@ -127,6 +131,8 @@ ONSET_CHECK_DAYS = 30
 ONSET_MAX_DRY = 7
 MID_FROM, MID_TO = 30, 90
 LONG_DRY_DAYS = 10
+SEVERE_DRY_DAYS = 15
+DRY_AREA_SHARE = 1 / 3            # share of an LGA's cells in a long dry spell for the season to count
 LATE_ONSET_DAYS = 20
 
 FLOOD_HIGH_RP10, FLOOD_MOD_RP100 = 10.0, 3.0      # % of farmland in the zone
@@ -174,6 +180,16 @@ def longest_dry_run(rain: np.ndarray, lo: int, hi: int) -> int:
     return best
 
 
+def longest_runs(dry: np.ndarray) -> np.ndarray:
+    """Longest run of True along axis 1, per row (cells x days of dry flags)."""
+    run = np.zeros(dry.shape[0], dtype=np.int32)
+    best = np.zeros(dry.shape[0], dtype=np.int32)
+    for j in range(dry.shape[1]):
+        run = np.where(dry[:, j], run + 1, 0)
+        np.maximum(best, run, out=best)
+    return best
+
+
 def find_onset(rain: np.ndarray, start: int, last: int) -> tuple[int | None, bool]:
     """(onset index, false start before it) for one season of daily LGA rainfall.
 
@@ -194,11 +210,15 @@ def find_onset(rain: np.ndarray, start: int, last: int) -> tuple[int | None, boo
     return None, false_start
 
 
-def failed_rains(daily: dict[int, np.ndarray], window_start: date, season_months: list[int]) -> dict:
+def failed_rains(daily: dict[int, np.ndarray], window_start: date, season_months: list[int],
+                 cell_dry: dict[int, np.ndarray] | None = None) -> dict:
     """Onset, false starts, late onsets and long dry spells for one LGA, per year.
 
     daily[year] is the LGA-average rainfall from window_start's month/day of that
     year; a year with any missing day is left out rather than guessed.
+    cell_dry[year], when given, is the LGA's cells x days of dry flags (< 1 mm):
+    a long dry spell then counts when DRY_AREA_SHARE of the cells have one.
+    Without it the LGA average is used (tests, and rounds before 2026-10-14).
     """
     if not season_months:
         return {"years": [], "onsets": {}}
@@ -206,7 +226,7 @@ def failed_rains(daily: dict[int, np.ndarray], window_start: date, season_months
     third_m = season_months[min(2, len(season_months) - 1)]
     last_m = season_months[-1]
     onsets: dict[int, int | None] = {}
-    false_starts, long_dry, longest = [], [], {}
+    false_starts, long_dry, longest, dry_area, severe_area = [], [], {}, {}, {}
     years = sorted(y for y, r in daily.items() if not np.isnan(r).any())
     for y in years:
         r = daily[y]
@@ -219,9 +239,17 @@ def failed_rains(daily: dict[int, np.ndarray], window_start: date, season_months
         if fs:
             false_starts.append(y)
         if onset is not None:
-            mid = longest_dry_run(r, onset + MID_FROM, min(onset + MID_TO, end_of_season + 1, len(r)))
-            longest[str(y)] = mid
-            if mid >= LONG_DRY_DAYS:
+            lo, hi = onset + MID_FROM, min(onset + MID_TO, end_of_season + 1, len(r))
+            longest[str(y)] = longest_dry_run(r, lo, hi)
+            cells = cell_dry.get(y) if cell_dry else None
+            if cells is not None and cells.shape[0] and hi > lo:
+                runs = longest_runs(cells[:, lo:hi])
+                share = float((runs >= LONG_DRY_DAYS).mean())
+                dry_area[str(y)] = round(100 * share, 1)
+                severe_area[str(y)] = round(100 * float((runs >= SEVERE_DRY_DAYS).mean()), 1)
+                if share >= DRY_AREA_SHARE - 1e-9:
+                    long_dry.append(y)
+            elif cell_dry is None and longest[str(y)] >= LONG_DRY_DAYS:
                 long_dry.append(y)
     seen = [d for d in onsets.values() if d is not None]
     med = median(seen) if seen else None
@@ -239,6 +267,9 @@ def failed_rains(daily: dict[int, np.ndarray], window_start: date, season_months
         "late_onsets": late,
         "long_dry_spells": long_dry,
         "longest_mid_dry": longest,
+        "dry_spell_basis": "cells" if cell_dry is not None else "lga_average",
+        "dry_area_pct": dry_area,                 # % of the LGA with a 10+ day spell, per season
+        "severe_dry_area_pct": severe_area,       # ... with a 15+ day spell
         "failed_seasons": any_failed,
     }
 
@@ -526,8 +557,10 @@ def read_monthly(lgas: list, bounds, years: list[int], workers: int = 4) -> dict
     return out
 
 
-def read_daily(lgas: list, bounds, years: list[int], workers: int = 4) -> tuple[dict, date]:
-    """(tenant, lga) -> {year: daily mm array from 1 March to 31 October}.
+def read_daily(lgas: list, bounds, years: list[int], workers: int = 4) -> tuple[dict, date, dict]:
+    """(tenant, lga) -> {year: daily mm array from 1 March to 31 October}, the
+    window start, and the cells: {"pos": {(tenant, lga): positions},
+    "dry": {year: cells x days bool, < 1 mm}} for the cell-level dry spells.
 
     A day that cannot be read after every retry stays NaN, and failed_rains
     leaves that year out rather than guess; the count of such days is logged.
@@ -540,6 +573,7 @@ def read_daily(lgas: list, bounds, years: list[int], workers: int = 4) -> tuple[
     z: Zones | None = None
     grid: dict = {}
     out: dict = {}
+    cells: dict = {}
 
     def one(item, tries=6):
         y, d = item
@@ -556,12 +590,27 @@ def read_daily(lgas: list, bounds, years: list[int], workers: int = 4) -> tuple[
             z = _zones_for(lgas, tr, arr.shape)
             grid["t"], grid["s"] = tr, arr.shape
             out = {key: {yy: np.full(span, np.nan) for yy in years} for key in z.keys}
+            # Every land cell inside an LGA (ocean cells dropped), plus the one
+            # cell standing in for a district smaller than a cell.
+            lab, valid0 = z.labels.ravel(), arr.ravel() >= 0
+            flats = np.flatnonzero((lab > 0) & valid0)
+            owners = lab[flats]
+            extra = [(label, cell) for label, cell in z.fallback.items() if valid0[cell]]
+            if extra:
+                flats = np.concatenate([flats, np.array([c for _, c in extra])])
+                owners = np.concatenate([owners, np.array([lb_ for lb_, _ in extra])])
+            cells["flat"] = flats
+            cells["pos"] = {key: np.flatnonzero(owners == j + 1) for j, key in enumerate(z.keys)}
+            cells["dry"] = {yy: np.zeros((len(flats), span), dtype=bool) for yy in years}
+            log.info("daily rainfall: %d cells inside the LGAs", len(flats))
         if arr.shape != grid["s"] or tr != grid["t"]:
             raise RuntimeError(f"CHIRPS daily grid changed at {d}")
         means = _zone_means(z, arr, nodata)
         i = (d - date(y, *DAILY_FROM)).days
         for j, key in enumerate(z.keys):
             out[key][y][i] = means[j + 1]
+        v = arr.ravel()[cells["flat"]]
+        cells["dry"][y][:, i] = (v >= 0) & (v < DRY_DAY_MM)
 
     failed = []
     t0 = time.time()
@@ -583,7 +632,7 @@ def read_daily(lgas: list, bounds, years: list[int], workers: int = 4) -> tuple[
     if failed:
         log.warning("daily rainfall: %d days unreadable; their years are left out: %s",
                     len(failed), sorted({y for y, _ in failed}))
-    return out, start
+    return out, start, cells
 
 
 def _download(url: str, path: str) -> str | None:
@@ -836,9 +885,10 @@ async def run_risk_profile(tenants: list[str], *, through: int, write: bool = Tr
     monthly = read_monthly(all_lgas, box, years)
     log.info("risk profile: monthly rainfall for %d LGAs, %d seasons (%.0fs)", len(all_lgas), len(years), time.time() - t0)
     rains: dict = {}
+    cells: dict = {}
     if daily:
         t1 = time.time()
-        rains, start = read_daily(all_lgas, box, list(range(DAILY_FIRST_YEAR, through + 1)))
+        rains, start, cells = read_daily(all_lgas, box, list(range(DAILY_FIRST_YEAR, through + 1)))
         log.info("risk profile: daily rainfall read (%.0fs)", time.time() - t1)
 
     out: dict[str, str] = {}
@@ -883,7 +933,9 @@ async def run_risk_profile(tenants: list[str], *, through: int, write: bool = Tr
             }
             band_rains = "none"
             if daily:
-                fr = failed_rains(rains[(t, b.lga)], start, rain["season_months"])
+                pos = cells["pos"][(t, b.lga)]
+                fr = failed_rains(rains[(t, b.lga)], start, rain["season_months"],
+                                  cell_dry={y: d[pos] for y, d in cells["dry"].items()})
                 figures["rains"] = fr
                 band_rains = dryspell_band(len(fr["failed_seasons"]), len(fr["years"]))
             band_drought = drought_band(len(rain["drought_seasons"]), len(years))

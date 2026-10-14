@@ -160,3 +160,31 @@ def test_flood_band_reads_land_where_little_farmland_is_mapped():
     assert flood_basis_and_band(flood, 5.0) == ("farmland", "high")  # 5% or more mapped: farmland decides
     flood["mapped"] = {"2024-09": {"area_pct": 6.0}}
     assert flood_basis_and_band(flood, 0.8) == ("land", "high")     # water seen still counts on either basis
+
+
+
+def test_longest_runs_per_cell():
+    from tasks.risk_profile import longest_runs
+
+    dry = np.array([[1, 1, 0, 1, 1, 1, 0],
+                    [0, 0, 0, 0, 0, 0, 0],
+                    [1, 1, 1, 1, 1, 1, 1]], dtype=bool)
+    assert longest_runs(dry).tolist() == [3, 0, 7]
+
+
+def test_long_dry_spell_counts_when_a_third_of_the_lga_is_dry():
+    """The LGA average stays wet (one corner keeps getting rain), but two of three
+    cells go 12 days dry at flowering: on cells it counts, on the average it does not."""
+    from tasks.risk_profile import longest_dry_run
+
+    r = _season(onset_at=92)
+    cells = np.zeros((3, len(r)), dtype=bool)
+    cells[:2, 92 + 40:92 + 52] = True                      # 12 dry days, two cells of three
+    out = failed_rains({2001: r}, WINDOW, [5, 6, 7, 8, 9], cell_dry={2001: cells})
+    assert out["long_dry_spells"] == [2001]
+    assert out["dry_area_pct"]["2001"] == 66.7 and out["severe_dry_area_pct"]["2001"] == 0.0
+    assert out["dry_spell_basis"] == "cells"
+    assert longest_dry_run(r, 92 + 30, 92 + 90) < 10       # the average never shows it
+    one = np.zeros((4, len(r)), dtype=bool)
+    one[0, 92 + 40:92 + 52] = True                         # one cell in four (25%): below a third
+    assert failed_rains({2001: r}, WINDOW, [5, 6, 7, 8, 9], cell_dry={2001: one})["long_dry_spells"] == []
