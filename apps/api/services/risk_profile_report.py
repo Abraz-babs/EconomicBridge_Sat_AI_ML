@@ -39,13 +39,13 @@ HOW_WE_REPORT = [
     "Seasons come from CHIRPS v3 monthly rainfall averaged over each LGA. The season is the months that averaged at "
     "least 50 mm in 1991-2020; normal is the 1991-2020 median season total.",
     "Failed rains come from CHIRPS v3 daily rainfall (the station-blended five-day totals spread across days with "
-    "NASA IMERG), averaged over the LGA. The rains set in on the first day, from the start of the season, when "
-    "three days bring at least 20 mm with no dry spell longer than 7 days in the next 30 (Sivakumar, 1988, as used "
-    "by AGRHYMET). A false start is such a rain followed by a longer dry spell; a long dry spell is 10 or more days "
-    "under 1 mm in the 30-90 days after the rains set in; a late onset is 20 or more days after the usual date. "
-    "Rainfall is averaged over the LGA, so a dry spell counts only when nearly the whole LGA stays dry; local dry "
-    "spells are shorter or missed. Where a state has two rainy seasons (southern Ghana), the season figures count both "
-    "and the onset and dry spells describe the first.",
+    "NASA IMERG). The rains set in, on the LGA's average rainfall, on the first day from the start of the season "
+    "when three days bring at least 20 mm with no dry spell longer than 7 days in the next 30 (Sivakumar, 1988, as "
+    "used by AGRHYMET). A false start is such a rain followed by a longer dry spell; a late onset is 20 or more days "
+    "after the usual date. A long dry spell is 10 or more days under 1 mm in the 30-90 days after the rains set in, "
+    "read on every 5 km rainfall cell: a season counts one when at least a third of the LGA has it, so a shower in "
+    "one corner cannot hide a dry spell elsewhere. Where a state has two rainy seasons (southern Ghana), the season "
+    "figures count both and the onset and dry spells describe the first.",
     "Farmland is the ESA WorldCover 2021 cropland class (10 m, counted on the 90 m flood grid). It is one snapshot: "
     "fallow or grazed fields can read as grassland, and farms under trees (cocoa, oil palm) as tree cover. Where less "
     "than 5% of an LGA is mapped as farmland, its flood band reads the share of its land instead, and says so. People "
@@ -408,10 +408,10 @@ def render_risk_report(rep: RiskReport, generated_at: datetime | None = None) ->
             facts.append(["Seasons below 80%", ", ".join(str(y) for y in ds) if ds else "none"])
         if rains.get("years"):
             facts.append(["Rains usually set in", onset_text(rains.get("onset_median")) or "—"])
-            for key, name in (("false_starts", "False starts"), ("late_onsets", "Late onsets"),
-                              ("long_dry_spells", "Long dry spells")):
+            for key, name in (("false_starts", "False starts"), ("late_onsets", "Late onsets")):
                 ys = rains.get(key) or []
                 facts.append([name, ", ".join(str(y) for y in ys) if ys else "none"])
+            facts.append(["Long dry spells", dry_years(rains)])
         if ex:
             facts.append(["Exposure", f"{ex.get('villages', 0):,} villages, {ex.get('people', 0):,} people, "
                                       f"{ex.get('under5', 0):,} children under five"])
@@ -436,6 +436,15 @@ def render_risk_report(rep: RiskReport, generated_at: datetime | None = None) ->
 
     doc.build(flow, onFirstPage=draw_footer, onLaterPages=draw_footer)
     return buf.getvalue()
+
+
+def dry_years(rains: dict) -> str:
+    """Long-dry-spell seasons with the share of the LGA that had one, e.g. "2011 (45% of the LGA)"."""
+    ys = rains.get("long_dry_spells") or []
+    area = rains.get("dry_area_pct") or {}
+    if not ys:
+        return "none"
+    return ", ".join(f"{y} ({round(area[str(y)])}% of the LGA)" if str(y) in area else str(y) for y in ys)
 
 
 def overlay_bytes(image_data_uri: str) -> bytes:

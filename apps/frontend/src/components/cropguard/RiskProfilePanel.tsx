@@ -59,6 +59,12 @@ const mappedNewest = (l: RiskLga) => Object.entries(l.figures.flood.mapped ?? {}
   .sort((a, b) => b[0].localeCompare(a[0])).map(([key, m]) => ({ key, ...m }));
 const bandOf = (l: RiskLga, k: BandKind): Band => (k === 'flood' ? l.band_flood : k === 'drought' ? l.band_drought : l.band_rains);
 const years = (ys: number[] | undefined) => (ys && ys.length ? ys.join(', ') : 'none');
+/** Long-dry-spell seasons with the share of the LGA that had one: "2011 (45%)". */
+const dryYears = (rn: { long_dry_spells: number[]; dry_area_pct?: Record<string, number> }) =>
+  (rn.long_dry_spells.length
+    ? rn.long_dry_spells.map((y) => (rn.dry_area_pct?.[String(y)] != null
+      ? `${y} (${Math.round(rn.dry_area_pct[String(y)])}%)` : String(y))).join(', ')
+    : 'none');
 /** The 1-in-10-year figure as the band reads it: of farmland, or of land where little farmland is mapped. */
 /** The 1-in-10-year share the flood band reads, as a number (for sorting). */
 const zoneValue = (l: RiskLga) => (l.figures.flood.basis === 'land'
@@ -497,7 +503,7 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
                         <dt>Rains usually set in</dt><dd>{onsetText(detail.figures.rains.onset_median) ?? '—'}</dd>
                         <dt>False starts</dt><dd>{years(detail.figures.rains.false_starts)}</dd>
                         <dt>Late onsets</dt><dd>{years(detail.figures.rains.late_onsets)}</dd>
-                        <dt>Long dry spells</dt><dd>{years(detail.figures.rains.long_dry_spells)}</dd>
+                        <dt>Long dry spells</dt><dd>{dryYears(detail.figures.rains)}</dd>
                       </>
                     ) : null}
                   </dl>
@@ -570,7 +576,7 @@ export default function RiskProfilePanel({ tenant, stateLabel }: { tenant: Tenan
               <li><b>Flood zones are modelled.</b> The JRC/Copernicus GloFAS river flood maps (about 90 m) show where the larger rivers flood in a 1-in-10 and a 1-in-100-year flood. Flash floods and waterlogging are carried by the mapped floods and our disaster register.</li>
               <li><b>Mapped floods are observed.</b> UNOSAT drew them from NOAA VIIRS imagery at 375 m, new water only. Cloud can hide water, so each figure is the least that was under water; we show how much of the LGA cloud covered. UNOSAT lists the maps as not yet field-validated.</li>
               <li><b>Rainfall seasons.</b> CHIRPS v3 monthly rainfall averaged over each LGA. The season is the months that averaged at least 50 mm in 1991–2020; normal is the 1991–2020 median season total; a drought season falls below 80% of it.</li>
-              <li><b>Failed rains.</b> CHIRPS v3 daily rainfall (station-blended five-day totals spread across days with NASA IMERG). The rains set in on the first day, from the start of the season, when three days bring at least 20 mm with no dry spell longer than 7 days in the next 30 (as AGRHYMET uses it). A false start is such a rain followed by a longer dry spell; a long dry spell is 10 or more days under 1 mm in the 30–90 days after; a late onset is 20 or more days after the usual date. Rainfall is averaged over the LGA, so a dry spell counts only when nearly the whole LGA stays dry; local dry spells are shorter or missed. Where a state has two rainy seasons (southern Ghana), the season figures count both and the onset and dry spells describe the first.</li>
+              <li><b>Failed rains.</b> CHIRPS v3 daily rainfall (station-blended five-day totals spread across days with NASA IMERG). The rains set in on the first day, from the start of the season, when three days bring at least 20 mm with no dry spell longer than 7 days in the next 30 (as AGRHYMET uses it). Onsets read the LGA&rsquo;s average rainfall. A false start is such a rain followed by a longer dry spell; a late onset is 20 or more days after the usual date. A long dry spell is 10 or more days under 1 mm in the 30–90 days after the rains set in, read on every 5 km rainfall cell: a season counts one when at least a third of the LGA has it, so a shower in one corner cannot hide a dry spell elsewhere. Where a state has two rainy seasons (southern Ghana), the season figures count both and the onset and dry spells describe the first.</li>
               <li><b>Farmland and people.</b> ESA WorldCover 2021 cropland, one snapshot: fallow or grazed fields can read as grassland, and farms under trees (cocoa, oil palm) as tree cover. Where less than 5% of an LGA is mapped as farmland, its flood band reads the share of its land instead, and says so. People are the HRSL 30 m population at GRID3 villages (Nigerian states).</li>
               {S.mapped.filter((m) => m.agreement != null).length > 0 && (
                 <li><b>Cross-check.</b> The flood model and the satellite maps were made independently. Ranking the LGAs by farmland in the 1-in-10-year zone and by water seen gives a rank agreement of {S.mapped.filter((m) => m.agreement != null).map((m) => `${m.agreement!.toFixed(2)} (${m.label})`).join(' and ')}, where 1.00 would be the same order.</li>

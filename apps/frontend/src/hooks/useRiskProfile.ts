@@ -53,6 +53,9 @@ export interface RiskFigures {
     false_starts: number[];
     late_onsets: number[];
     long_dry_spells: number[];
+    /** Share of the LGA (%) with a 10+ day dry spell, per season — dry spells read on 5 km cells. */
+    dry_area_pct?: Record<string, number>;
+    dry_spell_basis?: 'cells' | 'lga_average';
     failed_seasons: number[];
   };
   exposure: { villages: number; people: number; under5: number } | null;
