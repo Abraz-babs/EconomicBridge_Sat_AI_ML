@@ -314,17 +314,20 @@ async def run_storm_scan(
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=20.0),
                                  follow_redirects=True) as http:
-        for region in sorted(needed):
-            try:
-                windows[region] = await scan_region(
-                    client, http, region, end=end, hours=hours)
-                grids, expected = windows[region]
-                log.info("storm scan: region %s %d/%d slices",
-                         region, len(grids), expected)
-            except Exception as exc:  # noqa: BLE001 — one region must not stop the rest
-                log.exception("storm scan: region %s failed", region)
-                windows[region] = ([], hours * 2)
-                out[f"region:{region}"] = f"failed: {exc!r}"
+        try:
+            for region in sorted(needed):
+                try:
+                    windows[region] = await scan_region(
+                        client, http, region, end=end, hours=hours)
+                    grids, expected = windows[region]
+                    log.info("storm scan: region %s %d/%d slices",
+                             region, len(grids), expected)
+                except Exception as exc:  # noqa: BLE001 — one region must not stop the rest
+                    log.exception("storm scan: region %s failed", region)
+                    windows[region] = ([], hours * 2)
+                    out[f"region:{region}"] = f"failed: {exc!r}"
+        finally:
+            client.close()   # archive files serve the fetch only
 
         factory = get_session_factory()
         for tenant in target:

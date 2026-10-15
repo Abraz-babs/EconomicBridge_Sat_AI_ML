@@ -43,8 +43,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import tempfile
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date, timedelta
+from pathlib import Path
 
 import httpx
 
@@ -55,6 +58,11 @@ log = logging.getLogger(__name__)
 # GES DISC OPeNDAP root for the Late-Daily v07 collection.
 _OPENDAP_ROOT = (
     "https://gpm1.gesdisc.eosdis.nasa.gov/opendap/GPM_L3/GPM_3IMERGDL.07"
+)
+# The same granules as whole files, served by the plain archive. Used only when
+# OPeNDAP refuses us (see ArchiveFallback).
+_DATA_ROOT = (
+    "https://gpm1.gesdisc.eosdis.nasa.gov/data/GPM_L3/GPM_3IMERGDL.07"
 )
 # 3B-DAY-L.MS.MRG.3IMERG.YYYYMMDD-S000000-E235959.V07C.nc4
 _GRANULE = "3B-DAY-L.MS.MRG.3IMERG.{ymd}-S000000-E235959.V07{minor}.nc4"
@@ -109,6 +117,105 @@ class ImergAuthError(RuntimeError):
 
 class ImergError(RuntimeError):
     """Any other IMERG fetch/parse failure."""
+
+
+class ImergRefusedError(ImergError):
+    """OPeNDAP kept answering 5xx/429 for every minor version after retries."""
+
+
+class ArchiveFallback:
+    """Whole-granule reads from the plain GES DISC archive, for OPeNDAP outages.
+
+    From 2026-10-13 GES DISC OPeNDAP answered 503 to every request for days,
+    while /data/ kept serving the very same granules. The storm scan went
+    silent for 73 h and the daily rainfall scan for 48 h before this existed.
+
+    The values are identical, not a substitute: the files hold the same
+    precipitation[time][lon][lat] grid on the same 0.1-degree indices the
+    OPeNDAP constraint addresses (cell 0 = -179.95 lon / -89.95 lat, checked
+    against a live V07C file), so a slice of the file IS the subset.
+
+    It costs whole files (~7 MB half-hourly, ~30 MB daily), so:
+      * a client TRIPS after its first refused OPeNDAP fetch and goes straight
+        to the archive for the rest of its run, rather than sitting through
+        every retry again for each of hundreds of requests;
+      * each file is downloaded once per run and kept in a temp directory,
+        because one granule serves every region (Nigeria, Ghana, Senegal).
+    A new run (a new client) tries OPeNDAP first again, so recovery is automatic.
+    """
+
+    def __init__(self, root: str, dataset: str) -> None:
+        self.root = root
+        self.dataset = dataset
+        self.tripped = False
+        self._tmp: tempfile.TemporaryDirectory[str] | None = None
+        self._files: dict[str, Path] = {}
+
+    def trip(self, why: str) -> None:
+        """Stop asking OPeNDAP for the rest of this client's life."""
+        if not self.tripped:
+            log.warning(
+                "imerg: OPeNDAP refused (%s) — reading whole files from the "
+                "GES DISC archive for the rest of this run", why,
+            )
+        self.tripped = True
+
+    async def fetch(
+        self,
+        client: httpx.AsyncClient,
+        get: Callable[[httpx.AsyncClient, str], Awaitable[httpx.Response]],
+        rel_paths: list[str],
+    ) -> Path | None:
+        """Local copy of the first candidate that exists; None if none does.
+
+        `rel_paths` are the minor-version candidates, newest letter first. A
+        404 on all of them means "not published yet", exactly as on OPeNDAP.
+        """
+        for rel in rel_paths:
+            if rel in self._files:
+                return self._files[rel]
+            resp = await get(client, f"{self.root}/{rel}")
+            if resp.status_code == 404:
+                continue
+            if resp.status_code in (401, 403):
+                raise ImergAuthError(
+                    f"GES DISC archive {resp.status_code}: Earthdata token "
+                    f"rejected. Approve 'NASA GESDISC DATA ARCHIVE' at "
+                    f"urs.earthdata.nasa.gov > Applications > Authorized Apps."
+                )
+            if resp.status_code != 200:
+                raise ImergError(f"IMERG archive {resp.status_code} on {rel}")
+            if not resp.content.startswith(b"\x89HDF"):
+                # A login page served with a 200 must not be read as data.
+                raise ImergError(
+                    f"IMERG archive returned {len(resp.content)} bytes that "
+                    f"are not HDF5 for {rel} (an Earthdata login page?)"
+                )
+            if self._tmp is None:
+                self._tmp = tempfile.TemporaryDirectory(prefix="imerg-")
+            path = Path(self._tmp.name) / rel.rsplit("/", 1)[-1]
+            path.write_bytes(resp.content)
+            self._files[rel] = path
+            return path
+        return None
+
+    def subset(
+        self, path: Path, *, lon0: int, lon1: int, lat0: int, lat1: int,
+    ) -> list[list[float]]:
+        """Rows by longitude (lon0..lon1), each running lat0..lat1 inclusive."""
+        import h5py  # only the fallback needs it; keep import cost off the hot path
+
+        with h5py.File(path, "r") as f:
+            block = f[self.dataset][0, lon0:lon1 + 1, lat0:lat1 + 1]
+        # float32 -> 4 dp, which is what the OPeNDAP ASCII path carries.
+        return [[round(float(v), 4) for v in row] for row in block.tolist()]
+
+    def close(self) -> None:
+        """Delete this run's downloaded files. Safe to call more than once."""
+        self._files.clear()
+        if self._tmp is not None:
+            self._tmp.cleanup()
+            self._tmp = None
 
 
 @dataclass(frozen=True)
@@ -264,6 +371,11 @@ class GpmImergClient:
         # One process-wide cache: the per-LGA sweep asks for overlapping day
         # ranges across tenants, and a granule-day is immutable once published.
         self._cache: dict[tuple[int, int, str], DailyRain | None] = {}
+        self._archive = ArchiveFallback(_DATA_ROOT, "precipitation")
+
+    def close(self) -> None:
+        """Release any archive files this client downloaded."""
+        self._archive.close()
 
     @property
     def configured(self) -> bool:
@@ -292,13 +404,24 @@ class GpmImergClient:
             "urs.earthdata.nasa.gov > Applications > Authorized Apps."
         )
 
-    async def _get(self, client: httpx.AsyncClient, url: str) -> httpx.Response:
+    def _file_headers(self) -> dict[str, str]:
+        # Archive downloads are HDF5, so no "Accept: text/plain".
+        return {"Authorization": f"Bearer {self._settings.earthdata_token}"}
+
+    async def _get_file(self, client: httpx.AsyncClient, url: str) -> httpx.Response:
+        return await self._get(client, url, headers=self._file_headers())
+
+    async def _get(
+        self, client: httpx.AsyncClient, url: str,
+        *, headers: dict[str, str] | None = None,
+    ) -> httpx.Response:
         """GET with backoff on transient failures.
 
         Returns the last response and lets the caller judge its status; only
         the retrying is handled here.
         """
-        resp = await client.get(url, headers=self._headers())
+        headers = headers or self._headers()
+        resp = await client.get(url, headers=headers)
         for attempt in range(_MAX_RETRIES):
             if resp.status_code not in _RETRYABLE_STATUS:
                 return resp
@@ -309,7 +432,7 @@ class GpmImergClient:
                 attempt + 1, _MAX_RETRIES, delay,
             )
             await asyncio.sleep(delay)
-            resp = await client.get(url, headers=self._headers())
+            resp = await client.get(url, headers=headers)
         return resp
 
     async def _fetch_ascii(
@@ -344,7 +467,7 @@ class GpmImergClient:
             raise ImergError(f"IMERG {resp.status_code}: {resp.text[:200]}")
 
         if refused is not None:
-            raise ImergError(
+            raise ImergRefusedError(
                 f"IMERG {refused}: no minor version of {day} readable after "
                 f"{_MAX_RETRIES} retries each"
             )
@@ -429,14 +552,34 @@ class GpmImergClient:
         if not self.configured:
             return None
         async with self._ctx() as client:
-            body = await self._fetch_ascii(
-                client, day, f"precipitation[0][{lon0}:{lon1}][{lat0}:{lat1}]",
+            if not self._archive.tripped:
+                try:
+                    body = await self._fetch_ascii(
+                        client, day,
+                        f"precipitation[0][{lon0}:{lon1}][{lat0}:{lat1}]",
+                    )
+                except ImergRefusedError as exc:
+                    self._archive.trip(str(exc))
+                else:
+                    if body is None:
+                        log.info("imerg: no granule published for %s", day)
+                        return None
+                    rows = _parse_region_ascii(body)
+                    return RegionGrid(day=day, lat0=lat0, rows=rows) if rows else None
+
+            names = [
+                _GRANULE.format(ymd=day.strftime("%Y%m%d"), minor=minor)
+                for minor in _MINOR_VERSIONS
+            ]
+            path = await self._archive.fetch(
+                client, self._get_file, [f"{day:%Y}/{day:%m}/{n}" for n in names],
             )
 
-        if body is None:
+        if path is None:
             log.info("imerg: no granule published for %s", day)
             return None
-        rows = _parse_region_ascii(body)
+        block = self._archive.subset(path, lon0=lon0, lon1=lon1, lat0=lat0, lat1=lat1)
+        rows = {lon0 + i: vals for i, vals in enumerate(block) if vals}
         return RegionGrid(day=day, lat0=lat0, rows=rows) if rows else None
 
     async def probe(self) -> tuple[bool, str]:

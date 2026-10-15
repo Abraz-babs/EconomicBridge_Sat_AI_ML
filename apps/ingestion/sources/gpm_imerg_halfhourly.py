@@ -64,14 +64,20 @@ from sources.gpm_imerg import (
     _FILL_BELOW,
     _lat_index,
     _lon_index,
+    ArchiveFallback,
     ImergAuthError,
     ImergError,
+    ImergRefusedError,
 )
 
 log = logging.getLogger(__name__)
 
 _ROOT = (
     "https://gpm1.gesdisc.eosdis.nasa.gov/opendap/GPM_L3/GPM_3IMERGHHL.07"
+)
+# Whole granules (~7 MB), for when OPeNDAP refuses us: see ArchiveFallback.
+_DATA_ROOT = (
+    "https://gpm1.gesdisc.eosdis.nasa.gov/data/GPM_L3/GPM_3IMERGHHL.07"
 )
 # 3B-HHR-L.MS.MRG.3IMERG.20260830-S233000-E235959.1410.V07C.HDF5
 #                                                   ^^^^ minutes since midnight
@@ -180,10 +186,15 @@ class ImergHalfHourlyClient:
     def __init__(self, http: httpx.AsyncClient | None = None) -> None:
         self._settings = get_settings()
         self._http = http
+        self._archive = ArchiveFallback(_DATA_ROOT, "Grid/precipitation")
 
     @property
     def configured(self) -> bool:
         return bool(self._settings.earthdata_token)
+
+    def close(self) -> None:
+        """Release any archive files this client downloaded."""
+        self._archive.close()
 
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._settings.earthdata_token}"}
@@ -213,6 +224,30 @@ class ImergHalfHourlyClient:
         collapse into the same silence, which is the same distinction the daily
         client draws.
         """
+        if not self._archive.tripped:
+            try:
+                return await self._slice_opendap(
+                    client, at=at, lon0=lon0, lon1=lon1, lat0=lat0, lat1=lat1,
+                )
+            except ImergRefusedError as exc:
+                self._archive.trip(str(exc))
+
+        doy = at.timetuple().tm_yday
+        path = await self._archive.fetch(
+            client, self._get,
+            [f"{at:%Y}/{doy:03d}/{name}" for name in _granule_names(at)],
+        )
+        if path is None:
+            return None
+        block = self._archive.subset(path, lon0=lon0, lon1=lon1, lat0=lat0, lat1=lat1)
+        rates = {i: vals for i, vals in enumerate(block) if vals}
+        return HalfHourGrid(at=at, lon0=lon0, lat0=lat0, rates=rates) if rates else None
+
+    async def _slice_opendap(
+        self, client: httpx.AsyncClient, *, at: datetime,
+        lon0: int, lon1: int, lat0: int, lat1: int,
+    ) -> HalfHourGrid | None:
+        """The OPeNDAP subset; raises ImergRefusedError when it keeps refusing."""
         constraint = (
             f"precipitation[0:1:0][{lon0}:1:{lon1}][{lat0}:1:{lat1}]"
         )
@@ -243,7 +278,7 @@ class ImergHalfHourlyClient:
                 continue
             raise ImergError(f"IMERG half-hourly {resp.status_code}")
         if refused is not None:
-            raise ImergError(
+            raise ImergRefusedError(
                 f"IMERG half-hourly {refused}: no minor version of {at} "
                 f"readable after {_MAX_RETRIES} retries each"
             )

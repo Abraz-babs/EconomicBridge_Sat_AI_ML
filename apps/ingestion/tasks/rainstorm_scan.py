@@ -367,16 +367,19 @@ async def run(
 
     end = (today or date.today()) - timedelta(days=LATENCY_DAYS)
     windows: dict[str, RegionWindow] = {}
-    for region in REGIONS:
-        window = await fetch_region_window(
-            client, region, end=end, days=BASELINE_DAYS,
-        )
-        windows[region] = window
-        log.info(
-            "imerg region %s: %d/%d days (%.0f%%), newest %s",
-            region, len(window.grids), window.requested_days,
-            100 * window.coverage, window.newest,
-        )
+    try:
+        for region in REGIONS:
+            window = await fetch_region_window(
+                client, region, end=end, days=BASELINE_DAYS,
+            )
+            windows[region] = window
+            log.info(
+                "imerg region %s: %d/%d days (%.0f%%), newest %s",
+                region, len(window.grids), window.requested_days,
+                100 * window.coverage, window.newest,
+            )
+    finally:
+        client.close()   # archive files serve the fetch only
 
     results: dict[str, int] = {}
     factory = get_session_factory()
