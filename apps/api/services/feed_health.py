@@ -301,11 +301,14 @@ async def _check_stock(
 # watchdog noticed a lapse only AFTER those feeds had gone stale. It now reads
 # the expiry straight from the token and warns this many days ahead.
 TOKEN_WARN_DAYS = 14
+# The renewal advice names the script rather than the steps: done by hand on
+# 2026-11-16 it took ten steps, and the old advice here listed only two (it
+# omitted the api service, the local .env, and rerunning the morning jobs a
+# lapsed token had already failed).
 TOKEN_RENEWAL = (
-    "renew at urs.earthdata.nasa.gov (Generate Token), then "
-    "`aws secretsmanager put-secret-value --secret-id "
-    "/economicbridge/staging/earthdata/token` and force a new deployment of "
-    "the ingestion service"
+    "renew at urs.earthdata.nasa.gov (Generate Token), then run "
+    "`scripts/rotate_earthdata_token.sh` with the new token on stdin (add "
+    "--rerun-missed if today's 08:00/08:30 NASA jobs already failed)"
 )
 
 
