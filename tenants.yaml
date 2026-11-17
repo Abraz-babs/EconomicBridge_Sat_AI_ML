@@ -35,7 +35,7 @@ tenants:
     priority: 1
     deployment_phase: 1
     active: true
-    notes: "Live deployment via Citadel Kebbi. Reference deployment for all other states."
+    notes: "First pilot state: we work with farmers' groups and cooperative societies here. (Citadel was built and pitched to Kebbi State, never deployed.)"
     contact_ministry: "Ministry of Agriculture, Kebbi State"
 
   - id: benue

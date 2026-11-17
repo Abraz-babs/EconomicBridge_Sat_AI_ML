@@ -14,11 +14,11 @@
 
 | Asset | Status before this project | Inherited capability |
 |-------|---------------------------|----------------------|
-| Sentinel National Intelligence Engine | Deployed | 36 NG states + FCT satellite coverage |
-| Citadel Kebbi State Security Dashboard | Deployed & live | Random Forest conflict prediction proven |
-| EconomicBridge prototype v0.3 (HTML) | Deployed to GitHub Pages | UI/UX specification we must match |
+| Sentinel National Intelligence Engine | Built and demonstrated · no deployed customer | 36 NG states + FCT satellite coverage |
+| Citadel Kebbi State Security Dashboard | Built and pitched to Kebbi State · never deployed, not in use | Random Forest conflict-prediction pattern (never validated) |
+| EconomicBridge prototype v0.3 (HTML) | Hosted on GitHub Pages | UI/UX specification we must match |
 
-EconomicBridge production build inherits the proven patterns from Citadel Kebbi. The HTML prototype defines the visual/UX target.
+EconomicBridge production build inherits architecture patterns — not claims — from these prior builds (see CLAUDE.md §2: none has a paying or deployed government customer). The HTML prototype defines the visual/UX target.
 
 ---
 
@@ -426,7 +426,7 @@ cd apps/ml
 ```
 
 **Future iterations** (out of Step 9 scope):
-- Conflict predictor v1 trained on Citadel's real labelled set (replaces the synthetic-data artifact)
+- Conflict predictor v1 trained on a real, validated labelled set — still to be sourced (Citadel never ran in service, so it has none; the synthetic-data model left the live pipeline on 2026-09-29)
 - U-Net flood detector (Step 10's neighbour)
 - ResNet-50 crop disease classifier
 - Cron driver that feeds heat_signatures + alert_events into the predictor on a daily beat (Celery beat once Redis lands)

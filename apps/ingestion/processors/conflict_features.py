@@ -45,7 +45,8 @@ GRID_CELL_DEG: float = 0.1
 BRIGHTNESS_SATURATION_K: float = 400.0
 
 # "Conflict risk" labels in tenants.yaml -> herder_density estimate.
-# Calibrated against the relative risk Citadel reports for each tier.
+# Relative weights per tier carried over from the Citadel prototype, which was
+# never deployed and never validated against recorded incidents.
 HERDER_DENSITY_BY_RISK: dict[str, float] = {
     "critical": 0.85,
     "high":     0.65,

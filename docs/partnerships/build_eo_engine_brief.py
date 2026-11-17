@@ -335,8 +335,8 @@ d.sensor(
 )
 d.sensor(
     "Conflict predictor & summaries", "Random Forest + clustering · deterministic text · no generative AI",
-    "Heat-signature clusters (DBSCAN) feed a Random Forest that scores conflict likelihood per cluster (the "
-    "Citadel-proven pattern), with SHAP explainability on predictions. All alert summaries and Spotlight "
+    "Heat-signature features feed a Random Forest that scores conflict likelihood, with SHAP explainability "
+    "on predictions (a prototype, not yet validated against recorded incidents). All alert summaries and Spotlight "
     "briefings are composed DETERMINISTICALLY from the alert's own numbers — no generative model anywhere in "
     "the alert path, therefore zero hallucination surface.",
     "Ranked, explainable conflict-risk alerts and plain-language briefings a commissioner can read.",

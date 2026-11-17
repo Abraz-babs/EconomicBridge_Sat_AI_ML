@@ -122,7 +122,7 @@ def test_radiance_within_published_bounds():
     )
     for s in sigs:
         assert s.viirs_pixel_radiance is not None
-        # Dim floor 0.10 nW/cm²/sr, bright cap 6.0 — published Citadel range.
+        # Dim floor 0.10 nW/cm²/sr, bright cap 6.0 — the Citadel prototype's range.
         assert 0.10 <= s.viirs_pixel_radiance <= 6.0
 
 

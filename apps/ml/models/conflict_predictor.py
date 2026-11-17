@@ -1,6 +1,7 @@
 """Random Forest conflict predictor + SHAP explainer.
 
-Mirrors the proven Citadel Kebbi pattern (CLAUDE.md §2). Inputs are spatial
+Mirrors the pattern of the Citadel prototype (CLAUDE.md §2: built and pitched
+to Kebbi State, never deployed, never validated). Inputs are spatial
 + recent-history features extracted upstream from the satellite + alert
 pipelines; the model outputs a 24–72hr conflict probability.
 
@@ -16,8 +17,10 @@ Features (the order matters — used for both training and inference)
 The trained model is persisted to apps/ml/artifacts/conflict_predictor.joblib
 and lazy-loaded on first predict() call. On disk-miss, the predictor trains a
 fresh model from synthetic-but-plausible data — this lets the pipeline run
-end-to-end in dev without Citadel's real training set. In production the
-artifact ships with the Docker image (built from real historical data).
+end-to-end in dev. There is no real labelled training set yet: Citadel never
+ran in service, so it has none, and the synthetic-data model left the live
+pipeline on 2026-09-29. A production artifact needs real, validated incident
+labels first.
 """
 from __future__ import annotations
 
@@ -104,8 +107,8 @@ def _generate_synthetic_dataset(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Produce a labelled training set with realistic signal.
 
-    Not for production use — Citadel's real labelled dataset replaces this when
-    the artifact ships in the Docker image. Used in dev so the API has working
+    Not for production use — a real, validated labelled set (still to be
+    sourced; Citadel has none) must replace this. Used in dev so the API has working
     inference without a 500MB model checkpoint in the repo.
 
     Label is derived from a domain-grounded logit: higher heat + closer to

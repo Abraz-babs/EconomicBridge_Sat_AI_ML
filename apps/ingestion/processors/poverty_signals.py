@@ -67,7 +67,7 @@ class PovertySignal:
 
 
 # Constants tuned to plausible Sub-Saharan VIIRS / WorldPop ranges
-# (verified against the Citadel Kebbi nightlight overlay):
+# (checked against the nightlight overlay of the Citadel prototype for Kebbi):
 _RADIANCE_DIM_FLOOR: float = 0.10   # nW/cm²/sr — under this is "very dim"
 _RADIANCE_BRIGHT_CAP: float = 6.0   # urban core (Abuja CBD) ~10+
 _AVG_HOUSEHOLD_SIZE: int = 4

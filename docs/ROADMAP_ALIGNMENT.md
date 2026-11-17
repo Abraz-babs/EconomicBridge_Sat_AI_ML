@@ -66,7 +66,7 @@ data source is touched.
 
 | Spec | Current | Status |
 |------|---------|--------|
-| scikit-learn Random Forest (Citadel-proven) | scikit-learn 1.8 RF + SHAP at `apps/ml` | ✅ Step 9. Synthetic-data artifact today; real Citadel labels swap in by replacing the joblib |
+| scikit-learn Random Forest (Citadel prototype pattern, never validated) | scikit-learn 1.8 RF + SHAP at `apps/ml` | ✅ Step 9. Synthetic-data artifact, off the live pipeline since 2026-09-29; needs a real, validated labelled set (Citadel never ran in service, so it has none) |
 | SHAP explainability on ALL models | SHAP TreeExplainer baked into the conflict_predictor artifact | ✅ |
 | PyTorch 2.0 (U-Net flood, ResNet-50 crop) | not yet | ⏳ Steps 10–11 |
 | Hugging Face transformers (NLP) | not yet | ⏳ |
@@ -128,8 +128,9 @@ cross-country testing. The full 52-tenant catalogue is in `tenants.yaml`.
 | Seed farmland alerts | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — | — |
 | **Live ML prediction (verified 2026-05-15)** | **0.99 HIGH** | **0.99 HIGH** | **0.99 HIGH** | **0.94 HIGH** | **0.81 MED-review** | **0.99 HIGH** | — | **0.02 (neg)** | **0.03 (neg)** |
 
-Why Kebbi shows up most in examples: it's the **reference deployment**
-documented in CLAUDE.md §2 (Citadel Kebbi). It's the default in the frontend
+Why Kebbi shows up most in examples: it is the **first pilot state**, where we
+work with farmers' groups and cooperative societies (Citadel was built and
+pitched to Kebbi State but never deployed — CLAUDE.md §2). It's the default in the frontend
 tenant selector and in demos. **No code path is Kebbi-exclusive** — every
 allowlist treats the 9 tenants identically.
 

@@ -13,7 +13,8 @@ Today this service:
 Next iterations:
   - U-Net flood detector (Step 10)
   - ResNet-50 crop disease classifier (Step 11)
-  - Conflict-predictor v2 trained on Citadel's real labelled set
+  - Conflict-predictor v2 trained on a real, validated labelled set (still to
+    be sourced; Citadel never ran in service, so it has none)
 """
 from __future__ import annotations
 

@@ -497,9 +497,9 @@ an operator decision.
 
 ## 10. Pointers / source of truth
 
-- `CLAUDE.md` — master spec & conventions (read fully each session). NOTE: its
-  §2 wrongly implies Citadel was deployed for Kebbi State. It was built and
-  pitched; they never responded. Never describe it as deployed.
+- `CLAUDE.md` — master spec & conventions (read fully each session). Its §2 was
+  corrected on 2026-08-08: Citadel was built and pitched to Kebbi State, never
+  deployed, and nobody uses it. Never describe it as deployed, live or proven.
 - `docs/ARCHITECTURE.md`, `docs/PROGRESS.md` — architecture + narrative.
 - `docs/runbooks/operations.md` · `.github/workflows/README.md`.
 - **Assistant session memory** lives at `~/.claude/projects/<project>/memory/`
