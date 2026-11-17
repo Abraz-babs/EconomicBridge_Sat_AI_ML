@@ -52,7 +52,6 @@ function DayCard({ a, kind, model, lead, selected, onSelect }: {
           </span>
           {` · wettest cell ${mm(a.measured_max_mm)} mm · ${Math.round(100 * a.wet_share_1mm)}% of the area wet`}
         </span>
-        <span>Bars: the {MODEL_SHORT[model]}’s forecast for this day, made 14 days before (left) to the same morning (right); line = measured</span>
       </span>
     </button>
   );
@@ -76,7 +75,9 @@ export function CheckDayList({ areas, model, lead, day, selected, onSelect, unit
       <h3 className="sgr-h2">{shown.length ? 'Where forecast and satellites disagreed' : 'Forecast and satellites agreed'}</h3>
       <p className="fc-listnote">
         {dayMonth(day)} · {hits.length} wet {unit}s caught · {missed.length} missed · {extra.length} forecast but not measured ·{' '}
-        {dry} dry, called dry{none ? ` · ${none} with no stored run` : ''}. Rain missed first, wettest first.
+        {dry} dry, called dry{none ? ` · ${none} with no stored run` : ''}. Rain missed first, wettest first. Small bars: the{' '}
+        {MODEL_SHORT[model]}’s forecast for that day from each run, 14 days before (left) to the same morning (right; outlined = the
+        lead chosen above); dashed line = measured.
       </p>
       {(shown.length ? shown : hits.map((x) => ({ ...x, kind: 'hit' as const }))).slice(0, LIST_MAX).map((x) => (
         <DayCard key={x.a.lga} a={x.a} kind={x.kind} model={model} lead={lead} selected={selected === x.a.lga} onSelect={onSelect} />

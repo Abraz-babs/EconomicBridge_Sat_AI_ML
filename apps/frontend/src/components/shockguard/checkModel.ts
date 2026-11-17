@@ -51,6 +51,24 @@ export const agreed = (c: Counts): Ratio => ratio(c[0], c[0] + c[1] + c[2]);
 export const heavyCaught = (c: Counts): Ratio => ratio(c[8] ?? 0, (c[8] ?? 0) + (c[10] ?? 0));
 export const heavyConfirmed = (c: Counts): Ratio => ratio(c[8] ?? 0, (c[8] ?? 0) + (c[9] ?? 0));
 
+/** How often rain (1 mm+) fell at all, over the pairs in these counts. The yardstick for
+ *  "caught" and "confirmed": a forecast of rain every day catches every rain day and is
+ *  confirmed exactly this often. */
+export const wetShare = (c: Counts): Ratio => ratio(c[0] + c[2], c[0] + c[1] + c[2] + c[3]);
+
+/** Skill beyond chance: the equitable threat score. Hits are counted only beyond those a
+ *  forecast making the same number of rain calls at random would get. 0 = no better than
+ *  chance, 1 = perfect. `heavy` scores soaking days (10 mm+). */
+export function ets(c: Counts, heavy = false): number | null {
+  const [a, b, m, d] = heavy ? [c[8], c[9], c[10], c[11]] : [c[0], c[1], c[2], c[3]];
+  if (a === undefined || b === undefined || m === undefined || d === undefined) return null;
+  const n = a + b + m + d;
+  if (!n) return null;
+  const luck = ((a + b) * (a + m)) / n;
+  const den = a + b + m - luck;
+  return den > 0 ? (a - luck) / den : null;
+}
+
 /** Forecast rain total against measured, as a signed percentage. */
 export function totalBias(c: Counts): number | null {
   return c[5] > 0 ? Math.round(100 * (c[4] / c[5] - 1)) : null;
@@ -108,8 +126,9 @@ export function lgaCounts(l: { ifs: Counts[]; aifs: Counts[] }, model: CheckMode
 const fmtDay = (iso: string): string =>
   new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
 
-/** The header sentence: the physics model, forecasts made the day before, the whole record. */
-export function headline(name: string, s: ForecastCheck): string {
+/** The header sentence: the physics model, forecasts made the day before, the whole record —
+ *  with how often it rained at all beside it, so "caught" cannot read as more than it is. */
+export function headline(name: string, unit: string, s: ForecastCheck): string {
   const c = s.scorecard.all?.ifs?.[1];
   if (!c || !s.first_day) return `No forecast has been checked for ${name} yet.`;
   const k = caught(c);
@@ -117,8 +136,8 @@ export function headline(name: string, s: ForecastCheck): string {
   if (k.den < 20) {
     return `Too few rain days measured over ${name} since ${dayMonth(s.first_day)} to score the forecast yet (${k.den}).`;
   }
-  return `A day ahead, ECMWF’s physics model caught ${k.pct}% of the rain days NASA’s satellites measured over ` +
-    `${name} since ${dayMonth(s.first_day)}, and the satellites confirmed ${f.pct}% of its rain calls.`;
+  return `Since ${dayMonth(s.first_day)}, a day ahead, ECMWF’s physics model caught ${k.pct}% of ${name}’s measured ` +
+    `rain days and ${f.pct}% of its rain calls were confirmed — with rain on ${pctText(wetShare(c))} of ${unit}-days in all.`;
 }
 
 /** The deterministic sentence for one area on one day. */

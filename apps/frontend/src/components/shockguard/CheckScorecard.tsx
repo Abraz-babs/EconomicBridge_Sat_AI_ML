@@ -11,8 +11,8 @@ import { useState, type ReactNode } from 'react';
 
 import type { CheckModel, Counts, ForecastCheck } from '@/hooks/useForecastCheck';
 import {
-  brierSkill, calibration, caught, confirmed, heavyCaught, heavyConfirmed, MODEL_COL, pctText, signed, totalBias,
-  typicalMiss, type CalPoint, type Ratio,
+  brierSkill, calibration, caught, confirmed, ets, heavyCaught, heavyConfirmed, MODEL_COL, pctText, signed, totalBias,
+  typicalMiss, wetShare, type CalPoint, type Ratio,
 } from './checkModel';
 import { dayMonth, mm } from './forecastModel';
 
@@ -113,6 +113,8 @@ export default function CheckScorecard({ s, unit }: { s: ForecastCheck; unit: st
   const pts = (t: number) => Object.fromEntries(s.chance_groups.map((g) => [g, calibration(s.chances[String(t)], g, s.chance_bins)]));
   const skill1 = brierSkill(s.chances['1']);
   const from = win === 'all' ? s.first_day : s.recent_from;
+  const base = at('ifs', 1);
+  const two = (v: number | null): string => (v === null ? '—' : v.toFixed(2));
 
   return (
     <div className="fc-outlook ck-score" id="ck-score">
@@ -139,6 +141,13 @@ export default function CheckScorecard({ s, unit }: { s: ForecastCheck; unit: st
         averaged over the {unit}; a soaking day 10 mm or more. “Caught”: of the days NASA’s satellites measured rain, the share the
         forecast had called. “Confirmed”: of the forecast’s rain calls, the share the satellites measured. Hover a bar for its count.
       </p>
+      {base && (
+        <p className="fc-outlook-sum ck-base">
+          Read those against the season: rain fell on {pctText(wetShare(base))} of {unit}-days here, so a forecast of rain every day
+          would catch every rain day and be confirmed {pctText(wetShare(base))} of the time. “Skill beyond chance” takes that luck
+          out — the equitable threat score, where 0 is no better than chance and 1 is perfect.
+        </p>
+      )}
       <div className="og-scroll">
         <div className="og ck-og" role="table" aria-label="Forecast check by days ahead">
           <div className="og-lab"><b>Made … days before</b>the day it was for</div>
@@ -147,8 +156,10 @@ export default function CheckScorecard({ s, unit }: { s: ForecastCheck; unit: st
           ))}
           <PairRow label="Rain days caught" sub="measured 1 mm+, forecast had it" at={at} f={caught} />
           <PairRow label="Rain calls confirmed" sub="forecast 1 mm+, satellites had it" at={at} f={confirmed} />
+          <NumRow label="Skill beyond chance" sub="rain days · 0 = chance, 1 = perfect" at={at} f={(c) => two(ets(c))} />
           <NumRow label="Soaking days caught" sub="measured 10 mm+" at={at} f={(c) => pctText(heavyCaught(c))} />
           <NumRow label="Soaking calls confirmed" sub="forecast 10 mm+" at={at} f={(c) => pctText(heavyConfirmed(c))} />
+          <NumRow label="Skill beyond chance" sub="soaking days" at={at} f={(c) => two(ets(c, true))} />
           <NumRow label="Rain total vs measured" sub="+ = forecast wetter" at={at} f={(c) => signed(totalBias(c))} />
           <NumRow label="Typical miss" sub="mm, on days either had rain" at={at}
             f={(c) => { const v = typicalMiss(c); return v === null ? '—' : mm(v); }} />

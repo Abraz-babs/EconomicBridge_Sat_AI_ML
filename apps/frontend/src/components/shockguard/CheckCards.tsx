@@ -9,7 +9,7 @@ import HaloCard from '@/components/map/HaloCard';
 import type { CheckDayArea, CheckLga, CheckModel, ForecastCheck } from '@/hooks/useForecastCheck';
 import {
   agreed, caught, confirmed, daySentence, forecastAt, leadLabel, lgaCounts, MODEL_LABEL, MODEL_SHORT, pctText, signed,
-  totalBias,
+  totalBias, wetShare,
 } from './checkModel';
 import { dayMonth, mm } from './forecastModel';
 
@@ -30,6 +30,7 @@ export function CheckKpis({ s, unit, model, lead, leadIdx }: {
         <span className="sgr-kpi-label">
           {s.lga_days.toLocaleString('en-GB')} {unit}-days measured since {s.first_day ? dayMonth(s.first_day) : '—'}, each set against
           every forecast made for it, up to 14 days before
+          {c ? ` · rain (1 mm+) fell on ${pctText(wetShare(c))} of them` : ''}
         </span>
         <span className="sgr-kpi-src">NASA IMERG LATE · ECMWF 00 UTC RUNS</span>
       </div>

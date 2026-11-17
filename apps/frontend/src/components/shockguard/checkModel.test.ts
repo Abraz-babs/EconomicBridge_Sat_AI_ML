@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { CheckDayArea, ForecastCheck } from '@/hooks/useForecastCheck';
 import {
-  agreed, brierSkill, calibration, caught, confirmed, daySentence, headline, heavyCaught, heldFrom, leadChip, leadLabel,
-  outcome, signed, totalBias, typicalMiss,
+  agreed, brierSkill, calibration, caught, confirmed, daySentence, ets, headline, heavyCaught, heldFrom, leadChip, leadLabel,
+  outcome, signed, totalBias, typicalMiss, wetShare,
 } from './checkModel';
 
 function area(over: Partial<CheckDayArea> = {}): CheckDayArea {
@@ -39,6 +39,16 @@ describe('ratios keep their sample', () => {
   });
   it('an empty sample is no number at all, not 0%', () => {
     expect(caught([0, 0, 0, 10, 0, 0, 0, 0]).pct).toBeNull();
+  });
+  it('skill beyond chance takes luck out of the hits', () => {
+    // A forecast of rain every day: catches every rain day, no skill at all.
+    expect(ets([40, 60, 0, 0])).toBeCloseTo(0);
+    expect(ets([50, 0, 0, 50])).toBeCloseTo(1);
+    // C: 100 rain calls, 75 rain days, 200 pairs -> 37.5 hits by chance.
+    expect(ets(C)).toBeCloseTo((60 - 37.5) / (115 - 37.5));
+    expect(ets(C, true)).toBeCloseTo((10 - 15 * 20 / 200) / (25 - 1.5));
+    expect(wetShare(C)).toEqual({ pct: 38, num: 75, den: 200 });
+    expect(ets([0, 0, 0, 0])).toBeNull();
   });
   it('totals and typical miss', () => {
     expect(totalBias(C)).toBe(50);
@@ -76,13 +86,13 @@ describe('sentences', () => {
     expect(daySentence(area({ ifs_mm: [0, 0.3, ...Array(13).fill(0)] }), 'ifs', 1, '2026-11-16')).toContain('the rain was not forecast');
     expect(daySentence(area(), 'aifs', 3, '2026-11-16')).toContain('No AI model run from 3 days before is stored');
   });
-  it('the headline needs enough rain days to speak', () => {
+  it('the headline needs enough rain days to speak, and carries how often it rained at all', () => {
     const s = { first_day: '2026-05-01', scorecard: { all: { ifs: [C, C] } } } as unknown as ForecastCheck;
-    expect(headline('Ghana', s)).toBe(
-      'A day ahead, ECMWF’s physics model caught 80% of the rain days NASA’s satellites measured over Ghana since 1 May, ' +
-      'and the satellites confirmed 60% of its rain calls.');
+    expect(headline('Ghana', 'district', s)).toBe(
+      'Since 1 May, a day ahead, ECMWF’s physics model caught 80% of Ghana’s measured rain days and 60% of its rain ' +
+      'calls were confirmed — with rain on 38% of district-days in all.');
     const thin = { first_day: '2026-11-17', scorecard: { all: { ifs: [C, [1, 0, 2, 9]] } } } as unknown as ForecastCheck;
-    expect(headline('Kebbi', thin)).toContain('Too few rain days');
+    expect(headline('Kebbi', 'LGA', thin)).toContain('Too few rain days');
   });
 });
 

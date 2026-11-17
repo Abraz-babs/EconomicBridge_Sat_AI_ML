@@ -169,7 +169,7 @@ export default function CheckRoom({ tenant, stateLabel, headerExtra }: {
       }));
     }
     return out;
-  }, [outlines.data, season, byLga, byArea, layer, model, lead, leadIdx, basemap, areas, selectedLga]);
+  }, [outlines.data, season, byLga, byArea, layer, model, lead, leadIdx, basemap, areas, selectedLga, setPicked, setCardOpen]);
 
   const tooltip = (lga: string): string => {
     if (season) {
@@ -201,7 +201,7 @@ export default function CheckRoom({ tenant, stateLabel, headerExtra }: {
         <div className="sgr-head-main">
           <span className="sgr-eyebrow">ShockGuard · Forecast check · {stateLabel}</span>
           <h2 id="ck-title" className="sgr-h1">
-            {q.isLoading ? 'Reading the record…' : s && s.days_checked ? headline(stateLabel, s) : `No forecast has been checked for ${stateLabel} yet.`}
+            {q.isLoading ? 'Reading the record…' : s && s.days_checked ? headline(stateLabel, unit, s) : `No forecast has been checked for ${stateLabel} yet.`}
           </h2>
           <p className="sgr-sub">
             Each day, the rain ECMWF forecast for every {unit} is set against the rain NASA&rsquo;s IMERG satellites measured there, for
