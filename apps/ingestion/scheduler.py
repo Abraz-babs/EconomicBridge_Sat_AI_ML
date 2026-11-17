@@ -38,6 +38,7 @@ from tasks.poverty_ingest import ingest_all as poverty_ingest_all
 from tasks.satellite_observations_ingest import ingest_all as satobs_ingest_all
 from tasks.food_prices_ingest import run_food_price_ingest
 from tasks.market_prices_ingest import run_market_price_ingest
+from tasks.ecmwf_forecast import run_ecmwf_forecast
 from tasks.rainstorm_scan import run_rainfall_scan
 from tasks.storm_scan import run_storm_scan
 from tasks.shockguard_scan import run_shockguard_scan
@@ -57,6 +58,7 @@ JOB_ID_ENCROACHMENT_DAILY = "encroachment_daily_0700utc"
 JOB_ID_SHOCKGUARD_DAILY = "shockguard_scan_daily_0730utc"
 JOB_ID_RAINFALL_DAILY = "imerg_rainfall_daily_0800utc"
 JOB_ID_STORM_DAILY = "imerg_storm_daily_0830utc"
+JOB_ID_ECMWF_FORECAST_DAILY = "ecmwf_forecast_daily_0915_1315utc"
 JOB_ID_FOOD_PRICES_MONTHLY = "food_prices_monthly_5th_0930utc"
 JOB_ID_MARKET_PRICES_MONTHLY = "wb_market_prices_monthly_17th_0900utc"
 JOB_ID_MOBILITY_MONTHLY = "mobility_worldbank_monthly_1st_08utc"
@@ -199,6 +201,21 @@ def setup_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         max_instances=1,
         misfire_grace_time=21600,
+    )
+
+    scheduler.add_job(
+        run_ecmwf_forecast,
+        # ECMWF open-data forecast, the next 15 days per LGA, all pilots. The
+        # 00 UTC run is fully published by about 08:01 UTC (IFS and AIFS 07:34,
+        # ensemble chances 08:01, measured 2026-11-17), so 09:15 has margin;
+        # 13:15 is a second try for a late morning. A run already stored is
+        # skipped, so the second firing costs a few index reads, not a re-fetch.
+        trigger=CronTrigger(hour="9,13", minute=15, timezone="UTC"),
+        id=JOB_ID_ECMWF_FORECAST_DAILY,
+        name="ECMWF forecast, next 15 days per LGA (all pilots, daily)",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=10800,
     )
 
     scheduler.add_job(

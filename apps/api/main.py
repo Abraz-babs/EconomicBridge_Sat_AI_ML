@@ -60,6 +60,7 @@ from routers import (
     reports,
     risk_profile,
     shockguard,
+    shockguard_forecast,
     skills,
     tenants,
 )
@@ -159,6 +160,7 @@ app.include_router(economic_mobility.router, prefix="/api/v1")
 app.include_router(aid_coordination.router, prefix="/api/v1")
 app.include_router(aid_coordination_bulk.router, prefix="/api/v1")
 app.include_router(shockguard.router, prefix="/api/v1")
+app.include_router(shockguard_forecast.router, prefix="/api/v1")
 app.include_router(skills.router, prefix="/api/v1")
 app.include_router(intelligence.router, prefix="/api/v1")
 app.include_router(overview.router, prefix="/api/v1")

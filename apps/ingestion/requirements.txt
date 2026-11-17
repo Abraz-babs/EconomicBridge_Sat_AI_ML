@@ -41,6 +41,11 @@ pyshp>=2.3,<3.0
 # h5py reads the gap-filled DNB grid + the granule's lat/lon coordinate arrays.
 h5py>=3.10,<4.0
 
+# ECMWF open-data forecast (GRIB2, CCSDS-packed). The eccodes wheel pulls in
+# eccodeslib, which bundles the ecCodes C library — no apt package needed.
+# Imported lazily by sources/ecmwf_opendata.py, so nothing else loads it.
+eccodes>=2.38,<3.0
+
 # When Celery + Redis land:
 # celery>=5.4,<6.0
 # redis>=5.0,<6.0

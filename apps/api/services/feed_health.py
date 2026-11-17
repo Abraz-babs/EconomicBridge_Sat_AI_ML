@@ -65,6 +65,7 @@ FEED_MAX_AGE_HOURS: dict[str, int] = {
     "shockguard_scan_v1": 72,           # daily 07:30
     "rainstorm_scan_v1": 72,            # daily 08:00
     "storm_scan_v1": 72,                # daily 08:30 — half-hourly IMERG
+    "ecmwf_forecast_v1": 72,            # daily 09:15 + 13:15 — ECMWF open-data forecast
     "MODIS_NRT": 72,                    # daily 06:00 — NASA FIRMS fire ingest
     # conflict_pipeline_v1 retired 2026-09-29 (synthetic-data model); not monitored.
     "food_prices_v1": 24 * 45,          # monthly on the 5th

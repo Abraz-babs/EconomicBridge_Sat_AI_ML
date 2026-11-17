@@ -13,7 +13,7 @@
  * the ground.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { GeoJsonLayer, ScatterplotLayer } from '@deck.gl/layers';
 
 import EBMap from '@/components/map/EBMap';
@@ -88,8 +88,11 @@ function millions(v: number): string {
 }
 
 
-export default function StormDayView({ tenant, stateLabel, events = [] }: {
+export default function StormDayView({ tenant, stateLabel, events = [], headerExtra }: {
   tenant: Tenant; stateLabel: string; events?: ShockEventRow[];
+  /** Optional control shown at the top of the header's side column (the
+   *  storm-day / forecast switch). Takes no extra page height. */
+  headerExtra?: ReactNode;
 }) {
   const [day, setDay] = useState<string | null>(null);
   const impact = useStormImpact(tenant.id, day);
@@ -259,6 +262,7 @@ export default function StormDayView({ tenant, stateLabel, events = [] }: {
           </p>
         </div>
         <div className="sgr-head-side">
+          {headerExtra}
           <span className="sgr-chip">LIVE · NASA GPM IMERG · HALF-HOURLY</span>
           {data && data.days_available.length > 1 && (
             <label className="sgr-day">

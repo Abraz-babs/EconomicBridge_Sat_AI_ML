@@ -13,6 +13,8 @@ import {
 import FieldDirections, { GRID3_CREDIT } from '@/components/common/FieldDirections';
 import StormSection from './StormSection';
 import StormDayView, { DROUGHT_SENTENCE } from './StormDayView';
+import ForecastRoom from './ForecastRoom';
+import RoomSwitch, { type Room } from './RoomSwitch';
 
 
 const STATE_NAMES: Record<string, string> = {
@@ -98,6 +100,9 @@ export default function ShockGuardPanel() {
   // events are a claim that something went wrong, so they stay separate lists
   // rather than being merged into one stream.
   const [sideTab, setSideTab] = useState<'events' | 'storms'>('storms');
+  // The storm room opens on the storm day, as it always has; the ECMWF
+  // forecast is added beside it, one switch away (2026-11-17).
+  const [room, setRoom] = useState<Room>('storm');
   const stormsQuery = useStorms({ tenantId: activeTenantId, limit: 12 });
 
   // The radar check runs only when an analyst asks for it — never on load.
@@ -157,7 +162,13 @@ export default function ShockGuardPanel() {
 
       {/* STORM DAY — the redesigned view: rain, people under it, history,
           advisories, on an interactive map (operator-approved, 2026-09-26). */}
-      <StormDayView tenant={activeTenant} stateLabel={stateLabel} events={mapEvents} />
+      {room === 'storm' ? (
+        <StormDayView tenant={activeTenant} stateLabel={stateLabel} events={mapEvents}
+          headerExtra={<RoomSwitch room={room} onRoom={setRoom} />} />
+      ) : (
+        <ForecastRoom key={activeTenantId} tenant={activeTenant} stateLabel={stateLabel}
+          headerExtra={<RoomSwitch room={room} onRoom={setRoom} />} />
+      )}
 
       <div className="cg-section-header" style={{ marginTop: '18px' }}>Feeds</div>
       {/* MONITORING STATUS — one row PER DETECTOR.
