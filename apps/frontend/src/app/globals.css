@@ -4267,9 +4267,13 @@ nav::-webkit-scrollbar {
   .ck-cal { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .ck-cal-text { grid-column: 1 / -1; }
 }
+@media (max-width: 560px) {
+  /* Three views on the one line two used: drop each label's second half. */
+  .fc-mode--rooms .fc-mode-more { display: none; }
+  .sgr-head-side { min-width: 0; }
+}
 @media (max-width: 480px) {
-  .fc-mode--rooms { overflow-x: auto; scrollbar-width: none; }
-  .fc-mode--rooms button { flex: 1 0 auto; padding: 8px; letter-spacing: 1px; }
+  .fc-mode--rooms button { padding: 8px; letter-spacing: 1px; }
   .ck-cal { grid-template-columns: minmax(0, 1fr); }
   .ck-head-side { align-items: flex-start; }
 }
