@@ -13,6 +13,7 @@ import {
 import FieldDirections, { GRID3_CREDIT } from '@/components/common/FieldDirections';
 import StormSection from './StormSection';
 import StormDayView, { DROUGHT_SENTENCE } from './StormDayView';
+import CheckRoom from './CheckRoom';
 import ForecastRoom from './ForecastRoom';
 import RoomSwitch, { type Room } from './RoomSwitch';
 
@@ -101,7 +102,8 @@ export default function ShockGuardPanel() {
   // rather than being merged into one stream.
   const [sideTab, setSideTab] = useState<'events' | 'storms'>('storms');
   // The storm room opens on the storm day, as it always has; the ECMWF
-  // forecast is added beside it, one switch away (2026-11-17).
+  // forecast and the forecast check are added beside it, one switch away
+  // (2026-11-17).
   const [room, setRoom] = useState<Room>('storm');
   const stormsQuery = useStorms({ tenantId: activeTenantId, limit: 12 });
 
@@ -165,8 +167,11 @@ export default function ShockGuardPanel() {
       {room === 'storm' ? (
         <StormDayView tenant={activeTenant} stateLabel={stateLabel} events={mapEvents}
           headerExtra={<RoomSwitch room={room} onRoom={setRoom} />} />
-      ) : (
+      ) : room === 'forecast' ? (
         <ForecastRoom key={activeTenantId} tenant={activeTenant} stateLabel={stateLabel}
+          headerExtra={<RoomSwitch room={room} onRoom={setRoom} />} />
+      ) : (
+        <CheckRoom key={activeTenantId} tenant={activeTenant} stateLabel={stateLabel}
           headerExtra={<RoomSwitch room={room} onRoom={setRoom} />} />
       )}
 

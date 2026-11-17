@@ -31,6 +31,7 @@ from scheduler import (
     JOB_ID_CONFLICT_DAILY,
     JOB_ID_ECMWF_FORECAST_DAILY,
     JOB_ID_FIRMS_DAILY,
+    JOB_ID_FORECAST_CHECK_DAILY,
     JOB_ID_MOBILITY_MONTHLY,
     JOB_ID_ENCROACHMENT_DAILY,
     JOB_ID_PASS_IMAGERY_SWEEP,
@@ -50,6 +51,7 @@ from scheduler import (
 )
 from tasks.conflict_pipeline import run_daily_conflict_pipeline
 from tasks.ecmwf_forecast import run_ecmwf_forecast
+from tasks.forecast_check import run_forecast_check
 from tasks.pass_imagery_sweep import run_pass_imagery_sweep
 from tasks.shockguard_scan import run_shockguard_scan
 
@@ -112,6 +114,7 @@ _TRIGGERABLE_JOBS = {
     JOB_ID_ENCROACHMENT_DAILY: run_encroachment_sweep,
     JOB_ID_SHOCKGUARD_DAILY: run_shockguard_scan,
     JOB_ID_ECMWF_FORECAST_DAILY: run_ecmwf_forecast,
+    JOB_ID_FORECAST_CHECK_DAILY: run_forecast_check,
     JOB_ID_PASS_IMAGERY_SWEEP: None,  # adapted below — returns a dataclass
 }
 

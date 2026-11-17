@@ -4208,3 +4208,68 @@ nav::-webkit-scrollbar {
   .fc-mode button { flex: 1; padding: 8px; letter-spacing: 1px; }
   .fc-ribbon-note { flex-direction: column; gap: 2px; }
 }
+
+/* ═══ ShockGuard forecast check (ECMWF forecast vs NASA IMERG, 2026-11-17) ═══
+   The storm room's third view. Reuses the .sgr tokens and the forecast side's
+   .fc-* / .og-* pieces; the only change above is the room switch's spacing,
+   tightened so three views sit where two did, on the same single line. */
+.fc-mode--rooms button { padding: 7px 10px; letter-spacing: 1.2px; }
+
+.ck-ribbon { grid-template-columns: minmax(124px, 1.7fr); grid-auto-flow: column; grid-auto-columns: minmax(44px, 1fr); }
+.ck-bar { display: flex; }
+.ck-bar i { position: static; display: block; height: 100%; }
+.ck-key { display: inline-block; width: 9px; height: 9px; margin-right: 2px; vertical-align: -1px; }
+.ck-key--near { background: #2aa1a8; }
+.ck-key--far { border: 1px dashed #8fd3cc; }
+
+.ck-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 32px; margin-top: -10px; }
+.ck-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.ck-ctl-label { font-family: var(--font-data); font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--sgr-muted); }
+
+.ck-val--hit, .ck-mm--hit { color: #2fb5a6; }
+.ck-val--confirm { color: #6fd3cb; }
+.ck-mm--miss { color: #f2b54a; }
+.ck-mm--false { color: #d4607a; }
+
+.ck-evo { position: relative; display: flex; align-items: flex-end; gap: 2px; height: 22px; }
+.ck-evo i { flex: 1; min-height: 1px; background: var(--sgr-rain); opacity: .85; }
+.ck-evo i.dry { background: #22323f; opacity: 1; }
+.ck-evo i.na { background: repeating-linear-gradient(135deg, #1a2734 0 3px, transparent 3px 6px); }
+.ck-evo i.on { outline: 1px solid var(--sgr-amber); outline-offset: 1px; }
+.ck-evo b { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--sgr-amber); }
+
+.ck-head-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.ck-og { grid-template-columns: 150px repeat(15, minmax(46px, 1fr)); }
+.ck-og .og-h b { font-size: 13px; }
+.ck-pair { height: 104px; }
+.ck-num { display: flex; align-items: center; justify-content: center; min-height: 40px; }
+.ck-num em, .ck-pair em { display: flex; flex-direction: column; align-items: center; gap: 1px; font-style: normal;
+  font-size: 9px; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.ck-v { color: var(--sgr-ink); }
+.ck-v--ifs { color: #8fbaf0; }
+.ck-v--aifs { color: #cfa6f2; }
+
+.ck-cal { display: grid; grid-template-columns: minmax(0, 1.2fr) 240px 240px; gap: 24px; align-items: start;
+  padding-top: 16px; border-top: 1px solid #1c2a38; }
+.ck-cal-text { display: flex; flex-direction: column; gap: 8px; }
+.ck-cal-fig { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.ck-cal-fig figcaption { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--sgr-ink); }
+.ck-cal-fig svg { width: 100%; height: auto; background: #0f1821; border: 1px solid #1c2a38; }
+.ck-grid { stroke: #1c2a38; stroke-width: 1; }
+.ck-ax { fill: #6c8193; font-family: var(--font-data); font-size: 8px; }
+.ck-diag { stroke: #4d6275; stroke-dasharray: 3 3; }
+.ck-near path { stroke: #2aa1a8; stroke-width: 1.5; }
+.ck-near circle { fill: #2aa1a8; }
+.ck-far path { stroke: #8fd3cc; stroke-width: 1; stroke-dasharray: 3 2; }
+.ck-far circle { fill: #0f1821; stroke: #8fd3cc; stroke-width: 1; }
+
+@media (max-width: 1100px) {
+  .ck-cal { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ck-cal-text { grid-column: 1 / -1; }
+}
+@media (max-width: 480px) {
+  .fc-mode--rooms { overflow-x: auto; scrollbar-width: none; }
+  .fc-mode--rooms button { flex: 1 0 auto; padding: 8px; letter-spacing: 1px; }
+  .ck-cal { grid-template-columns: minmax(0, 1fr); }
+  .ck-head-side { align-items: flex-start; }
+}

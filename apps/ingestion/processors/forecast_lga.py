@@ -97,25 +97,35 @@ def points_in_geometry(xs: np.ndarray, ys: np.ndarray, geometry: dict) -> np.nda
     return inside
 
 
-def _bbox(geometry: dict) -> tuple[float, float, float, float]:
+def outline_bbox(geometry: dict) -> tuple[float, float, float, float]:
+    """(lon_min, lat_min, lon_max, lat_max) of a Polygon or MultiPolygon."""
     pts = np.concatenate([np.asarray(ring, dtype=np.float64)
                           for polygon in _polygons(geometry) for ring in polygon])
     return float(pts[:, 0].min()), float(pts[:, 1].min()), float(pts[:, 0].max()), float(pts[:, 1].max())
 
 
-def area_weights(geometry: dict, domain: Domain) -> Weights:
-    """Share of the LGA's area in each domain cell it overlaps."""
-    x0, y0, x1, y1 = _bbox(geometry)
+def lattice_inside(geometry: dict) -> tuple[np.ndarray, np.ndarray]:
+    """The SUB_STEP lattice points that fall inside the outline, as (xs, ys).
+
+    Shared by the forecast grid (0.25 deg) and IMERG's (0.1 deg,
+    processors/rain_check.py), so both sides of the forecast check weight an
+    LGA's area in exactly the same way.
+    """
+    x0, y0, x1, y1 = outline_bbox(geometry)
     xs1 = np.arange(np.floor(x0 / SUB_STEP), np.ceil(x1 / SUB_STEP)) * SUB_STEP + SUB_STEP / 2
     ys1 = np.arange(np.floor(y0 / SUB_STEP), np.ceil(y1 / SUB_STEP)) * SUB_STEP + SUB_STEP / 2
     xs, ys = np.meshgrid(xs1, ys1)
     xs, ys = xs.ravel(), ys.ravel()
     inside = points_in_geometry(xs, ys, geometry)
     if not inside.any():
-        # Smaller than the lattice: the one cell under its middle.
-        xs, ys = np.array([(x0 + x1) / 2]), np.array([(y0 + y1) / 2])
-        inside = np.array([True])
-    xs, ys = xs[inside], ys[inside]
+        # Smaller than the lattice: the one point at its middle.
+        return np.array([(x0 + x1) / 2]), np.array([(y0 + y1) / 2])
+    return xs[inside], ys[inside]
+
+
+def area_weights(geometry: dict, domain: Domain) -> Weights:
+    """Share of the LGA's area in each domain cell it overlaps."""
+    xs, ys = lattice_inside(geometry)
     rows = np.rint((domain.lat0 - ys) / RES).astype(np.int64)
     cols = np.rint((xs - domain.lon0) / RES).astype(np.int64)
     n_rows, n_cols = domain.shape

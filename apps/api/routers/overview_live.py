@@ -49,6 +49,7 @@ FEED_LABELS: dict[str, str] = {
     "rainstorm_scan_v1": "Daily rainfall · NASA GPM IMERG",
     "storm_scan_v1": "Storms, half-hourly · NASA GPM IMERG",
     "ecmwf_forecast_v1": "15-day forecast · ECMWF",
+    "forecast_check_v1": "Forecast check · ECMWF vs NASA IMERG",
     "food_prices_v1": "Food prices · FEWS NET, NBS",
     "wb_rtp_v1": "Market prices · World Bank",
     "land_change_v1": "Whole-LGA land change · Sentinel-2",

@@ -48,6 +48,7 @@ from processors.forecast_lga import (
 from sources import lga_boundaries
 from sources.ecmwf_opendata import (
     AIFS,
+    BASE_URL,
     ENS_CHANCES,
     IFS,
     Domain,
@@ -96,20 +97,21 @@ def weights_for(tenant: str, lga: str, geometry: dict, domain: Domain) -> Weight
 
 
 async def _one(client: EcmwfOpenDataClient, run: Run, product: tuple[str, str, str],
-               step: int, param: str, domain: Domain) -> np.ndarray:
-    fields = await client.fields(run.url(product, step),
+               step: int, param: str, domain: Domain, base: str = BASE_URL) -> np.ndarray:
+    fields = await client.fields(run.url(product, step, base),
                                  lambda e: e.get("param") == param and e.get("levtype") == "sfc")
     if len(fields) != 1:
         raise RuntimeError(f"{param} at {step} h: expected 1 field, found {len(fields)}")
     return domain.crop(fields[0][1])
 
 
-async def _chances(client: EcmwfOpenDataClient, run: Run, domain: Domain) -> dict[int, list[np.ndarray]]:
+async def _chances(client: EcmwfOpenDataClient, run: Run, domain: Domain,
+                   base: str = BASE_URL) -> dict[int, list[np.ndarray]]:
     """The ensemble's daily chances for each threshold, days 0..9, all or nothing."""
     windows = {f"{24 * d}-{24 * (d + 1)}": d for d in range(CHANCE_DAYS)}
     wanted = {f"tpg{t}": t for t in CHANCE_THRESHOLDS}
     got = await client.fields(
-        run.url(ENS_CHANCES, 24 * CHANCE_DAYS),
+        run.url(ENS_CHANCES, 24 * CHANCE_DAYS, base),
         lambda e: e.get("type") == "ep" and e.get("param") in wanted and e.get("step") in windows)
     grids: dict[int, list[np.ndarray | None]] = {t: [None] * CHANCE_DAYS for t in CHANCE_THRESHOLDS}
     for entry, grid in got:
@@ -163,8 +165,14 @@ def _js(v: object) -> str | None:
 
 
 async def _store_tenant(session: AsyncSession, tenant: str, run: Run,
-                        fields: ForecastFields, domain: Domain) -> int:
-    """Write one run for one tenant: a row per LGA plus the raw cells. Returns rows written."""
+                        fields: ForecastFields, domain: Domain, *,
+                        source: str = SOURCE, with_cells: bool = True) -> int:
+    """Write one run for one tenant: a row per LGA plus the raw cells. Returns rows written.
+
+    The forecast-check backfill reuses this for runs read later from ECMWF's
+    archive: it passes its own `source`, so those rows are never mistaken for
+    the live feed's, and skips the cell layer, which only the newest run feeds.
+    """
     rows = []
     for b in lga_boundaries.for_tenant(tenant):
         fc = summarise(b.lga, weights_for(tenant, b.lga, b.geometry, domain), fields)
@@ -173,7 +181,7 @@ async def _store_tenant(session: AsyncSession, tenant: str, run: Run,
             "t": tenant, "lga": fc.lga, "run": run.base_time, "first": run.day, "cells": fc.cells,
             "ifs": _js(fc.rain_ifs_mm), "ifs_max": _js(fc.rain_ifs_max_mm), "aifs": _js(fc.rain_aifs_mm),
             "c1": _js(ch.get(1)), "c10": _js(ch.get(10)), "c25": _js(ch.get(25)), "c50": _js(ch.get(50)),
-            "dawn": _js(fc.temp_dawn_c), "aft": _js(fc.temp_afternoon_c), "src": SOURCE,
+            "dawn": _js(fc.temp_dawn_c), "aft": _js(fc.temp_afternoon_c), "src": source,
         })
     await session.execute(text("""
         INSERT INTO ecmwf_forecast (
@@ -186,6 +194,8 @@ async def _store_tenant(session: AsyncSession, tenant: str, run: Run,
         )
         ON CONFLICT (lga, run_at) DO NOTHING
     """), rows)
+    if not with_cells:
+        return len(rows)
 
     win = window_for(domain, tenant_bbox(tenant))
     await session.execute(text("""

@@ -40,6 +40,13 @@ import numpy as np
 log = logging.getLogger(__name__)
 
 BASE_URL = "https://data.ecmwf.int/forecasts"
+# data.ecmwf.int keeps only the last ~4 days. ECMWF distributes the same files
+# through cloud mirrors that keep the history; this is the Google Cloud one
+# (the `ecmwf-opendata` package's source="google"), verified 2026-11-17 to hold
+# every 00 UTC run back to April 2026 with an identical layout and index. The
+# AWS mirror answered "SlowDown" to every object read that day. Used only to
+# backfill the forecast check, never by the live feed.
+ARCHIVE_URL = "https://storage.googleapis.com/ecmwf-open-data"
 RES = 0.25
 NI, NJ = 1440, 721
 FIRST_LON, FIRST_LAT = 180.0, 90.0
@@ -75,11 +82,11 @@ class Run:
         """The run's base time in UTC."""
         return datetime(self.day.year, self.day.month, self.day.day, self.hour, tzinfo=timezone.utc)
 
-    def url(self, product: tuple[str, str, str], step: int) -> str:
-        """URL of one GRIB2 file of this run."""
+    def url(self, product: tuple[str, str, str], step: int, base: str = BASE_URL) -> str:
+        """URL of one GRIB2 file of this run (on the live feed unless `base` says otherwise)."""
         model, stream, kind = product
         stamp = f"{self.day:%Y%m%d}{self.hour:02d}0000"
-        return (f"{BASE_URL}/{self.day:%Y%m%d}/{self.hour:02d}z/{model}/0p25/{stream}/"
+        return (f"{base}/{self.day:%Y%m%d}/{self.hour:02d}z/{model}/0p25/{stream}/"
                 f"{stamp}-{step}h-{stream}-{kind}.grib2")
 
 

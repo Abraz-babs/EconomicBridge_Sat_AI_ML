@@ -52,19 +52,20 @@ async def latest_cells(session: AsyncSession) -> Mapping[str, Any] | None:
     return {**row, **{c: as_list(row[c]) for c in ("rain_ifs_mm", "rain_aifs_mm", "chance_10mm")}}
 
 
-async def feed_status(session: AsyncSession, tenant_id: str) -> Mapping[str, Any]:
-    """Last success and last run (any outcome) of the forecast feed for this tenant."""
+async def feed_status(session: AsyncSession, tenant_id: str,
+                      source: str = FORECAST_SOURCE) -> Mapping[str, Any]:
+    """Last success and last run (any outcome) of a forecast-side feed for this tenant."""
     last = (await session.execute(text("""
         SELECT finished_at, status, error_message
           FROM public.ingestion_runs
          WHERE source = :s AND tenant_id = :t
          ORDER BY finished_at DESC
          LIMIT 1
-    """), {"s": FORECAST_SOURCE, "t": tenant_id})).mappings().first()
+    """), {"s": source, "t": tenant_id})).mappings().first()
     ok_at = (await session.execute(text("""
         SELECT MAX(finished_at) FROM public.ingestion_runs
          WHERE source = :s AND tenant_id = :t AND status = 'succeeded'
-    """), {"s": FORECAST_SOURCE, "t": tenant_id})).scalar()
+    """), {"s": source, "t": tenant_id})).scalar()
     return {
         "last_success_at": ok_at,
         "last_run_at": last["finished_at"] if last else None,

@@ -39,6 +39,7 @@ from tasks.satellite_observations_ingest import ingest_all as satobs_ingest_all
 from tasks.food_prices_ingest import run_food_price_ingest
 from tasks.market_prices_ingest import run_market_price_ingest
 from tasks.ecmwf_forecast import run_ecmwf_forecast
+from tasks.forecast_check import run_forecast_check
 from tasks.rainstorm_scan import run_rainfall_scan
 from tasks.storm_scan import run_storm_scan
 from tasks.shockguard_scan import run_shockguard_scan
@@ -59,6 +60,7 @@ JOB_ID_SHOCKGUARD_DAILY = "shockguard_scan_daily_0730utc"
 JOB_ID_RAINFALL_DAILY = "imerg_rainfall_daily_0800utc"
 JOB_ID_STORM_DAILY = "imerg_storm_daily_0830utc"
 JOB_ID_ECMWF_FORECAST_DAILY = "ecmwf_forecast_daily_0915_1315utc"
+JOB_ID_FORECAST_CHECK_DAILY = "forecast_check_daily_1030_2230utc"
 JOB_ID_FOOD_PRICES_MONTHLY = "food_prices_monthly_5th_0930utc"
 JOB_ID_MARKET_PRICES_MONTHLY = "wb_market_prices_monthly_17th_0900utc"
 JOB_ID_MOBILITY_MONTHLY = "mobility_worldbank_monthly_1st_08utc"
@@ -213,6 +215,21 @@ def setup_scheduler() -> AsyncIOScheduler:
         trigger=CronTrigger(hour="9,13", minute=15, timezone="UTC"),
         id=JOB_ID_ECMWF_FORECAST_DAILY,
         name="ECMWF forecast, next 15 days per LGA (all pilots, daily)",
+        replace_existing=True,
+        max_instances=1,
+        misfire_grace_time=10800,
+    )
+
+    scheduler.add_job(
+        run_forecast_check,
+        # Forecast check: the rain NASA's IMERG (Late run) measured in every
+        # LGA against what ECMWF forecast for that day. The daily IMERG file
+        # lands about a day after the day ends (16 Nov was readable by 18:15
+        # UTC on 17 Nov), so twice a day catches it within ~12 h; a day
+        # already held is skipped, so a quiet firing costs one query per tenant.
+        trigger=CronTrigger(hour="10,22", minute=30, timezone="UTC"),
+        id=JOB_ID_FORECAST_CHECK_DAILY,
+        name="Forecast check, ECMWF vs NASA IMERG per LGA (all pilots, daily)",
         replace_existing=True,
         max_instances=1,
         misfire_grace_time=10800,

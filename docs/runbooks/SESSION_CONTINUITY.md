@@ -201,7 +201,7 @@ aws ecs describe-services --cluster economicbridge-staging-cluster \
 ## 5. Automation inventory — what runs unattended
 
 **In-process APScheduler in the ingestion service** (`apps/ingestion/scheduler.py`,
-12 jobs as of 2026-11-17 — count the `scheduler.add_job(` calls rather than trusting this number). It is NOT EventBridge — there are no ECS scheduled rules for these, so
+13 jobs as of 2026-11-17 — count the `scheduler.add_job(` calls rather than trusting this number). It is NOT EventBridge — there are no ECS scheduled rules for these, so
 changing a cadence requires a code change + ingestion deploy.
 
 | UTC | Job |
@@ -214,6 +214,7 @@ changing a cadence requires a code change + ingestion deploy.
 | 08:30 | **storm scan, half-hourly IMERG** (`storm_scan_v1`) |
 | 09:15 + 13:15 | **ECMWF forecast, next 15 days per LGA** (`ecmwf_forecast_v1`; skips a run already stored) |
 | 09:30 | feed-health watchdog → email digest |
+| 10:30 + 22:30 | **forecast check: ECMWF vs NASA IMERG Late per LGA** (`forecast_check_v1`; measures days not yet held, rescoring; backfill = `python -m scripts.backfill_forecast_check --start 2026-05-01`) |
 | 15m | satellite pass imagery |
 | weekly | satellite-obs · WorldPop · poverty VIIRS |
 | monthly | mobility · aid · skills · food prices (5th) |
