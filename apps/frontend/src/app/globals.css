@@ -4105,8 +4105,8 @@ nav::-webkit-scrollbar {
    Lives inside the storm room (.sgr) and reuses its tokens; nothing above changes.
    Storm day stays the default view — this is the "Next 15 days" side of the switch. */
 .fc-mode { display: inline-flex; border: 1px solid var(--sgr-line); }
-.fc-mode button { padding: 7px 12px; background: transparent; border: 0; cursor: pointer;
-  font: 400 9px/1.2 var(--font-ui); letter-spacing: 2px; text-transform: uppercase; color: var(--sgr-muted); }
+.fc-mode button { padding: 7px 12px; background: transparent; border: 0; cursor: pointer; white-space: nowrap;
+  font: 400 9px/1.2 var(--font-ui); letter-spacing: 1.5px; text-transform: uppercase; color: var(--sgr-muted); }
 .fc-mode button[aria-pressed="true"] { background: #1d3350; color: #dbe9f7; }
 .fc-mode button + button { border-left: 1px solid var(--sgr-line); }
 .fc-mode button:focus-visible { outline: 2px solid var(--sgr-amber); outline-offset: 2px; }
@@ -4133,7 +4133,8 @@ nav::-webkit-scrollbar {
 
 .fc-stamp { display: flex; flex-direction: column; gap: 2px; text-transform: uppercase; }
 .fc-stamp b { font-weight: 500; color: #e8eef3; }
-.fc-na { display: block; max-width: 340px; font-size: 10px; line-height: 1.5; color: #c9d6e1; }
+.fc-na { display: block; max-width: 300px; margin: 4px 0 0 auto; padding-top: 5px; border-top: 1px solid rgba(255, 255, 255, .14);
+  font-size: 10px; line-height: 1.5; letter-spacing: .3px; text-transform: none; color: #c9d6e1; }
 .fc-na-btn { padding: 0; margin-left: 4px; background: none; border: 0; cursor: pointer; color: var(--sgr-amber);
   font: 500 10px/1.5 var(--font-ui); text-decoration: underline; text-underline-offset: 3px; }
 .fc-bands { display: inline-flex; align-items: flex-end; }

@@ -189,6 +189,7 @@ export default function ForecastRoom({ tenant, stateLabel, headerExtra }: {
   ) : null;
 
   const runLabel = data?.run_at ? `${longDay(data.run_at.slice(0, 10))}, 00 UTC` : '';
+  const runShort = data?.run_at ? `${dayMonth(data.run_at.slice(0, 10))} 00 UTC` : '';
   const layerLabel = LAYERS.find((l) => l.id === layer)?.label ?? '';
   const valid = day < 0
     ? (layer === 'heat' ? `${dayMonth(days[0] ?? todayIso)}–${dayMonth(days[TEMP_DAYS - 1] ?? todayIso)} (+0–144 h)` : `${dayMonth(days[0] ?? todayIso)}–${dayMonth(days[TOTAL_DAYS - 1] ?? todayIso)} (+0–240 h)`)
@@ -257,8 +258,9 @@ export default function ForecastRoom({ tenant, stateLabel, headerExtra }: {
                 height="560px"
                 mapStyle={BASEMAP_STYLE[basemap]}
                 ariaLabel={`Forecast for ${stateLabel}`}
-                overlay={<div className="fc-stamp"><b>{layerLabel}</b><span>Run {runLabel} · valid {valid}</span></div>}
-                legend={notice}
+                // The notice rides in the top-right box with the stamp: the
+                // bottom-left corner belongs to the Mapbox logo, which must stay visible.
+                overlay={<div className="fc-stamp"><b>{layerLabel}</b><span>Run {runShort} · valid {valid}</span>{notice}</div>}
                 getTooltip={(o) => {
                   const lga = (o as LgaFeature)?.properties?.lga ?? (o as ForecastArea)?.lga;
                   const a = lga ? byLga.get(lga) : undefined;
