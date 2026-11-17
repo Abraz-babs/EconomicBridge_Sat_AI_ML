@@ -196,8 +196,15 @@ class EcmwfOpenDataClient:
             return None
         return [json.loads(line) for line in resp.text.splitlines() if line.strip()]
 
-    async def fields(self, grib_url: str, want: Callable[[dict], bool]) -> list[tuple[dict, np.ndarray]]:
-        """Every field of one file that `want` accepts, decoded, in index order."""
+    async def fields(self, grib_url: str, want: Callable[[dict], bool],
+                     keep: Callable[[np.ndarray], np.ndarray] | None = None) -> list[tuple[dict, np.ndarray]]:
+        """Every field of one file that `want` accepts, decoded, in index order.
+
+        `keep` (e.g. Domain.crop) is applied to each field as soon as it is
+        decoded, so a file's fields are never all held at global size. The
+        ensemble file alone is 40 fields of 8 MB each; held whole, four runs in
+        flight killed the 1 GB backfill task inside a minute (2026-11-17).
+        """
         entries = await self.index(grib_url)
         if entries is None:
             raise EcmwfOpenDataError(f"{grib_url}: not published")
@@ -208,7 +215,8 @@ class EcmwfOpenDataClient:
             resp = await self._get(grib_url, (int(entry["_offset"]), int(entry["_length"])))
             if resp is None or len(resp.content) != int(entry["_length"]):
                 raise EcmwfOpenDataError(f"{grib_url}: short read for {entry.get('param')}")
-            out.append((entry, decode(resp.content)))
+            grid = decode(resp.content)
+            out.append((entry, keep(grid) if keep is not None else grid))
         return out
 
     async def published(self, run: Run, product: tuple[str, str, str]) -> bool:

@@ -54,8 +54,12 @@ log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 
 ARCHIVE_SOURCE = "ecmwf_archive_v1"
-RUNS_IN_FLIGHT = 4
-FIELDS_IN_FLIGHT = 12
+# Each field in flight briefly holds its global grid (~8 MB as float64, plus
+# eccodes' own copy) until it is cropped; eight at a time stays well inside the
+# task's memory. The first attempt, with every ensemble field held whole and four
+# runs in flight, was killed for memory inside a minute (2026-11-17).
+RUNS_IN_FLIGHT = 3
+FIELDS_IN_FLIGHT = 8
 
 
 async def _live_first_day(tenants: list[str]) -> date | None:

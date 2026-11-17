@@ -94,6 +94,35 @@ def test_an_lga_smaller_than_the_lattice_still_gets_its_cell() -> None:
     assert w.cells == 1
 
 
+@pytest.mark.asyncio
+async def test_fields_are_cut_down_as_they_arrive(monkeypatch) -> None:
+    """The ensemble file is 40 global fields of ~8 MB; held whole, four runs in
+    flight killed the 1 GB backfill task (2026-11-17). Each field is cropped
+    the moment it is decoded."""
+    client = eo.EcmwfOpenDataClient(None)
+    sizes: list[tuple[int, int]] = []
+
+    async def _index(url):  # noqa: ANN001, ANN202
+        return [{"param": "tpg1", "_offset": 0, "_length": 3}, {"param": "tpg10", "_offset": 3, "_length": 3}]
+
+    class _Resp:
+        content = b"abc"
+
+    async def _get(url, byte_range=None):  # noqa: ANN001, ANN202
+        return _Resp()
+
+    def _keep(grid: np.ndarray) -> np.ndarray:
+        sizes.append(grid.shape)
+        return DOM.crop(grid)
+
+    monkeypatch.setattr(client, "index", _index)
+    monkeypatch.setattr(client, "_get", _get)
+    monkeypatch.setattr(eo, "decode", lambda payload: np.zeros((eo.NJ, eo.NI)))
+    got = await client.fields("x.grib2", lambda e: True, keep=_keep)
+    assert sizes == [(eo.NJ, eo.NI)] * 2
+    assert [g.shape for _, g in got] == [DOM.shape, DOM.shape]
+
+
 def test_an_outline_outside_the_domain_is_an_error() -> None:
     with pytest.raises(ValueError, match="outside"):
         fl.area_weights(_square(10.0, 10.0, 10.5, 10.5), DOM)

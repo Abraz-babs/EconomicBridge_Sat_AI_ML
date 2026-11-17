@@ -99,10 +99,11 @@ def weights_for(tenant: str, lga: str, geometry: dict, domain: Domain) -> Weight
 async def _one(client: EcmwfOpenDataClient, run: Run, product: tuple[str, str, str],
                step: int, param: str, domain: Domain, base: str = BASE_URL) -> np.ndarray:
     fields = await client.fields(run.url(product, step, base),
-                                 lambda e: e.get("param") == param and e.get("levtype") == "sfc")
+                                 lambda e: e.get("param") == param and e.get("levtype") == "sfc",
+                                 keep=domain.crop)
     if len(fields) != 1:
         raise RuntimeError(f"{param} at {step} h: expected 1 field, found {len(fields)}")
-    return domain.crop(fields[0][1])
+    return fields[0][1]
 
 
 async def _chances(client: EcmwfOpenDataClient, run: Run, domain: Domain,
@@ -112,10 +113,11 @@ async def _chances(client: EcmwfOpenDataClient, run: Run, domain: Domain,
     wanted = {f"tpg{t}": t for t in CHANCE_THRESHOLDS}
     got = await client.fields(
         run.url(ENS_CHANCES, 24 * CHANCE_DAYS, base),
-        lambda e: e.get("type") == "ep" and e.get("param") in wanted and e.get("step") in windows)
+        lambda e: e.get("type") == "ep" and e.get("param") in wanted and e.get("step") in windows,
+        keep=domain.crop)
     grids: dict[int, list[np.ndarray | None]] = {t: [None] * CHANCE_DAYS for t in CHANCE_THRESHOLDS}
     for entry, grid in got:
-        grids[wanted[entry["param"]]][windows[entry["step"]]] = domain.crop(grid)
+        grids[wanted[entry["param"]]][windows[entry["step"]]] = grid
     out: dict[int, list[np.ndarray]] = {}
     for t, days in grids.items():
         complete = [g for g in days if g is not None]
