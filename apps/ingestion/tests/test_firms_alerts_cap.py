@@ -46,9 +46,10 @@ class _FakeSession:
     def __init__(self) -> None:
         self.executed_hashes: list[str] = []
         self.committed = 0
+        self.info: dict[str, str] = {}   # set_tenant_schema records its pin here
 
     async def execute(self, stmt, params=None):  # noqa: ANN001 — duck-typed
-        # set_tenant_schema fires `SET search_path ...` with no params.
+        # set_tenant_schema fires `SET LOCAL search_path ...` with no params.
         if params and "h" in params:
             return _NoMatchResult()
         if params and "model_input_hash" in params:

@@ -289,6 +289,75 @@ def test_scan_replaces_prior_rows_of_its_own_source_only() -> None:
 
 
 @pytest.mark.asyncio
+async def test_each_tenant_is_committed_before_the_next_starts(monkeypatch) -> None:
+    """One bad tenant must not undo the tenants scanned before it.
+
+    The sweep used to hold every tenant in ONE transaction, so a failure in a
+    later tenant rolled back the advisories and run records of every tenant
+    before it: a good day could vanish without a trace.
+    """
+    from tasks import rainstorm_scan as rs
+
+    class _Client:
+        configured = True
+
+        def close(self) -> None:
+            pass
+
+    class _Window:
+        grids: list = []
+        requested_days = 1
+        coverage = 1.0
+        newest = None
+
+        def unusable_reason(self) -> None:
+            return None
+
+    async def _fetch(client, region, *, end, days):  # noqa: ANN001, ANN202
+        return _Window()
+
+    mapped = [t for t in sorted(rs.PILOT_TENANT_IDS) if rs.TENANT_REGION.get(t)]
+    failing = mapped[1]
+    log: list[str] = []
+
+    async def _scan(session, tenant, *, window, trigger):  # noqa: ANN001, ANN202
+        log.append(f"scan {tenant}")
+        if tenant == failing:
+            raise RuntimeError("one bad tenant")
+        return 1
+
+    class _Session:
+        async def execute(self, *a, **k):  # noqa: ANN002, ANN003, ANN201
+            return None
+
+        async def commit(self) -> None:
+            log.append("commit")
+
+        async def rollback(self) -> None:
+            log.append("rollback")
+
+        async def __aenter__(self):  # noqa: ANN204
+            return self
+
+        async def __aexit__(self, *a) -> bool:  # noqa: ANN002
+            return False
+
+    monkeypatch.setattr(rs, "GpmImergClient", _Client)
+    monkeypatch.setattr(rs, "fetch_region_window", _fetch)
+    monkeypatch.setattr(rs, "scan_tenant", _scan)
+    monkeypatch.setattr(rs, "get_session_factory", lambda: _Session)
+
+    results = await rs.run()
+
+    for i, entry in enumerate(log):
+        if entry.startswith("scan "):
+            expected = "rollback" if entry == f"scan {failing}" else "commit"
+            assert log[i + 1] == expected, (entry, log)
+    assert results[failing] == 0
+    assert results[mapped[0]] == 1, "the tenant before the failure keeps its result"
+
+
+@pytest.mark.asyncio
 async def test_run_is_inert_without_a_token(monkeypatch) -> None:
     monkeypatch.setenv("EARTHDATA_TOKEN", "")
     from config import get_settings

@@ -44,6 +44,7 @@ class _FakeSession:
 
     def __init__(self) -> None:
         self.statements: list[tuple[str, dict[str, Any]]] = []
+        self.info: dict[str, Any] = {}   # set_tenant_schema records its pin here
 
     async def execute(self, stmt, params=None):  # noqa: ANN001 — duck-typed
         sql = " ".join(str(stmt).split())
@@ -175,7 +176,7 @@ async def test_ingest_emits_set_search_path_plus_upserts(configured):
         end=datetime(2026, 4, 30, tzinfo=timezone.utc),
     )
 
-    sets = [s for s, _ in session.statements if s.startswith("SET search_path")]
+    sets = [s for s, _ in session.statements if s.startswith("SET LOCAL search_path")]
     inserts = [s for s, _ in session.statements if s.startswith("INSERT INTO satellite_observations")]
     assert len(sets) == 1
     assert len(inserts) == 10   # 5 S1 + 5 S2

@@ -338,10 +338,14 @@ async def scan_tenant(
                       lat=g["lat"], sig=sig, observed=series[-1].day)
         # Permanent record alongside the live row. Failing to archive must not
         # cost the operator the advisory itself, so this never breaks the scan.
+        # The SAVEPOINT is what makes that true: in Postgres a failed statement
+        # aborts the whole transaction, so catching the exception alone would
+        # leave every later statement of the run failing.
         try:
-            await _record_history(session, tenant=tenant, lga=g["lga"],
-                                  lon=g["lon"], lat=g["lat"], sig=sig,
-                                  observed=series[-1].day)
+            async with session.begin_nested():
+                await _record_history(session, tenant=tenant, lga=g["lga"],
+                                      lon=g["lon"], lat=g["lat"], sig=sig,
+                                      observed=series[-1].day)
         except Exception as exc:            # noqa: BLE001
             log.warning("advisory history write skipped %s/%s: %r",
                         tenant, g["lga"], exc)
@@ -406,12 +410,18 @@ async def run(
                     started_at=datetime.now(timezone.utc),
                     trigger=trigger, error=reason,
                 )
+                await session.commit()
                 results[tenant] = 0
                 continue
             try:
                 results[tenant] = await scan_tenant(
                     session, tenant, window=window, trigger=trigger,
                 )
+                # Each tenant is durable before the next starts. With one
+                # transaction for the whole sweep, a failure in a later tenant
+                # rolled back every tenant scanned before it, run records
+                # included, so a good day could vanish without a trace.
+                await session.commit()
             except ImergAuthError as exc:
                 # Credentials are global, not per-tenant: continuing would emit
                 # the same 401 for every remaining LGA and leave every tenant
@@ -423,7 +433,6 @@ async def run(
                 log.exception("rainfall scan failed for %s: %r", tenant, exc)
                 await session.rollback()
                 results[tenant] = 0
-        await session.commit()
     total = sum(results.values())
     log.info("rainfall scan: %d advisories across %d tenants", total, len(results))
     return results

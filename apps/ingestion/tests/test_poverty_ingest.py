@@ -81,6 +81,7 @@ class _SeedSession:
     def __init__(self, rows: list[dict[str, Any]]) -> None:
         self._rows = rows
         self.statements: list[str] = []
+        self.info: dict[str, Any] = {}   # set_tenant_schema records its pin here
 
     async def execute(self, stmt, params=None):  # noqa: ANN001 — duck-typed
         sql = " ".join(str(stmt).split())
@@ -138,6 +139,7 @@ class _FakeSession:
 
     def __init__(self) -> None:
         self.statements: list[tuple[str, dict[str, Any]]] = []
+        self.info: dict[str, Any] = {}   # set_tenant_schema records its pin here
 
     async def execute(self, stmt, params=None):  # noqa: ANN001 — duck-typed
         sql = " ".join(str(stmt).split())
@@ -268,7 +270,7 @@ async def test_ingest_emits_one_delete_plus_one_insert_per_signal(monkeypatch):
 
     deletes = [s for s, _ in session.statements if s.startswith("DELETE FROM poverty_villages")]
     inserts = [s for s, _ in session.statements if s.startswith("INSERT INTO poverty_villages")]
-    set_paths = [s for s, _ in session.statements if s.startswith("SET search_path")]
+    set_paths = [s for s, _ in session.statements if s.startswith("SET LOCAL search_path")]
     assert len(deletes) == 8
     assert len(inserts) == 8
     assert len(set_paths) == 1

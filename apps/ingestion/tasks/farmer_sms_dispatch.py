@@ -25,7 +25,14 @@ THE GUARDS, AND WHY EACH ONE
   when `sms_dispatched_at IS NULL`, and that column is stamped immediately
   after the gateway accepts. `rainfall_advisory_history` is UNIQUE on
   (lga, observed_date), so one rainfall day in one LGA can produce at most one
-  batch — forever, across redeploys and re-runs.
+  batch — forever, across redeploys and re-runs. The stamp names its schema
+  outright and must touch exactly one row, or the run stops: on 2026-09-14 a
+  stamp after a commit landed in the wrong schema, matched nothing, and the
+  Argungu advisory went out to 11 people while its row still read unsent.
+* Under the caps, the most severe advisory goes first. On 2026-09-22 the
+  month's last allowed send went to a medium advisory while Birnin Kebbi's
+  critical one (84.5 mm) waited: every row of one scan shares the same
+  advised_at, so ordering by it alone left the choice to chance.
 * Daily and monthly caps counted from the same column. The monthly cap is what
   keeps the enrolment promise honest.
 * Only 'rainfall'. The withheld types (drought, flood, conflict) are refused
@@ -101,7 +108,11 @@ async def _counts(session: AsyncSession) -> tuple[int, int]:
 
 
 async def _pending(session: AsyncSession) -> list[dict]:
-    """Advisories not yet sent, newest first.
+    """Advisories not yet sent: most severe first, then newest, then wettest.
+
+    The order decides who is warned when the caps bite, so severity leads.
+    Every row of one scan carries the same advised_at, which is why ordering
+    by it alone sent a medium advisory ahead of a critical one on 2026-09-22.
 
     Bounded to the last 2 days on purpose. If dispatch has been broken for a
     week we do NOT want it recovering by sending seven days of stale rainfall
@@ -115,7 +126,15 @@ async def _pending(session: AsyncSession) -> list[dict]:
         FROM rainfall_advisory_history
         WHERE sms_dispatched_at IS NULL
           AND observed_date >= (CURRENT_DATE - INTERVAL '2 days')
-        ORDER BY advised_at DESC
+        ORDER BY CASE severity
+                   WHEN 'critical' THEN 0
+                   WHEN 'high' THEN 1
+                   WHEN 'medium' THEN 2
+                   ELSE 3
+                 END,
+                 observed_date DESC,
+                 rain_mm_day DESC NULLS LAST,
+                 advised_at DESC
         """
     ))).mappings().all()
     return [dict(r) for r in rows]
@@ -190,11 +209,24 @@ async def dispatch_for_tenant(
                     tenant, row["lga"],
                 )
 
-            await session.execute(text(
-                "UPDATE rainfall_advisory_history "
-                "SET sms_dispatched_at = NOW(), sms_recipients = :n "
-                "WHERE id = :id"
+            # Schema named outright (tenant is allowlisted by set_tenant_schema
+            # above), so this write never depends on the connection's path.
+            # clock_timestamp(), not NOW(): NOW() is the transaction's start,
+            # which put the 2026-09-14 Suru stamp before its own messages.
+            stamped = await session.execute(text(
+                f"UPDATE tenant_{tenant}.rainfall_advisory_history "
+                "SET sms_dispatched_at = clock_timestamp(), sms_recipients = :n "
+                "WHERE id = :id AND sms_dispatched_at IS NULL"
             ), {"n": n, "id": row["id"]})
+            if stamped.rowcount != 1:
+                # The messages have gone; only the record failed. Stop: an
+                # advisory that reads unsent would be sent again next run.
+                await session.rollback()
+                raise RuntimeError(
+                    f"farmer sms: {tenant}/{row['lga']} reached {n} recipient(s) "
+                    f"but its history row was not stamped "
+                    f"(rowcount={stamped.rowcount}); stopping this tenant"
+                )
             await session.commit()
 
             sent += 1

@@ -275,6 +275,7 @@ class _FakeSession:
     def __init__(self, seed_rows: list[dict[str, Any]]) -> None:
         self._seed = seed_rows
         self.statements: list[tuple[str, dict[str, Any]]] = []
+        self.info: dict[str, Any] = {}   # set_tenant_schema records its pin here
 
     async def execute(self, stmt, params=None):  # noqa: ANN001 — duck-typed
         sql = " ".join(str(stmt).split())
