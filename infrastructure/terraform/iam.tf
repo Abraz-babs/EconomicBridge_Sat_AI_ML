@@ -86,9 +86,11 @@ data "aws_iam_policy_document" "ecs_task_base" {
   for_each = local.services
 
   statement {
-    sid       = "ReadOwnSecrets"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [for s in aws_secretsmanager_secret.external : s.arn]
+    sid     = "ReadOwnSecrets"
+    actions = ["secretsmanager:GetSecretValue"]
+    # The SMS pipeline's org id is injected into ingestion by the execution
+    # role and read by no service at runtime, so no task role gets it.
+    resources = [for path, s in aws_secretsmanager_secret.external : s.arn if !can(regex("^notifications/", path))]
   }
 
   statement {

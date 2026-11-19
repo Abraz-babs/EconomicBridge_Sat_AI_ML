@@ -90,7 +90,9 @@ locals {
     # subscribed farmers. This is the only path where satellite output reaches
     # the public unattended, so it stays OFF unless var.farmer_sms_enabled is
     # set explicitly, and refuses to send at all without an organisation id
-    # (the notify endpoint is DPA-gated).
+    # (the notify endpoint is DPA-gated). That id is a credential and arrives
+    # as NOTIFICATIONS_ORG_ID from Secrets Manager (notifications/org_id in
+    # service_secrets below), never as a plain variable.
     #
     # NOTE the base URL goes via the public ALB rather than a service-internal
     # address: there is no service discovery in this cluster, and the ALB is
@@ -100,7 +102,6 @@ locals {
     { name = "FARMER_SMS_MAX_PER_DAY", value = tostring(var.farmer_sms_max_per_day) },
     { name = "FARMER_SMS_MAX_PER_MONTH", value = tostring(var.farmer_sms_max_per_month) },
     { name = "NOTIFICATIONS_BASE_URL", value = "${local.public_app_url}/notifications/api/v1" },
-    { name = "NOTIFICATIONS_ORG_ID", value = var.notifications_org_id },
   ]
 
   # notifications-only env: outbound SMS via Amazon SNS. The gateway resolves to
@@ -140,11 +141,13 @@ locals {
   # every service that touches external APIs (api, ingestion, notifications).
   # frontend + ml don't need third-party API keys yet.
   service_secrets = {
+    # The api gets every external secret except the SMS pipeline's org id,
+    # which only ingestion uses.
     api = concat(
-      [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn }],
+      [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn } if !can(regex("^notifications/", path))],
       [{ name = "JWT_SECRET_KEY", valueFrom = aws_secretsmanager_secret.jwt.arn }],
     )
-    ingestion     = [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn } if can(regex("^(copernicus|nasa_firms|n2yo|earth_engine|giga|earthdata)/", path))]
+    ingestion     = [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn } if can(regex("^(copernicus|nasa_firms|n2yo|earth_engine|giga|earthdata|notifications)/", path))]
     ml            = [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn } if can(regex("^claude/", path))]
     notifications = [for path in local.secret_paths : { name = local.secret_env_name[path], valueFrom = aws_secretsmanager_secret.external[path].arn } if can(regex("^(termii|twilio)/", path))]
     frontend      = []

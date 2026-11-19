@@ -129,10 +129,16 @@ class NotifyConflictRequest(BaseModel):
 
 
 class DispatchSummary(BaseModel):
-    """Per-subscriber outcome inside the response."""
+    """Per-subscriber outcome inside the response.
+
+    The phone number is masked to its last four digits, as in the outbox. A dry
+    run returns the full recipient list without sending anything, so a full
+    number here would turn the dispatch endpoints into a phone-number lookup
+    for whoever holds an organisation id.
+    """
 
     subscriber_id: UUID
-    phone_e164: str
+    phone_masked: str
     provider: str
     status: str
     provider_message_id: str | None

@@ -306,7 +306,7 @@ variable "primary_domain" {
 # every default fails safe.
 
 variable "farmer_sms_enabled" {
-  description = "Dispatch rainfall advisories to subscribed farmers automatically after each scan. OFF by default: turning this on means real SMS reach real farmers with no human review. Requires notifications_org_id and a topped-up SMS gateway balance."
+  description = "Dispatch rainfall advisories to subscribed farmers automatically after each scan. OFF by default: turning this on means real SMS reach real farmers with no human review. Requires the notifications/org_id secret (an organisation holding a signed DPA) and a topped-up SMS gateway balance."
   type        = bool
   default     = false
 }
@@ -334,8 +334,7 @@ variable "farmer_sms_max_per_month" {
   }
 }
 
-variable "notifications_org_id" {
-  description = "Organisation UUID holding a signed DPA, used by ingestion to call the PII-gated notify endpoint. Empty disables automatic farmer SMS entirely — no DPA, no farmer messaging."
-  type        = string
-  default     = ""
-}
+# notifications_org_id was a plain variable until 2026-11-18. The id is a
+# credential (it unlocks the DPA-gated notify endpoints), so it now lives in
+# Secrets Manager as notifications/org_id — see locals.tf. Do not bring the
+# variable back: a tfvar ends up in the task definition as plain text.

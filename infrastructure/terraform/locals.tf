@@ -116,6 +116,11 @@ locals {
     # seed_super_admin one-off task (see README). NOT the JWT key (that's
     # Terraform-generated in secrets.tf).
     "auth/super_admin_password",
+    # Organisation id the farmer-SMS pipeline sends to the DPA-gated notify
+    # endpoint. It is a credential: until 2026-11-18 it was a plain tfvar and
+    # the same value sat in the public repo, so anyone could call the endpoint.
+    # Ingestion only (see service_secrets in ecs.tf); never in tfvars or code.
+    "notifications/org_id",
   ]
 
   # Secret path → the ENV VAR NAME each service's config actually reads.
@@ -137,5 +142,6 @@ locals {
     "earthdata/token"              = "EARTHDATA_TOKEN"
     "resend/api_key"               = "RESEND_API_KEY"
     "auth/super_admin_password"    = "SUPER_ADMIN_PASSWORD"
+    "notifications/org_id"         = "NOTIFICATIONS_ORG_ID"
   }
 }

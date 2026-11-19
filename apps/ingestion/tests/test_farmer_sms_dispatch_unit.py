@@ -42,7 +42,7 @@ def test_enabled_without_a_dpa_org_refuses(monkeypatch) -> None:
 
 def test_enabled_with_org_returns_the_allowlist(monkeypatch) -> None:
     monkeypatch.setenv("FARMER_SMS_ENABLED", "true")
-    monkeypatch.setenv("NOTIFICATIONS_ORG_ID", "025a16c3-4c64-4115-b320-f5dbd8d8bc03")
+    monkeypatch.setenv("NOTIFICATIONS_ORG_ID", "00000000-0000-4000-8000-000000000001")
     monkeypatch.setenv("FARMER_SMS_TENANTS", "kebbi, zamfara")
     get_settings.cache_clear()
     assert fsd.enabled_tenants() == ["kebbi", "zamfara"]

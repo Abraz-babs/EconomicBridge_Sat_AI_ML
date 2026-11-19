@@ -158,7 +158,8 @@ async def recent_outbox(
         "shouting) rather than the agency-desk conflict format. Advisory types "
         "withheld for lack of evidence — drought, flood, conflict — are "
         "rejected with 400; see `FARMER_WITHHELD` in services/messages.py.\n\n"
-        "Set `dry_run: true` to see the exact recipients and message bodies "
+        "Set `dry_run: true` to see the matched recipients (phone numbers "
+        "masked to the last four digits, as everywhere) and message bodies "
         "without sending or spending."
     ),
     dependencies=[Depends(require_signed_dpa)],
@@ -238,7 +239,7 @@ async def notify_advisory(
             dispatches=[
                 DispatchSummary(
                     subscriber_id=o.subscriber_id,
-                    phone_e164=o.phone_e164,
+                    phone_masked=_mask_phone(o.phone_e164),
                     provider=o.provider,
                     status=o.status,
                     provider_message_id=o.provider_message_id,
@@ -342,7 +343,7 @@ async def notify_conflict(
             dispatches=[
                 DispatchSummary(
                     subscriber_id=o.subscriber_id,
-                    phone_e164=o.phone_e164,
+                    phone_masked=_mask_phone(o.phone_e164),
                     provider=o.provider,
                     status=o.status,
                     provider_message_id=o.provider_message_id,

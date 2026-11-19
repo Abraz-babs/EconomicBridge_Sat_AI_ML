@@ -1,25 +1,30 @@
 """DEMO STACKS ONLY — demo org + signed DPA for every pilot (SMS demo path).
 
 The notifications service gates subscriber-list + dispatch behind a signed
-Data Processing Agreement (real PII protection). The dashboard's SMS demo
-(Admin → SMS language preview / dispatch) sends the fixed demo-org UUID below
-as ``X-Organisation-Id``, so for the demo path to work the org must exist with
-EXACTLY that id and hold a signed DPA per pilot tenant.
+Data Processing Agreement (real PII protection). An organisation id holding a
+signed DPA is therefore a credential, and this script creates one.
 
 Creates the demo organisation if absent (idempotent) and then ensures a
 signed DPA row for it across all pilot tenants.
 
-Run on dev/staging DEMO deployments only. NEVER on a production deployment
-holding real subscriber PII — a signed DPA authorises PII access, and this
-org's credentials are demo-grade.
+The id comes from the DEMO_ORG_ID environment variable and is never written
+into the repository. Until 2026-11-18 it was a constant in this file, and the
+live farmer-SMS pipeline used that same id, so anyone reading the public repo
+could call the PII-gated notify endpoints. That id has been revoked. Generate a
+fresh one per demo stack (python -c "import uuid; print(uuid.uuid4())").
 
-    python -m scripts.seed_demo_dpa
+Run on dev/staging DEMO deployments only. NEVER on a deployment holding real
+subscriber PII, and never reuse the pipeline's organisation id here.
+
+    DEMO_ORG_ID=<fresh uuid> python -m scripts.seed_demo_dpa
 """
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
+from uuid import UUID
 
 API_ROOT = Path(__file__).resolve().parent.parent
 if str(API_ROOT) not in sys.path:
@@ -30,12 +35,16 @@ from sqlalchemy import text  # noqa: E402
 from db.engine import get_engine, get_session_factory  # noqa: E402
 from services.tenants import PILOT_TENANT_IDS  # noqa: E402
 
-# Must match the frontend's demo-org constant
-# (SmsLanguagePreviewCard.tsx → NEXT_PUBLIC_DEMO_ORG_ID default).
-DEMO_ORG_ID = "025a16c3-4c64-4115-b320-f5dbd8d8bc03"
+def _demo_org_id() -> str:
+    """The demo org id from the environment; refuse to run without a valid one."""
+    raw = os.environ.get("DEMO_ORG_ID", "").strip()
+    try:
+        return str(UUID(raw))
+    except ValueError:
+        sys.exit("DEMO_ORG_ID must be set to a fresh UUID (never commit it).")
 
 
-async def seed() -> int:
+async def seed(org_id: str) -> int:
     """Ensure the demo org exists + signed DPAs for all pilots. Returns rows added."""
     factory = get_session_factory()
     added = 0
@@ -58,7 +67,7 @@ async def seed() -> int:
                 )
                 """
             ),
-            {"id": DEMO_ORG_ID},
+            {"id": org_id},
         )
 
         # 2) A signed DPA per pilot tenant (skip any already present).
@@ -78,7 +87,7 @@ async def seed() -> int:
                     )
                     """
                 ),
-                {"org": DEMO_ORG_ID, "tenant": tenant_id},
+                {"org": org_id, "tenant": tenant_id},
             )
             added += res.rowcount or 0
         await session.commit()
@@ -86,8 +95,9 @@ async def seed() -> int:
 
 
 async def main() -> None:
-    n = await seed()
-    print(f"demo DPA: ensured demo org {DEMO_ORG_ID} + signed agreements for "
+    n = await seed(_demo_org_id())
+    # The id is a credential: confirm the work, never echo the value.
+    print(f"demo DPA: ensured the demo org + signed agreements for "
           f"{len(PILOT_TENANT_IDS)} pilots (added {n} new)")
     await get_engine().dispose()
 

@@ -150,7 +150,8 @@ def test_full_dispatch_round_trip_uses_mock_gateway() -> None:
         ours = [d for d in body["dispatches"] if d["subscriber_id"] == subscriber_id]
         assert len(ours) == 1
         assert ours[0]["status"] in {"sent", "mock"}
-        assert ours[0]["phone_e164"] == test_phone
+        assert ours[0]["phone_masked"] == "••••" + test_phone[-4:]
+        assert test_phone not in resp.text
 
         # Verify the outbox row landed
         with engine.begin() as conn:
